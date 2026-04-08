@@ -89,7 +89,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
 
         <div className="info-card">
           {isMinecraft
-            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Adres publiczny jest polem informacyjnym dla graczy i wymaga osobnego wystawienia portu gry."
+            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej."
             : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
         </div>
 
@@ -153,7 +153,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
               {archive
                 ? archive.name
                 : isMinecraft
-                  ? "Mozesz wrzucic gotowy JAR serwera albo caly pakiet ZIP/RAR."
+                  ? "Opcjonalne. Mozesz utworzyc pusty serwer i dodac JAR pozniej albo od razu wrzucic JAR/ZIP/RAR."
                   : "Mozesz dodac plik teraz lub utworzyc pusty workspace."}
             </small>
           </label>

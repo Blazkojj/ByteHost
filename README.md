@@ -14,15 +14,16 @@ ByteHost to prywatny panel webowy do hostowania botow Discord i serwerow Minecra
 ## Funkcje
 
 - tworzenie bota Discord z archiwum `ZIP` lub `RAR`
-- tworzenie serwera Minecraft z `JAR`, `ZIP` albo `RAR`
+- tworzenie serwera Minecraft z `JAR`, `ZIP` albo `RAR`, albo jako pusty workspace bez pliku
 - automatyczne wykrywanie:
   - bota Discord:
     - jezyka `Node.js`, `TypeScript`, `Python`
     - pliku startowego
     - komendy startowej
-  - serwera Minecraft:
+- serwera Minecraft:
     - pliku `JAR`
     - komendy `java -jar ... nogui`
+    - pustego workspace, jesli plik dodasz dopiero pozniej
 - reczna korekta:
   - jezyka
   - pliku startowego

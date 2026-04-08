@@ -182,6 +182,15 @@ async function readUtf8IfExists(targetPath) {
   }
 }
 
+async function fileExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 async function clearDirectoryContents(directoryPath) {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
 
@@ -341,6 +350,60 @@ async function ensureMinecraftEula(projectPath) {
   );
 }
 
+async function bootstrapMinecraftWorkspace(projectPath, options = {}) {
+  const eulaAccepted = Boolean(options.acceptEula);
+  const motd = coerceNullableString(options.name, "ByteHost Minecraft Server");
+  const serverPropertiesPath = path.join(projectPath, "server.properties");
+  const eulaPath = path.join(projectPath, "eula.txt");
+  const readmePath = path.join(projectPath, "README_BYTEHOST_MINECRAFT.txt");
+
+  if (!(await fileExists(serverPropertiesPath))) {
+    await fs.writeFile(
+      serverPropertiesPath,
+      [
+        "enable-query=false",
+        "enable-rcon=false",
+        "gamemode=survival",
+        "max-players=20",
+        `motd=${motd}`,
+        "online-mode=true",
+        "server-ip=",
+        "server-port=25565",
+        "view-distance=10",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+  }
+
+  if (!(await fileExists(eulaPath))) {
+    await fs.writeFile(
+      eulaPath,
+      [
+        "# ByteHost Minecraft workspace",
+        `eula=${eulaAccepted ? "true" : "false"}`,
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+  }
+
+  if (!(await fileExists(readmePath))) {
+    await fs.writeFile(
+      readmePath,
+      [
+        "ByteHost utworzyl pusty serwer Minecraft bez pliku JAR.",
+        "Mozesz teraz:",
+        "1. Wrzucic server.jar lub inny plik JAR przez przycisk aktualizacji.",
+        "2. Albo wrzucic gotowy pakiet ZIP/RAR z plikami serwera.",
+        "3. Po dodaniu JAR-a uruchom serwer z panelu.",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+  }
+}
+
 async function replaceMinecraftServerJar(bot, artifactFile) {
   const currentEntry = resolveEffectiveEntryFile(bot);
   if (currentEntry && currentEntry.toLowerCase().endsWith(".jar")) {
@@ -393,6 +456,11 @@ async function createBot(payload, artifactFile) {
       assertArtifactAllowed(serviceType, artifactKind);
       await importProjectArtifact(artifactFile.path, botDirectory, {
         originalName: artifactFile.originalname
+      });
+    } else if (serviceType === "minecraft_server") {
+      await bootstrapMinecraftWorkspace(botDirectory, {
+        acceptEula: coerceBoolean(payload.accept_eula, false),
+        name: payload.name
       });
     }
 
@@ -625,6 +693,22 @@ async function startBot(botId) {
     }
 
     await ensureMinecraftEula(bot.project_path);
+
+    const entryFile = resolveEffectiveEntryFile(bot);
+    if (!entryFile) {
+      throw createHttpError(
+        400,
+        "Serwer Minecraft nie ma jeszcze pliku JAR. Wrzuc plik server.jar albo gotowy pakiet serwera."
+      );
+    }
+
+    const entryPath = path.join(bot.project_path, entryFile);
+    if (!(await fileExists(entryPath))) {
+      throw createHttpError(
+        400,
+        `Nie znaleziono pliku startowego ${entryFile}. Wrzuc plik JAR przez aktualizacje uslugi lub file manager.`
+      );
+    }
   }
 
   const resolvedStartCommand = resolveEffectiveStartCommand(bot);
