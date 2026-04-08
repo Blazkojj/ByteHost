@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Copy,
   FolderOpen,
   Play,
   RefreshCw,
@@ -384,6 +385,21 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     }
   }
 
+  async function copyJoinAddress() {
+    const joinAddress = serviceJoinAddress(bot);
+    if (!isMinecraft || joinAddress === "Brak") {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(joinAddress);
+      setMessage("Adres serwera zostal skopiowany.");
+      setError("");
+    } catch (_error) {
+      setError("Nie udalo sie skopiowac adresu serwera.");
+    }
+  }
+
   async function handleArchiveUpdate(event) {
     const archive = event.target.files?.[0];
     if (!archive) {
@@ -459,6 +475,12 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               onChange={handleArchiveUpdate}
             />
             <StatusBadge status={bot.status} />
+            {isMinecraft && serviceJoinAddress(bot) !== "Brak" ? (
+              <button className="ghost-button" onClick={copyJoinAddress} disabled={actionState}>
+                <Copy size={16} />
+                <span>Kopiuj IP</span>
+              </button>
+            ) : null}
             <button
               className="ghost-button"
               onClick={() => archiveUpdateInputRef.current?.click()}
