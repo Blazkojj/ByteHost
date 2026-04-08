@@ -5,6 +5,10 @@ const extractZip = require("extract-zip");
 const { spawnBuffered } = require("./commands");
 const { createHttpError } = require("./utils");
 
+function getArchiveExtension(archivePath, originalName) {
+  return path.extname(originalName || archivePath || "").toLowerCase();
+}
+
 async function removeMacArtifacts(targetDirectory) {
   const macOsDirectory = path.join(targetDirectory, "__MACOSX");
   await fs.rm(macOsDirectory, { recursive: true, force: true });
@@ -67,10 +71,10 @@ async function extractRar(archivePath, destination) {
   }
 }
 
-async function extractArchive(archivePath, destination) {
+async function extractArchive(archivePath, destination, options = {}) {
   await fs.mkdir(destination, { recursive: true });
 
-  const extension = path.extname(archivePath).toLowerCase();
+  const extension = getArchiveExtension(archivePath, options.originalName);
 
   if (extension === ".zip") {
     await extractZip(archivePath, { dir: destination });
@@ -85,5 +89,6 @@ async function extractArchive(archivePath, destination) {
 }
 
 module.exports = {
-  extractArchive
+  extractArchive,
+  getArchiveExtension
 };

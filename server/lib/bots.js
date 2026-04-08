@@ -212,7 +212,9 @@ async function createBot(payload, archiveFile) {
 
   try {
     if (archiveFile) {
-      await extractArchive(archiveFile.path, botDirectory);
+      await extractArchive(archiveFile.path, botDirectory, {
+        originalName: archiveFile.originalname
+      });
     }
 
     const analysis = await analyzeProject(botDirectory);
