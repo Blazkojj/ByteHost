@@ -1,5 +1,6 @@
 const express = require("express");
 
+const { listMinecraftVersions } = require("../lib/minecraft");
 const { collectSystemStats, updateSystemLimits } = require("../lib/system");
 const { coerceNullableNumber } = require("../lib/utils");
 
@@ -8,6 +9,14 @@ const router = express.Router();
 router.get("/stats", async (_request, response, next) => {
   try {
     response.json(await collectSystemStats());
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/minecraft-versions", async (_request, response, next) => {
+  try {
+    response.json(await listMinecraftVersions());
   } catch (error) {
     next(error);
   }

@@ -17,6 +17,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
     name: "",
     description: "",
     language: "",
+    minecraft_version: "",
     entry_file: "",
     start_command: "",
     expires_at: "",
@@ -33,6 +34,8 @@ function CreateBotPanel({ open, onClose, onCreated }) {
   const [archive, setArchive] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [minecraftVersions, setMinecraftVersions] = useState([]);
+  const [latestMinecraftRelease, setLatestMinecraftRelease] = useState("");
 
   const isMinecraft = form.service_type === "minecraft_server";
 
@@ -41,6 +44,33 @@ function CreateBotPanel({ open, onClose, onCreated }) {
       setError("");
     }
   }, [open]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVersions() {
+      try {
+        const payload = await api.getMinecraftVersions();
+        if (!cancelled) {
+          setMinecraftVersions(payload.versions || []);
+          setLatestMinecraftRelease(payload.latest_release || "");
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setMinecraftVersions([]);
+          setLatestMinecraftRelease("");
+        }
+      }
+    }
+
+    if (open && isMinecraft) {
+      loadVersions();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isMinecraft]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -106,6 +136,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
                         service_type: event.target.value,
                         language: "Java",
                         entry_file: current.entry_file || "server.jar",
+                        minecraft_version: current.minecraft_version || "",
                         install_on_create: false,
                         public_port: current.public_port || 25565
                       }
@@ -113,6 +144,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
                         ...current,
                         service_type: event.target.value,
                         language: current.language === "Java" ? "" : current.language,
+                        minecraft_version: "",
                         entry_file: current.entry_file === "server.jar" ? "" : current.entry_file
                       }
                 )
@@ -171,6 +203,30 @@ function CreateBotPanel({ open, onClose, onCreated }) {
               <option value="Java">Java</option>
             </select>
           </label>
+          {isMinecraft ? (
+            <label>
+              Wersja Minecraft
+              <input
+                list="minecraft-version-list"
+                placeholder={latestMinecraftRelease || "np. 1.21.5"}
+                value={form.minecraft_version}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, minecraft_version: event.target.value }))
+                }
+              />
+              <datalist id="minecraft-version-list">
+                {minecraftVersions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.id}
+                  </option>
+                ))}
+              </datalist>
+              <small>
+                Puste pole oznacza automatyczne pobranie najnowszej oficjalnej wersji
+                {latestMinecraftRelease ? ` (${latestMinecraftRelease})` : ""}.
+              </small>
+            </label>
+          ) : null}
           <label>
             Plik startowy
             <input

@@ -107,6 +107,8 @@ function initDatabase() {
   ensureColumn(database, "bots", "accept_eula", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(database, "bots", "public_host", "TEXT");
   ensureColumn(database, "bots", "public_port", "INTEGER");
+  ensureColumn(database, "bots", "minecraft_version", "TEXT");
+  ensureColumn(database, "bots", "detected_minecraft_version", "TEXT");
 
   const existingLimits = database.prepare("SELECT id FROM system_limits WHERE id = 1").get();
   if (!existingLimits) {

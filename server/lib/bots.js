@@ -7,6 +7,7 @@ const { detectUploadedArtifactKind, importProjectArtifact } = require("./archive
 const { analyzeProject, buildMinecraftStartCommand } = require("./analyzer");
 const { runShellCommand } = require("./commands");
 const { getBotLogs, removeBotLogs } = require("./logs");
+const { downloadMinecraftServerJar } = require("./minecraft");
 const { mergeBotWithRuntime, deriveBotRuntime, isExpired } = require("./runtime");
 const {
   ensureBotDirectory,
@@ -82,6 +83,10 @@ function sanitizePublicPort(value, fallback = null) {
   return port;
 }
 
+function normalizeMinecraftVersion(value, fallback = null) {
+  return coerceNullableString(value, fallback);
+}
+
 function normalizeExpiresAt(value) {
   const normalized = coerceNullableString(value, null);
   if (!normalized) {
@@ -132,7 +137,8 @@ function createBotRecord(record) {
           detected_install_command, package_manager, project_path, status, status_message,
           expires_at, auto_restart, restart_delay, max_restarts, restart_count, last_restart_at,
           stability_status, ram_limit_mb, cpu_limit_percent, accept_eula, public_host,
-          public_port, archive_name, pm2_name, created_at, updated_at
+          public_port, minecraft_version, detected_minecraft_version, archive_name, pm2_name,
+          created_at, updated_at
         )
         VALUES (
           @id, @service_type, @name, @slug, @description, @language, @detected_language,
@@ -140,8 +146,8 @@ function createBotRecord(record) {
           @install_command, @detected_install_command, @package_manager, @project_path, @status,
           @status_message, @expires_at, @auto_restart, @restart_delay, @max_restarts,
           @restart_count, @last_restart_at, @stability_status, @ram_limit_mb, @cpu_limit_percent,
-          @accept_eula, @public_host, @public_port, @archive_name, @pm2_name, @created_at,
-          @updated_at
+          @accept_eula, @public_host, @public_port, @minecraft_version,
+          @detected_minecraft_version, @archive_name, @pm2_name, @created_at, @updated_at
         )
       `
     )
@@ -276,6 +282,18 @@ function resolveEffectiveEntryFile(bot) {
   return normalizeRelativePath(bot.entry_file || bot.detected_entry_file || "");
 }
 
+function isUsingDetectedEntryFile(bot) {
+  return !bot.entry_file || bot.entry_file === bot.detected_entry_file;
+}
+
+function isUsingDetectedMinecraftStartCommand(bot) {
+  return (
+    !bot.start_command ||
+    bot.start_command === bot.detected_start_command ||
+    bot.start_command === buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+  );
+}
+
 function resolveEffectiveStartCommand(bot) {
   if (bot.start_command) {
     return bot.start_command;
@@ -348,6 +366,20 @@ async function ensureMinecraftEula(projectPath) {
     ].join("\n"),
     "utf8"
   );
+}
+
+async function downloadOfficialMinecraftServer(projectPath, versionId, currentEntryFile = "") {
+  const normalizedCurrentEntry = normalizeRelativePath(currentEntryFile || "");
+
+  if (
+    normalizedCurrentEntry &&
+    normalizedCurrentEntry.toLowerCase().endsWith(".jar") &&
+    normalizedCurrentEntry !== "server.jar"
+  ) {
+    await fs.rm(path.join(projectPath, normalizedCurrentEntry), { force: true });
+  }
+
+  return downloadMinecraftServerJar(projectPath, versionId, "server.jar");
 }
 
 async function bootstrapMinecraftWorkspace(projectPath, options = {}) {
@@ -447,8 +479,13 @@ async function createBot(payload, artifactFile) {
 
   const serviceType = sanitizeServiceType(payload.service_type, "discord_bot");
   const ramLimitMb = coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb);
+  const requestedMinecraftVersion =
+    serviceType === "minecraft_server"
+      ? normalizeMinecraftVersion(payload.minecraft_version, null)
+      : null;
   const botId = randomId();
   const botDirectory = await ensureBotDirectory(botId);
+  let resolvedMinecraftVersion = null;
 
   try {
     if (artifactFile) {
@@ -462,6 +499,8 @@ async function createBot(payload, artifactFile) {
         acceptEula: coerceBoolean(payload.accept_eula, false),
         name: payload.name
       });
+      const download = await downloadOfficialMinecraftServer(botDirectory, requestedMinecraftVersion);
+      resolvedMinecraftVersion = download.minecraft_version;
     }
 
     const analysis = await analyzeServiceProject(botDirectory, serviceType, ramLimitMb);
@@ -518,6 +557,12 @@ async function createBot(payload, artifactFile) {
         serviceType === "minecraft_server" ? coerceNullableString(payload.public_host, null) : null,
       public_port:
         serviceType === "minecraft_server" ? sanitizePublicPort(payload.public_port, 25565) : null,
+      minecraft_version:
+        serviceType === "minecraft_server"
+          ? normalizeMinecraftVersion(payload.minecraft_version, resolvedMinecraftVersion)
+          : null,
+      detected_minecraft_version:
+        serviceType === "minecraft_server" ? resolvedMinecraftVersion : null,
       archive_name: artifactFile?.originalname || null,
       pm2_name: getBotProcessName(botId),
       created_at: createdAt,
@@ -554,16 +599,49 @@ async function updateBot(botId, payload) {
     payload.ram_limit_mb !== undefined
       ? coerceNullableNumber(payload.ram_limit_mb, existingBot.ram_limit_mb)
       : existingBot.ram_limit_mb;
-  const nextEntryFile =
+  let nextEntryFile =
     payload.entry_file !== undefined
       ? normalizeRelativePath(coerceNullableString(payload.entry_file, "") || "")
       : existingBot.entry_file;
-  const previousMinecraftAuto = buildMinecraftStartCommand(
-    resolveEffectiveEntryFile(existingBot),
-    existingBot.ram_limit_mb
-  );
+  let nextDetectedEntryFile = existingBot.detected_entry_file;
+  let nextDetectedMinecraftVersion = existingBot.detected_minecraft_version;
+  const nextMinecraftVersion =
+    existingBot.service_type === "minecraft_server"
+      ? payload.minecraft_version !== undefined
+        ? normalizeMinecraftVersion(payload.minecraft_version, null)
+        : normalizeMinecraftVersion(existingBot.minecraft_version, null)
+      : null;
+
+  if (existingBot.service_type === "minecraft_server") {
+    const selectedEntryFile = nextEntryFile || nextDetectedEntryFile;
+    const entryExists = selectedEntryFile
+      ? await fileExists(path.join(existingBot.project_path, selectedEntryFile))
+      : false;
+    const shouldDownloadSelectedVersion =
+      Boolean(nextMinecraftVersion) &&
+      (payload.minecraft_version !== undefined || !entryExists);
+
+    if (shouldDownloadSelectedVersion) {
+      const download = await downloadOfficialMinecraftServer(
+        existingBot.project_path,
+        nextMinecraftVersion,
+        resolveEffectiveEntryFile(existingBot)
+      );
+
+      nextDetectedEntryFile = download.entry_file;
+      nextDetectedMinecraftVersion = download.minecraft_version;
+
+      if (
+        payload.entry_file === undefined &&
+        (isUsingDetectedEntryFile(existingBot) || !nextEntryFile)
+      ) {
+        nextEntryFile = download.entry_file;
+      }
+    }
+  }
+
   const nextMinecraftAuto = buildMinecraftStartCommand(
-    nextEntryFile || existingBot.detected_entry_file,
+    nextEntryFile || nextDetectedEntryFile,
     nextRamLimit
   );
   const defaultStartCommand =
@@ -579,9 +657,7 @@ async function updateBot(botId, payload) {
   if (
     existingBot.service_type === "minecraft_server" &&
     payload.start_command === undefined &&
-    (!existingBot.start_command ||
-      existingBot.start_command === existingBot.detected_start_command ||
-      existingBot.start_command === previousMinecraftAuto)
+    isUsingDetectedMinecraftStartCommand(existingBot)
   ) {
     nextStartCommand = defaultStartCommand;
   }
@@ -598,6 +674,7 @@ async function updateBot(botId, payload) {
       existingBot.service_type
     ),
     entry_file: nextEntryFile,
+    detected_entry_file: nextDetectedEntryFile,
     start_command: nextStartCommand,
     detected_start_command: defaultStartCommand,
     expires_at: nextExpiresAt,
@@ -630,6 +707,14 @@ async function updateBot(botId, payload) {
       existingBot.service_type === "minecraft_server" && payload.public_port !== undefined
         ? sanitizePublicPort(payload.public_port, existingBot.public_port || 25565)
         : existingBot.public_port,
+    minecraft_version:
+      existingBot.service_type === "minecraft_server"
+        ? nextMinecraftVersion
+        : existingBot.minecraft_version,
+    detected_minecraft_version:
+      existingBot.service_type === "minecraft_server"
+        ? nextDetectedMinecraftVersion
+        : existingBot.detected_minecraft_version,
     updated_at: nowIso()
   };
 
@@ -658,7 +743,8 @@ async function updateBot(botId, payload) {
       payload.auto_restart !== undefined ||
       payload.restart_delay !== undefined ||
       payload.max_restarts !== undefined ||
-      payload.ram_limit_mb !== undefined);
+      payload.ram_limit_mb !== undefined ||
+      payload.minecraft_version !== undefined);
 
   if (requiresRestart) {
     await restartBot(botId);
@@ -694,19 +780,52 @@ async function startBot(botId) {
 
     await ensureMinecraftEula(bot.project_path);
 
-    const entryFile = resolveEffectiveEntryFile(bot);
+    let entryFile = resolveEffectiveEntryFile(bot);
+    const entryPath = entryFile ? path.join(bot.project_path, entryFile) : null;
+    const entryExists = entryPath ? await fileExists(entryPath) : false;
+
+    if ((!entryFile || !entryExists) && bot.minecraft_version) {
+      const download = await downloadOfficialMinecraftServer(
+        bot.project_path,
+        bot.minecraft_version,
+        entryFile
+      );
+
+      const downloadedEntryFile = download.entry_file;
+      const nextDetectedStartCommand = buildMinecraftStartCommand(
+        downloadedEntryFile,
+        bot.ram_limit_mb
+      );
+      const nextRow = {
+        detected_entry_file: downloadedEntryFile,
+        detected_start_command: nextDetectedStartCommand,
+        detected_minecraft_version: download.minecraft_version,
+        updated_at: nowIso()
+      };
+
+      if (isUsingDetectedEntryFile(bot)) {
+        nextRow.entry_file = downloadedEntryFile;
+      }
+
+      if (isUsingDetectedMinecraftStartCommand(bot)) {
+        nextRow.start_command = nextDetectedStartCommand;
+      }
+
+      bot = updateBotRow(botId, nextRow);
+      entryFile = resolveEffectiveEntryFile(bot);
+    }
+
     if (!entryFile) {
       throw createHttpError(
         400,
-        "Serwer Minecraft nie ma jeszcze pliku JAR. Wrzuc plik server.jar albo gotowy pakiet serwera."
+        "Serwer Minecraft nie ma jeszcze pliku JAR. Wybierz wersje albo wrzuc server.jar przez aktualizacje uslugi."
       );
     }
 
-    const entryPath = path.join(bot.project_path, entryFile);
-    if (!(await fileExists(entryPath))) {
+    if (!(await fileExists(path.join(bot.project_path, entryFile)))) {
       throw createHttpError(
         400,
-        `Nie znaleziono pliku startowego ${entryFile}. Wrzuc plik JAR przez aktualizacje uslugi lub file manager.`
+        `Nie znaleziono pliku startowego ${entryFile}. Wybierz wersje do pobrania albo wrzuc plik JAR recznie.`
       );
     }
   }
@@ -916,6 +1035,9 @@ async function updateBotArchive(botId, artifactFile, payload = {}) {
       install_command: analysis.install_command,
       detected_install_command: analysis.install_command,
       package_manager: analysis.package_manager,
+      minecraft_version: bot.service_type === "minecraft_server" ? null : bot.minecraft_version,
+      detected_minecraft_version:
+        bot.service_type === "minecraft_server" ? null : bot.detected_minecraft_version,
       archive_name: artifactFile.originalname || bot.archive_name,
       status: isExpired(bot.expires_at) ? "EXPIRED" : "OFFLINE",
       status_message: null,

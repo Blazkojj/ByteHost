@@ -54,6 +54,7 @@ export const api = {
       body: JSON.stringify({ content })
     }),
   getSystemStats: () => request("/api/system/stats"),
+  getMinecraftVersions: () => request("/api/system/minecraft-versions"),
   updateSystemLimits: (payload) =>
     request("/api/system/limits", { method: "PATCH", body: JSON.stringify(payload) })
 };

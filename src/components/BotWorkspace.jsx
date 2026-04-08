@@ -40,6 +40,26 @@ function SummaryTile({ label, value, hint }) {
   );
 }
 
+function buildSettingsState(service) {
+  return {
+    name: service.name || "",
+    description: service.description || "",
+    language: service.language || "",
+    minecraft_version: service.minecraft_version || "",
+    entry_file: service.entry_file || "",
+    start_command: service.start_command || "",
+    expires_at: toDatetimeLocal(service.expires_at),
+    auto_restart: Boolean(service.auto_restart),
+    restart_delay: service.restart_delay ?? 5000,
+    max_restarts: service.max_restarts ?? 5,
+    ram_limit_mb: service.ram_limit_mb ?? 512,
+    cpu_limit_percent: service.cpu_limit_percent ?? 35,
+    accept_eula: Boolean(service.accept_eula),
+    public_host: service.public_host || "",
+    public_port: service.public_port ?? 25565
+  };
+}
+
 export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSystem }) {
   const navigate = useNavigate();
   const uploadInputRef = useRef(null);
@@ -58,28 +78,15 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [installResult, setInstallResult] = useState(null);
+  const [minecraftVersions, setMinecraftVersions] = useState([]);
+  const [latestMinecraftRelease, setLatestMinecraftRelease] = useState("");
 
   useEffect(() => {
     async function loadBot() {
       try {
         const nextBot = await api.getBot(botId);
         setBot(nextBot);
-        setSettings({
-          name: nextBot.name || "",
-          description: nextBot.description || "",
-          language: nextBot.language || "",
-          entry_file: nextBot.entry_file || "",
-          start_command: nextBot.start_command || "",
-          expires_at: toDatetimeLocal(nextBot.expires_at),
-          auto_restart: Boolean(nextBot.auto_restart),
-          restart_delay: nextBot.restart_delay ?? 5000,
-          max_restarts: nextBot.max_restarts ?? 5,
-          ram_limit_mb: nextBot.ram_limit_mb ?? 512,
-          cpu_limit_percent: nextBot.cpu_limit_percent ?? 35,
-          accept_eula: Boolean(nextBot.accept_eula),
-          public_host: nextBot.public_host || "",
-          public_port: nextBot.public_port ?? 25565
-        });
+        setSettings(buildSettingsState(nextBot));
       } catch (loadError) {
         setError(loadError.message);
       }
@@ -146,9 +153,37 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     loadEnv();
   }, [activeTab, botId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVersions() {
+      try {
+        const payload = await api.getMinecraftVersions();
+        if (!cancelled) {
+          setMinecraftVersions(payload.versions || []);
+          setLatestMinecraftRelease(payload.latest_release || "");
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setMinecraftVersions([]);
+          setLatestMinecraftRelease("");
+        }
+      }
+    }
+
+    if (bot?.service_type === "minecraft_server") {
+      loadVersions();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bot?.service_type]);
+
   async function refreshDetail() {
     const nextBot = await api.getBot(botId);
     setBot(nextBot);
+    setSettings(buildSettingsState(nextBot));
     await onRefreshBots();
     await onRefreshSystem();
   }
@@ -207,6 +242,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
       const updatedBot = await api.updateBot(botId, payload);
       setBot(updatedBot);
+      setSettings(buildSettingsState(updatedBot));
       await onRefreshAll();
       setMessage("Ustawienia uslugi zostaly zapisane.");
     } catch (saveError) {
@@ -370,6 +406,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
       const result = await api.updateBotArchive(botId, formData);
       setBot(result.bot);
+      setSettings(buildSettingsState(result.bot));
       if (result.install) {
         setInstallResult(result.install);
       }
@@ -459,6 +496,17 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             value={serviceTypeLabel(bot.service_type)}
             hint={isMinecraft ? "Java + PM2" : "Discord + PM2"}
           />
+          {isMinecraft ? (
+            <SummaryTile
+              label="Wersja"
+              value={bot.minecraft_version || bot.detected_minecraft_version || "Auto"}
+              hint={
+                bot.detected_minecraft_version
+                  ? `Pobrana: ${bot.detected_minecraft_version}`
+                  : "Ustaw wersje, aby panel pobral oficjalny server.jar"
+              }
+            />
+          ) : null}
           <SummaryTile
             label="Jezyk"
             value={bot.language || "Auto"}
@@ -561,7 +609,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
           <form className="form-grid" onSubmit={saveSettings}>
             <div className="info-card wide">
               {isMinecraft
-                ? "ByteHost wykrywa plik JAR serwera Minecraft i buduje komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
+                ? "ByteHost moze sam pobrac oficjalny server.jar dla wybranej wersji Minecraft i zbudowac komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
                 : "ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect sie pomyli."}
             </div>
 
@@ -612,6 +660,30 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 <option value="Java">Java</option>
               </select>
             </label>
+            {isMinecraft ? (
+              <label>
+                Wersja Minecraft
+                <input
+                  list="workspace-minecraft-version-list"
+                  placeholder={latestMinecraftRelease || "np. 1.21.5"}
+                  value={settings.minecraft_version}
+                  onChange={(event) =>
+                    setSettings((current) => ({ ...current, minecraft_version: event.target.value }))
+                  }
+                />
+                <datalist id="workspace-minecraft-version-list">
+                  {minecraftVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {version.id}
+                    </option>
+                  ))}
+                </datalist>
+                <small>
+                  Po zapisaniu ByteHost pobierze oficjalny server.jar dla tej wersji. Puste pole
+                  oznacza, ze pozostawiasz wlasny JAR albo aktualnie pobrana wersje.
+                </small>
+              </label>
+            ) : null}
             <label>
               Plik startowy
               <input

@@ -15,6 +15,7 @@ ByteHost to prywatny panel webowy do hostowania botow Discord i serwerow Minecra
 
 - tworzenie bota Discord z archiwum `ZIP` lub `RAR`
 - tworzenie serwera Minecraft z `JAR`, `ZIP` albo `RAR`, albo jako pusty workspace bez pliku
+- automatyczne pobieranie oficjalnego `server.jar` Minecraft dla wybranej wersji
 - automatyczne wykrywanie:
   - bota Discord:
     - jezyka `Node.js`, `TypeScript`, `Python`
@@ -24,6 +25,7 @@ ByteHost to prywatny panel webowy do hostowania botow Discord i serwerow Minecra
     - pliku `JAR`
     - komendy `java -jar ... nogui`
     - pustego workspace, jesli plik dodasz dopiero pozniej
+    - oficjalnej wersji serwera z listy Mojanga
 - reczna korekta:
   - jezyka
   - pliku startowego
@@ -116,6 +118,7 @@ pm2 save
 - Dla projektow Node/TypeScript uzywany jest `npm`, `yarn` lub `pnpm` zaleznosci od lockfile.
 - Dla projektow Python instalacja korzysta z `requirements.txt`, jesli istnieje.
 - Dla serwerow Minecraft zaznaczenie akceptacji EULA pozwala panelowi zapisac `eula=true` przed startem.
+- Dla serwerow Minecraft bez wrzuconego pliku panel moze sam pobrac oficjalny `server.jar` dla wybranej wersji.
 - Scheduler sprawdza wygasanie i crash loop co `60s` domyslnie.
 
 ## API
