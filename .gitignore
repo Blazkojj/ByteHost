@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+storage/bots/*
+storage/tmp/*
+storage/logs/*
+!storage/bots/.gitkeep
+!storage/tmp/.gitkeep
+!storage/logs/.gitkeep
+*.log
