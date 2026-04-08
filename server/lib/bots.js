@@ -382,6 +382,21 @@ async function downloadOfficialMinecraftServer(projectPath, versionId, currentEn
   return downloadMinecraftServerJar(projectPath, versionId, "server.jar");
 }
 
+async function ensureJavaRuntimeAvailable(projectPath) {
+  const result = await runShellCommand("java -version", {
+    cwd: projectPath,
+    timeoutMs: 10000,
+    allowFailure: true
+  });
+
+  if (result.code !== 0) {
+    throw createHttpError(
+      400,
+      "Na serwerze Ubuntu nie znaleziono komendy `java`. Zainstaluj OpenJDK i sproboj ponownie."
+    );
+  }
+}
+
 async function bootstrapMinecraftWorkspace(projectPath, options = {}) {
   const eulaAccepted = Boolean(options.acceptEula);
   const motd = coerceNullableString(options.name, "ByteHost Minecraft Server");
@@ -790,6 +805,8 @@ async function startBot(botId) {
     }
 
     if (bot.service_type === "minecraft_server") {
+      await ensureJavaRuntimeAvailable(bot.project_path);
+
       const accepted = bot.accept_eula || (await isMinecraftEulaAccepted(bot.project_path));
       if (!accepted) {
         throw createHttpError(
