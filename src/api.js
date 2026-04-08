@@ -2,6 +2,7 @@ async function request(url, options = {}) {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(url, {
     ...options,
+    cache: "no-store",
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(options.headers || {})
