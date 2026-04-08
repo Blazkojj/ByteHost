@@ -6,7 +6,7 @@ const { getDb, mapBotRow } = require("./db");
 const { detectUploadedArtifactKind, importProjectArtifact } = require("./archive");
 const { analyzeProject, buildMinecraftStartCommand } = require("./analyzer");
 const { runShellCommand } = require("./commands");
-const { getBotLogs, removeBotLogs } = require("./logs");
+const { getBotLogs, appendBotLog, removeBotLogs } = require("./logs");
 const { downloadMinecraftServerJar } = require("./minecraft");
 const { mergeBotWithRuntime, deriveBotRuntime, isExpired } = require("./runtime");
 const {
@@ -447,6 +447,25 @@ async function replaceMinecraftServerJar(bot, artifactFile) {
   });
 }
 
+async function recordBotFailure(bot, message, options = {}) {
+  const failureStatus = options.status || "ERROR";
+  const failureMessage = String(message || "Usluga zakonczona bledem.");
+  const timestamp = new Date().toISOString();
+
+  await appendBotLog(
+    bot.id,
+    "error",
+    [`[bytehost] ${timestamp}`, failureMessage, ""].join("\n")
+  ).catch(() => {});
+
+  updateBotRow(bot.id, {
+    status: failureStatus,
+    status_message: failureMessage,
+    stability_status: failureStatus === "CRASH LOOP" ? "CRASH LOOP" : "UNSTABLE",
+    updated_at: nowIso()
+  });
+}
+
 async function getBotWithRuntime(botId) {
   const bot = getBotRow(botId);
   const processInfo = await describeProcess(bot.pm2_name);
@@ -765,105 +784,110 @@ async function deleteBotById(botId) {
 async function startBot(botId) {
   let bot = getBotRow(botId);
 
-  if (isExpired(bot.expires_at)) {
-    throw createHttpError(400, "Usluga wygasla. Zmien expires_at, aby ja uruchomic.");
-  }
-
-  if (bot.service_type === "minecraft_server") {
-    const accepted = bot.accept_eula || (await isMinecraftEulaAccepted(bot.project_path));
-    if (!accepted) {
-      throw createHttpError(
-        400,
-        "Aby uruchomic serwer Minecraft, zaznacz akceptacje EULA albo ustaw eula=true w eula.txt."
-      );
+  try {
+    if (isExpired(bot.expires_at)) {
+      throw createHttpError(400, "Usluga wygasla. Zmien expires_at, aby ja uruchomic.");
     }
 
-    await ensureMinecraftEula(bot.project_path);
+    if (bot.service_type === "minecraft_server") {
+      const accepted = bot.accept_eula || (await isMinecraftEulaAccepted(bot.project_path));
+      if (!accepted) {
+        throw createHttpError(
+          400,
+          "Aby uruchomic serwer Minecraft, zaznacz akceptacje EULA albo ustaw eula=true w eula.txt."
+        );
+      }
 
-    let entryFile = resolveEffectiveEntryFile(bot);
-    const entryPath = entryFile ? path.join(bot.project_path, entryFile) : null;
-    const entryExists = entryPath ? await fileExists(entryPath) : false;
+      await ensureMinecraftEula(bot.project_path);
 
-    if ((!entryFile || !entryExists) && bot.minecraft_version) {
-      const download = await downloadOfficialMinecraftServer(
-        bot.project_path,
-        bot.minecraft_version,
-        entryFile
-      );
+      let entryFile = resolveEffectiveEntryFile(bot);
+      const entryPath = entryFile ? path.join(bot.project_path, entryFile) : null;
+      const entryExists = entryPath ? await fileExists(entryPath) : false;
 
-      const downloadedEntryFile = download.entry_file;
-      const nextDetectedStartCommand = buildMinecraftStartCommand(
-        downloadedEntryFile,
-        bot.ram_limit_mb
-      );
-      const nextRow = {
-        detected_entry_file: downloadedEntryFile,
+      if ((!entryFile || !entryExists) && bot.minecraft_version) {
+        const download = await downloadOfficialMinecraftServer(
+          bot.project_path,
+          bot.minecraft_version,
+          entryFile
+        );
+
+        const downloadedEntryFile = download.entry_file;
+        const nextDetectedStartCommand = buildMinecraftStartCommand(
+          downloadedEntryFile,
+          bot.ram_limit_mb
+        );
+        const nextRow = {
+          detected_entry_file: downloadedEntryFile,
+          detected_start_command: nextDetectedStartCommand,
+          detected_minecraft_version: download.minecraft_version,
+          updated_at: nowIso()
+        };
+
+        if (isUsingDetectedEntryFile(bot)) {
+          nextRow.entry_file = downloadedEntryFile;
+        }
+
+        if (isUsingDetectedMinecraftStartCommand(bot)) {
+          nextRow.start_command = nextDetectedStartCommand;
+        }
+
+        bot = updateBotRow(botId, nextRow);
+        entryFile = resolveEffectiveEntryFile(bot);
+      }
+
+      if (!entryFile) {
+        throw createHttpError(
+          400,
+          "Serwer Minecraft nie ma jeszcze pliku JAR. Wybierz wersje albo wrzuc server.jar przez aktualizacje uslugi."
+        );
+      }
+
+      if (!(await fileExists(path.join(bot.project_path, entryFile)))) {
+        throw createHttpError(
+          400,
+          `Nie znaleziono pliku startowego ${entryFile}. Wybierz wersje do pobrania albo wrzuc plik JAR recznie.`
+        );
+      }
+    }
+
+    const resolvedStartCommand = resolveEffectiveStartCommand(bot);
+    if (!resolvedStartCommand) {
+      throw createHttpError(400, "Brakuje komendy startowej.");
+    }
+
+    const nextDetectedStartCommand =
+      bot.service_type === "minecraft_server"
+        ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+        : bot.detected_start_command;
+
+    if (
+      bot.start_command !== resolvedStartCommand ||
+      bot.detected_start_command !== nextDetectedStartCommand
+    ) {
+      bot = updateBotRow(botId, {
+        start_command: resolvedStartCommand,
         detected_start_command: nextDetectedStartCommand,
-        detected_minecraft_version: download.minecraft_version,
         updated_at: nowIso()
-      };
-
-      if (isUsingDetectedEntryFile(bot)) {
-        nextRow.entry_file = downloadedEntryFile;
-      }
-
-      if (isUsingDetectedMinecraftStartCommand(bot)) {
-        nextRow.start_command = nextDetectedStartCommand;
-      }
-
-      bot = updateBotRow(botId, nextRow);
-      entryFile = resolveEffectiveEntryFile(bot);
+      });
     }
 
-    if (!entryFile) {
-      throw createHttpError(
-        400,
-        "Serwer Minecraft nie ma jeszcze pliku JAR. Wybierz wersje albo wrzuc server.jar przez aktualizacje uslugi."
-      );
-    }
-
-    if (!(await fileExists(path.join(bot.project_path, entryFile)))) {
-      throw createHttpError(
-        400,
-        `Nie znaleziono pliku startowego ${entryFile}. Wybierz wersje do pobrania albo wrzuc plik JAR recznie.`
-      );
-    }
-  }
-
-  const resolvedStartCommand = resolveEffectiveStartCommand(bot);
-  if (!resolvedStartCommand) {
-    throw createHttpError(400, "Brakuje komendy startowej.");
-  }
-
-  const nextDetectedStartCommand =
-    bot.service_type === "minecraft_server"
-      ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
-      : bot.detected_start_command;
-
-  if (
-    bot.start_command !== resolvedStartCommand ||
-    bot.detected_start_command !== nextDetectedStartCommand
-  ) {
-    bot = updateBotRow(botId, {
-      start_command: resolvedStartCommand,
-      detected_start_command: nextDetectedStartCommand,
+    await assertStartWithinLimits(bot);
+    await startBotProcess({
+      ...bot,
+      start_command: resolvedStartCommand
+    });
+    updateBotRow(botId, {
+      status: "ONLINE",
+      status_message: null,
+      last_restart_at: nowIso(),
       updated_at: nowIso()
     });
+
+    return getBotWithRuntime(botId);
+  } catch (error) {
+    await recordBotFailure(bot, error.message || "Nie udalo sie uruchomic uslugi.");
+    throw error;
   }
-
-  await assertStartWithinLimits(bot);
-  await startBotProcess({
-    ...bot,
-    start_command: resolvedStartCommand
-  });
-  updateBotRow(botId, {
-    status: "ONLINE",
-    status_message: null,
-    last_restart_at: nowIso(),
-    updated_at: nowIso()
-  });
-
-  return getBotWithRuntime(botId);
 }
 
 async function stopBot(botId) {
@@ -1100,8 +1124,49 @@ async function executeBotConsoleCommand(botId, payload) {
 }
 
 async function getBotLogsPayload(botId) {
-  getBotRow(botId);
-  return getBotLogs(botId);
+  const bot = getBotRow(botId);
+  const logs = await getBotLogs(botId);
+
+  if (logs.combined) {
+    return {
+      ...logs,
+      status_message: bot.status_message || null
+    };
+  }
+
+  const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
+  const diagnostics = [];
+
+  if (bot.status_message) {
+    diagnostics.push(`Status message: ${bot.status_message}`);
+  }
+
+  if (processInfo?.pm2_env?.status) {
+    diagnostics.push(`PM2 status: ${processInfo.pm2_env.status}`);
+  }
+
+  if (processInfo?.pm2_env?.exit_code !== undefined) {
+    diagnostics.push(`Exit code: ${processInfo.pm2_env.exit_code}`);
+  }
+
+  if (processInfo?.pm2_env?.unstable_restarts !== undefined) {
+    diagnostics.push(`Unstable restarts: ${processInfo.pm2_env.unstable_restarts}`);
+  }
+
+  if (processInfo?.pm2_env?.restart_time !== undefined) {
+    diagnostics.push(`Restart count: ${processInfo.pm2_env.restart_time}`);
+  }
+
+  const combined = diagnostics.length
+    ? `[bytehost diagnostics]\n${diagnostics.join("\n")}`
+    : "";
+
+  return {
+    ...logs,
+    combined,
+    diagnostics,
+    status_message: bot.status_message || null
+  };
 }
 
 async function getBotFiles(botId, relativePath = "") {

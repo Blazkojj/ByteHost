@@ -48,6 +48,13 @@ async function getBotLogs(botId) {
   };
 }
 
+async function appendBotLog(botId, stream, message) {
+  const paths = getBotLogPaths(botId);
+  const filePath = stream === "out" ? paths.out : paths.error;
+  await fs.mkdir(LOGS_DIR, { recursive: true });
+  await fs.appendFile(filePath, message, "utf8");
+}
+
 async function removeBotLogs(botId) {
   const paths = getBotLogPaths(botId);
   await Promise.all([
@@ -59,5 +66,6 @@ async function removeBotLogs(botId) {
 module.exports = {
   getBotLogPaths,
   getBotLogs,
+  appendBotLog,
   removeBotLogs
 };
