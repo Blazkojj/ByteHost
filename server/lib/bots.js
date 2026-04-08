@@ -1,7 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-const { DEFAULT_BOT_LIMITS, BOTS_DIR } = require("../config");
+const { DEFAULT_BOT_LIMITS, BOTS_DIR, TMP_DIR } = require("../config");
 const { getDb, mapBotRow } = require("./db");
 const { extractArchive } = require("./archive");
 const { analyzeProject } = require("./analyzer");
@@ -23,7 +23,13 @@ const {
   startBotProcess
 } = require("./pm2");
 const { getSystemLimits } = require("./system");
-const { readFileEntry, createEntry, updateFileContent, deleteEntry, uploadFiles } = require("./files");
+const {
+  readFileEntry,
+  createEntry,
+  updateFileContent,
+  deleteEntry,
+  uploadFiles
+} = require("./files");
 const {
   createHttpError,
   coerceBoolean,
@@ -38,6 +44,8 @@ const {
 } = require("./utils");
 
 const ALLOWED_LANGUAGES = new Set(["Node.js", "TypeScript", "Python"]);
+const DEFAULT_CONSOLE_TIMEOUT_MS = 20000;
+const MAX_CONSOLE_COMMAND_LENGTH = 2000;
 
 function sanitizeLanguage(value, fallback) {
   if (!value) {
@@ -55,7 +63,7 @@ function normalizeExpiresAt(value) {
 
   const parsed = new Date(normalized);
   if (Number.isNaN(parsed.getTime())) {
-    throw createHttpError(400, "Nieprawidłowa data wygaśnięcia.");
+    throw createHttpError(400, "Nieprawidlowa data wygasniecia.");
   }
 
   return parsed.toISOString();
@@ -69,7 +77,7 @@ function getBotRow(botId) {
   const bot = mapBotRow(getDb().prepare("SELECT * FROM bots WHERE id = ?").get(botId));
 
   if (!bot) {
-    throw createHttpError(404, "Bot nie został znaleziony.");
+    throw createHttpError(404, "Bot nie zostal znaleziony.");
   }
 
   return bot;
@@ -115,6 +123,53 @@ function createBotRecord(record) {
   return getBotRow(record.id);
 }
 
+function normalizeSettingValue(value, normalizer = (entry) => entry) {
+  const normalized = normalizer(value);
+  return normalized === undefined || normalized === null ? "" : normalized;
+}
+
+function resolveUpdatedSetting(currentValue, previousDetected, nextDetected, normalizer = (entry) => entry) {
+  const currentNormalized = normalizeSettingValue(currentValue, normalizer);
+  const previousDetectedNormalized = normalizeSettingValue(previousDetected, normalizer);
+
+  if (!currentNormalized || currentNormalized === previousDetectedNormalized) {
+    return nextDetected;
+  }
+
+  return currentValue;
+}
+
+async function readUtf8IfExists(targetPath) {
+  try {
+    return await fs.readFile(targetPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function clearDirectoryContents(directoryPath) {
+  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    await fs.rm(path.join(directoryPath, entry.name), { recursive: true, force: true });
+  }
+}
+
+async function moveDirectoryContents(sourceDirectory, destinationDirectory) {
+  const entries = await fs.readdir(sourceDirectory, { withFileTypes: true });
+
+  for (const entry of entries) {
+    await fs.rename(
+      path.join(sourceDirectory, entry.name),
+      path.join(destinationDirectory, entry.name)
+    );
+  }
+}
+
 async function assertStorageWithinLimit() {
   const limits = getSystemLimits();
   const storageUsageMb = toMb(await getDirectorySize(BOTS_DIR));
@@ -122,7 +177,7 @@ async function assertStorageWithinLimit() {
   if (limits.storage_limit_mb && storageUsageMb > limits.storage_limit_mb) {
     throw createHttpError(
       400,
-      `Limit storage został przekroczony (${round(storageUsageMb)} MB / ${limits.storage_limit_mb} MB).`
+      `Limit storage zostal przekroczony (${round(storageUsageMb)} MB / ${limits.storage_limit_mb} MB).`
     );
   }
 }
@@ -163,14 +218,14 @@ async function assertStartWithinLimits(bot) {
   if (limits.ram_limit_mb && projectedRamMb > limits.ram_limit_mb) {
     throw createHttpError(
       400,
-      `Start zablokowany: globalny limit RAM zostałby przekroczony (${round(projectedRamMb)} MB / ${limits.ram_limit_mb} MB).`
+      `Start zablokowany: globalny limit RAM zostalby przekroczony (${round(projectedRamMb)} MB / ${limits.ram_limit_mb} MB).`
     );
   }
 
   if (limits.cpu_limit_percent && projectedCpuPercent > limits.cpu_limit_percent) {
     throw createHttpError(
       400,
-      `Start zablokowany: globalny limit CPU zostałby przekroczony (${round(projectedCpuPercent)}% / ${limits.cpu_limit_percent}%).`
+      `Start zablokowany: globalny limit CPU zostalby przekroczony (${round(projectedCpuPercent)}% / ${limits.cpu_limit_percent}%).`
     );
   }
 
@@ -204,7 +259,7 @@ async function createBot(payload, archiveFile) {
   const currentBotCount = getDb().prepare("SELECT COUNT(*) AS total FROM bots").get().total;
 
   if (limits.max_bots && currentBotCount >= limits.max_bots) {
-    throw createHttpError(400, `Osiągnięto limit liczby botów (${limits.max_bots}).`);
+    throw createHttpError(400, `Osiagnieto limit liczby botow (${limits.max_bots}).`);
   }
 
   const botId = randomId();
@@ -245,7 +300,7 @@ async function createBot(payload, archiveFile) {
       package_manager: analysis.package_manager,
       project_path: botDirectory,
       status: isExpired(expiresAt) ? "EXPIRED" : "OFFLINE",
-      status_message: isExpired(expiresAt) ? "Bot wygasł i został zablokowany." : null,
+      status_message: isExpired(expiresAt) ? "Bot wygasl i zostal zablokowany." : null,
       expires_at: expiresAt,
       auto_restart: coerceBoolean(payload.auto_restart, true),
       restart_delay: coerceNullableNumber(payload.restart_delay, DEFAULT_BOT_LIMITS.restart_delay),
@@ -287,7 +342,9 @@ async function createBot(payload, archiveFile) {
 async function updateBot(botId, payload) {
   const existingBot = getBotRow(botId);
   const nextExpiresAt =
-    payload.expires_at !== undefined ? normalizeExpiresAt(payload.expires_at) : existingBot.expires_at;
+    payload.expires_at !== undefined
+      ? normalizeExpiresAt(payload.expires_at)
+      : existingBot.expires_at;
 
   const changes = {
     name: coerceNullableString(payload.name, existingBot.name) || existingBot.name,
@@ -330,7 +387,7 @@ async function updateBot(botId, payload) {
 
   if (isExpired(nextExpiresAt)) {
     changes.status = "EXPIRED";
-    changes.status_message = "Bot wygasł i został zatrzymany przez scheduler.";
+    changes.status_message = "Bot wygasl i zostal zatrzymany przez scheduler.";
   } else if (existingBot.status === "EXPIRED") {
     changes.status = "OFFLINE";
     changes.status_message = null;
@@ -374,7 +431,7 @@ async function startBot(botId) {
   const bot = getBotRow(botId);
 
   if (isExpired(bot.expires_at)) {
-    throw createHttpError(400, "Bot wygasł. Zmień expires_at, aby go uruchomić.");
+    throw createHttpError(400, "Bot wygasl. Zmien expires_at, aby go uruchomic.");
   }
 
   if (!bot.start_command) {
@@ -421,7 +478,7 @@ async function installDependencies(botId) {
         command: null,
         stdout: "",
         stderr: "",
-        message: "Nie wykryto komendy instalacji zależności."
+        message: "Nie wykryto komendy instalacji zaleznosci."
       }
     };
   }
@@ -429,7 +486,8 @@ async function installDependencies(botId) {
   try {
     const result = await runShellCommand(command, {
       cwd: bot.project_path,
-      maxOutput: 200000
+      maxOutput: 200000,
+      timeoutMs: 300000
     });
 
     return {
@@ -442,11 +500,142 @@ async function installDependencies(botId) {
       }
     };
   } catch (error) {
-    throw createHttpError(400, `Instalacja zależności nie powiodła się: ${error.message}`, {
+    throw createHttpError(400, `Instalacja zaleznosci nie powiodla sie: ${error.message}`, {
       stdout: error.stdout,
       stderr: error.stderr
     });
   }
+}
+
+async function updateBotArchive(botId, archiveFile, payload = {}) {
+  if (!archiveFile) {
+    throw createHttpError(400, "Dodaj plik ZIP lub RAR do aktualizacji bota.");
+  }
+
+  const bot = getBotRow(botId);
+  const processInfo = await describeProcess(bot.pm2_name);
+  const runtime = deriveBotRuntime(bot, processInfo);
+  const wasOnline = runtime.status === "ONLINE";
+  const preserveEnv = payload.preserve_env !== undefined
+    ? coerceBoolean(payload.preserve_env, true)
+    : true;
+  const reinstallDependenciesFlag = payload.reinstall_dependencies !== undefined
+    ? coerceBoolean(payload.reinstall_dependencies, true)
+    : true;
+  const restartAfterUpdate = payload.restart_after_update !== undefined
+    ? coerceBoolean(payload.restart_after_update, wasOnline)
+    : wasOnline;
+  const tempDirectory = path.join(TMP_DIR, `archive-${botId}-${Date.now()}`);
+  const envPath = resolveBotPath(botId, ".env");
+  let install = null;
+
+  await fs.mkdir(tempDirectory, { recursive: true });
+
+  try {
+    await extractArchive(archiveFile.path, tempDirectory, {
+      originalName: archiveFile.originalname
+    });
+
+    const preservedEnv = preserveEnv ? await readUtf8IfExists(envPath) : null;
+
+    await stopProcess(bot.pm2_name);
+    await clearDirectoryContents(bot.project_path);
+    await moveDirectoryContents(tempDirectory, bot.project_path);
+
+    if (preservedEnv !== null) {
+      await fs.writeFile(envPath, preservedEnv, "utf8");
+    }
+
+    const analysis = await analyzeProject(bot.project_path);
+    const nextLanguage = resolveUpdatedSetting(
+      bot.language,
+      bot.detected_language,
+      analysis.detected_language,
+      (value) => sanitizeLanguage(value, "")
+    );
+    const nextEntryFile = resolveUpdatedSetting(
+      bot.entry_file,
+      bot.detected_entry_file,
+      analysis.detected_entry_file,
+      (value) => normalizeRelativePath(value || "")
+    );
+    const nextStartCommand = resolveUpdatedSetting(
+      bot.start_command,
+      bot.detected_start_command,
+      analysis.detected_start_command,
+      (value) => String(value || "").trim()
+    );
+
+    updateBotRow(botId, {
+      language: sanitizeLanguage(nextLanguage, analysis.detected_language || "Node.js"),
+      detected_language: analysis.detected_language,
+      entry_file: normalizeRelativePath(nextEntryFile || ""),
+      detected_entry_file: analysis.detected_entry_file,
+      start_command: coerceNullableString(nextStartCommand, analysis.detected_start_command),
+      detected_start_command: analysis.detected_start_command,
+      install_command: analysis.install_command,
+      detected_install_command: analysis.install_command,
+      package_manager: analysis.package_manager,
+      archive_name: archiveFile.originalname || bot.archive_name,
+      status: isExpired(bot.expires_at) ? "EXPIRED" : "OFFLINE",
+      status_message: null,
+      updated_at: nowIso()
+    });
+
+    await assertStorageWithinLimit();
+
+    if (reinstallDependenciesFlag) {
+      const installResponse = await installDependencies(botId);
+      install = installResponse.install;
+    }
+
+    let updatedBot = await getBotWithRuntime(botId);
+
+    if (restartAfterUpdate && !isExpired(updatedBot.expires_at)) {
+      updatedBot = await startBot(botId);
+    }
+
+    return {
+      bot: updatedBot,
+      install
+    };
+  } finally {
+    await fs.rm(tempDirectory, { recursive: true, force: true });
+    await fs.rm(archiveFile.path, { force: true });
+  }
+}
+
+async function executeBotConsoleCommand(botId, payload) {
+  const bot = getBotRow(botId);
+  const command = coerceNullableString(payload?.command, null);
+
+  if (!command) {
+    throw createHttpError(400, "Podaj polecenie do wykonania.");
+  }
+
+  if (command.length > MAX_CONSOLE_COMMAND_LENGTH) {
+    throw createHttpError(
+      400,
+      `Polecenie jest za dlugie (maks. ${MAX_CONSOLE_COMMAND_LENGTH} znakow).`
+    );
+  }
+
+  const timeoutMs = coerceNullableNumber(payload?.timeout_ms, DEFAULT_CONSOLE_TIMEOUT_MS);
+  const result = await runShellCommand(command, {
+    cwd: bot.project_path,
+    maxOutput: 200000,
+    timeoutMs,
+    allowFailure: true
+  });
+
+  return {
+    cwd: bot.project_path,
+    command,
+    code: result.code,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    ran_at: nowIso()
+  };
 }
 
 async function getBotLogsPayload(botId) {
@@ -503,6 +692,8 @@ module.exports = {
   stopBot,
   restartBot,
   installDependencies,
+  updateBotArchive,
+  executeBotConsoleCommand,
   getBotLogsPayload,
   getBotFiles,
   createBotFile,

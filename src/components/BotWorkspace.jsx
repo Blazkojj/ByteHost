@@ -41,6 +41,7 @@ function SummaryTile({ label, value, hint }) {
 export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSystem }) {
   const navigate = useNavigate();
   const uploadInputRef = useRef(null);
+  const archiveUpdateInputRef = useRef(null);
 
   const [bot, setBot] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
@@ -49,6 +50,8 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   const [filesData, setFilesData] = useState(null);
   const [editorContent, setEditorContent] = useState("");
   const [envContent, setEnvContent] = useState("");
+  const [consoleCommand, setConsoleCommand] = useState("");
+  const [consoleResult, setConsoleResult] = useState(null);
   const [actionState, setActionState] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -80,6 +83,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     setMessage("");
     setError("");
     setInstallResult(null);
+    setConsoleResult(null);
     setFilesData(null);
     setLogs({ combined: "" });
     loadBot();
@@ -107,6 +111,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
     loadLogs();
     const interval = window.setInterval(loadLogs, 3000);
+
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -114,11 +119,9 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   }, [activeTab, botId]);
 
   useEffect(() => {
-    if (activeTab !== "files") {
-      return;
+    if (activeTab === "files") {
+      openPath("");
     }
-
-    openPath("");
   }, [activeTab, botId]);
 
   useEffect(() => {
@@ -152,7 +155,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
     try {
       if (type === "delete") {
-        if (!window.confirm("Usunąć tego bota razem z plikami i procesem PM2?")) {
+        if (!window.confirm("Usunac tego bota razem z plikami i procesem PM2?")) {
           return;
         }
 
@@ -177,7 +180,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       }
 
       await onRefreshAll();
-      setMessage("Akcja została wykonana.");
+      setMessage("Akcja zostala wykonana.");
     } catch (runError) {
       setError(runError.message);
     } finally {
@@ -200,7 +203,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       const updatedBot = await api.updateBot(botId, payload);
       setBot(updatedBot);
       await onRefreshAll();
-      setMessage("Ustawienia bota zostały zapisane.");
+      setMessage("Ustawienia bota zostaly zapisane.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -226,13 +229,14 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     }
 
     setActionState("save-file");
+
     try {
       const updated = await api.updateFile(botId, {
         path: filesData.path,
         content: editorContent
       });
       setFilesData(updated);
-      setMessage("Plik został zapisany.");
+      setMessage("Plik zostal zapisany.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -246,6 +250,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
         ? filesData.path
         : filesData?.path?.split("/").slice(0, -1).join("/") || "";
     const name = window.prompt(type === "folder" ? "Nazwa folderu" : "Nazwa pliku");
+
     if (!name) {
       return;
     }
@@ -259,21 +264,21 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
         content: type === "file" ? "" : undefined
       });
       await openPath(type === "folder" ? nextPath : currentPath);
-      setMessage(type === "folder" ? "Folder został utworzony." : "Plik został utworzony.");
+      setMessage(type === "folder" ? "Folder zostal utworzony." : "Plik zostal utworzony.");
     } catch (createError) {
       setError(createError.message);
     }
   }
 
   async function removeEntry(relativePath) {
-    if (!window.confirm(`Usunąć ${relativePath}?`)) {
+    if (!window.confirm(`Usunac ${relativePath}?`)) {
       return;
     }
 
     try {
       const nextState = await api.deleteFile(botId, relativePath);
       setFilesData(nextState);
-      setMessage("Element został usunięty.");
+      setMessage("Element zostal usuniety.");
     } catch (removeError) {
       setError(removeError.message);
     }
@@ -290,13 +295,14 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
         ? filesData.path
         : filesData?.path?.split("/").slice(0, -1).join("/") || "";
     const formData = new FormData();
+
     formData.append("target_path", targetPath);
     files.forEach((file) => formData.append("files", file));
 
     try {
       const nextState = await api.uploadFiles(botId, formData);
       setFilesData(nextState);
-      setMessage("Pliki zostały wysłane.");
+      setMessage("Pliki zostaly wyslane.");
     } catch (uploadError) {
       setError(uploadError.message);
     } finally {
@@ -306,9 +312,10 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
   async function saveEnv() {
     setActionState("save-env");
+
     try {
       await api.updateEnv(botId, envContent);
-      setMessage("Plik .env został zapisany.");
+      setMessage("Plik .env zostal zapisany.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -316,13 +323,66 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     }
   }
 
+  async function runConsoleCommand(event) {
+    event.preventDefault();
+    setActionState("console");
+    setMessage("");
+    setError("");
+
+    try {
+      const result = await api.runConsoleCommand(botId, {
+        command: consoleCommand
+      });
+
+      setConsoleResult(result);
+      setMessage("Polecenie zostalo wykonane.");
+    } catch (consoleError) {
+      setError(consoleError.message);
+    } finally {
+      setActionState("");
+    }
+  }
+
+  async function handleArchiveUpdate(event) {
+    const archive = event.target.files?.[0];
+    if (!archive) {
+      return;
+    }
+
+    setActionState("update-archive");
+    setMessage("");
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("archive", archive);
+      formData.append("preserve_env", "true");
+      formData.append("reinstall_dependencies", "true");
+      formData.append("restart_after_update", "true");
+
+      const result = await api.updateBotArchive(botId, formData);
+      setBot(result.bot);
+      if (result.install) {
+        setInstallResult(result.install);
+      }
+      await onRefreshAll();
+      setMessage("Bot zostal zaktualizowany z nowego archiwum. .env zostal zachowany.");
+    } catch (updateError) {
+      setError(updateError.message);
+    } finally {
+      setActionState("");
+      event.target.value = "";
+    }
+  }
+
   if (!bot || !settings) {
-    return <div className="panel-card">Ładowanie workspace...</div>;
+    return <div className="panel-card">Ladowanie workspace...</div>;
   }
 
   const tabs = [
-    { id: "overview", label: "Przegląd" },
+    { id: "overview", label: "Przeglad" },
     { id: "logs", label: "Logi" },
+    { id: "console", label: "Konsola" },
     { id: "files", label: "Pliki" },
     { id: "env", label: ".env" }
   ];
@@ -337,7 +397,22 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
           </div>
 
           <div className="workspace-actions">
+            <input
+              ref={archiveUpdateInputRef}
+              type="file"
+              accept=".zip,.rar,application/zip,application/x-rar-compressed"
+              className="hidden-input"
+              onChange={handleArchiveUpdate}
+            />
             <StatusBadge status={bot.status} />
+            <button
+              className="ghost-button"
+              onClick={() => archiveUpdateInputRef.current?.click()}
+              disabled={actionState}
+            >
+              <Upload size={16} />
+              <span>Aktualizuj ZIP/RAR</span>
+            </button>
             <button className="ghost-button" onClick={() => runAction("start")} disabled={actionState}>
               <Play size={16} />
               <span>Start</span>
@@ -356,20 +431,20 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             </button>
             <button className="danger-button" onClick={() => runAction("delete")} disabled={actionState}>
               <Trash2 size={16} />
-              <span>Usuń</span>
+              <span>Usun</span>
             </button>
           </div>
         </div>
 
         <div className="summary-grid">
-          <SummaryTile label="Język" value={bot.language || "Auto"} hint={`Auto: ${bot.detected_language || "brak"}`} />
+          <SummaryTile label="Jezyk" value={bot.language || "Auto"} hint={`Auto: ${bot.detected_language || "brak"}`} />
           <SummaryTile label="Plik startowy" value={bot.entry_file || "Brak"} hint={`Auto: ${bot.detected_entry_file || "brak"}`} />
           <SummaryTile label="Komenda" value={bot.start_command || "Brak"} hint={`Auto: ${bot.detected_start_command || "brak"}`} />
           <SummaryTile label="Uptime" value={formatDuration(bot.uptime_seconds)} hint={`Restarty: ${bot.restart_count || 0}`} />
           <SummaryTile label="RAM" value={formatNumber(bot.ram_usage_mb, " MB")} hint={`Limit: ${formatNumber(bot.ram_limit_mb, " MB")}`} />
           <SummaryTile label="CPU" value={formatNumber(bot.cpu_usage_percent, "%")} hint={`Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`} />
           <SummaryTile label="Wygasa za" value={formatCountdown(bot.expires_at)} hint={formatDate(bot.expires_at)} />
-          <SummaryTile label="Stabilność" value={bot.stability_status || "STOPPED"} hint={bot.status_message || "Brak alertów"} />
+          <SummaryTile label="Stabilnosc" value={bot.stability_status || "STOPPED"} hint={bot.status_message || "Brak alertow"} />
         </div>
 
         {message ? <div className="banner success">{message}</div> : null}
@@ -395,12 +470,27 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
         {activeTab === "overview" ? (
           <form className="form-grid" onSubmit={saveSettings}>
+            <div className="info-card wide">
+              ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po
+              wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect
+              sie pomyli.
+            </div>
+
+            <div className="info-card wide">
+              Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje `.env`,
+              odswieza auto-detekcje i moze automatycznie przeinstalowac zaleznosci oraz wznowic
+              proces.
+            </div>
+
             <label>
               Nazwa
-              <input value={settings.name} onChange={(event) => setSettings((current) => ({ ...current, name: event.target.value }))} />
+              <input
+                value={settings.name}
+                onChange={(event) => setSettings((current) => ({ ...current, name: event.target.value }))}
+              />
             </label>
             <label>
-              Język
+              Jezyk
               <select
                 value={settings.language}
                 onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}
@@ -414,14 +504,18 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               Opis
               <input
                 value={settings.description}
-                onChange={(event) => setSettings((current) => ({ ...current, description: event.target.value }))}
+                onChange={(event) =>
+                  setSettings((current) => ({ ...current, description: event.target.value }))
+                }
               />
             </label>
             <label>
               Plik startowy
               <input
                 value={settings.entry_file}
-                onChange={(event) => setSettings((current) => ({ ...current, entry_file: event.target.value }))}
+                onChange={(event) =>
+                  setSettings((current) => ({ ...current, entry_file: event.target.value }))
+                }
               />
             </label>
             <label>
@@ -438,7 +532,9 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               <input
                 type="datetime-local"
                 value={settings.expires_at}
-                onChange={(event) => setSettings((current) => ({ ...current, expires_at: event.target.value }))}
+                onChange={(event) =>
+                  setSettings((current) => ({ ...current, expires_at: event.target.value }))
+                }
               />
             </label>
             <label>
@@ -506,7 +602,54 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               <Terminal size={16} />
               <span>Live logs</span>
             </div>
-            <pre>{logs.combined || "Brak logów do wyświetlenia."}</pre>
+            <pre>{logs.combined || "Brak logow do wyswietlenia."}</pre>
+          </div>
+        ) : null}
+
+        {activeTab === "console" ? (
+          <div className="console-stack">
+            <form className="console-form" onSubmit={runConsoleCommand}>
+              <label className="wide">
+                Konsola robocza bota
+                <input
+                  value={consoleCommand}
+                  onChange={(event) => setConsoleCommand(event.target.value)}
+                  placeholder='np. npm run lint, ls -la, python3 -V'
+                />
+              </label>
+              <div className="form-actions wide">
+                <button className="primary-button" type="submit" disabled={actionState === "console"}>
+                  <Terminal size={16} />
+                  <span>Wykonaj polecenie</span>
+                </button>
+              </div>
+            </form>
+
+            <div className="info-card">
+              Konsola wykonuje polecenia w katalogu projektu bota. To nie jest stdin procesu PM2,
+              tylko robocza konsola serwisowa do testow, npm, pip i komend systemowych.
+            </div>
+
+            <div className="terminal-card">
+              <div className="terminal-header">
+                <Terminal size={16} />
+                <span>Output</span>
+              </div>
+              <pre>
+                {consoleResult
+                  ? [
+                      `$ ${consoleResult.command}`,
+                      `cwd: ${consoleResult.cwd}`,
+                      `exit code: ${consoleResult.code}`,
+                      "",
+                      consoleResult.stdout || "",
+                      consoleResult.stderr ? `\n[stderr]\n${consoleResult.stderr}` : ""
+                    ]
+                      .filter(Boolean)
+                      .join("\n")
+                  : "Brak wykonanych polecen."}
+              </pre>
+            </div>
           </div>
         ) : null}
 
@@ -569,18 +712,16 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 <div className="editor-toolbar">
                   <button
                     className="ghost-button compact"
-                    onClick={() =>
-                      openPath(filesData.path.split("/").slice(0, -1).join("/"))
-                    }
+                    onClick={() => openPath(filesData.path.split("/").slice(0, -1).join("/"))}
                   >
                     <FolderOpen size={16} />
-                    <span>Powrót</span>
+                    <span>Powrot</span>
                   </button>
                   <strong>{filesData.path}</strong>
                   <div className="editor-toolbar-actions">
                     <button className="ghost-button compact" onClick={() => removeEntry(filesData.path)}>
                       <Trash2 size={14} />
-                      <span>Usuń</span>
+                      <span>Usun</span>
                     </button>
                     <button className="primary-button compact" onClick={saveCurrentFile}>
                       <Save size={14} />

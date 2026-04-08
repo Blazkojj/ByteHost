@@ -16,6 +16,7 @@ function getShellInvocation(command) {
 
 function spawnBuffered(command, args = [], options = {}) {
   const maxOutput = options.maxOutput || 150000;
+  const timeoutMs = options.timeoutMs || 0;
 
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -29,10 +30,24 @@ function spawnBuffered(command, args = [], options = {}) {
 
     let stdout = "";
     let stderr = "";
+    let finished = false;
+    let timeoutId = null;
 
     const append = (source, chunk) => {
       const nextValue = source + chunk.toString("utf8");
       return nextValue.length > maxOutput ? nextValue.slice(-maxOutput) : nextValue;
+    };
+
+    const settle = (handler) => (value) => {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      handler(value);
     };
 
     child.stdout?.on("data", (chunk) => {
@@ -43,21 +58,32 @@ function spawnBuffered(command, args = [], options = {}) {
       stderr = append(stderr, chunk);
     });
 
-    child.on("error", reject);
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        child.kill("SIGTERM");
+        const error = new Error(`Polecenie przekroczylo limit czasu (${timeoutMs} ms).`);
+        error.code = "ETIMEDOUT";
+        error.stdout = stdout;
+        error.stderr = stderr;
+        settle(reject)(error);
+      }, timeoutMs);
+    }
+
+    child.on("error", settle(reject));
 
     child.on("close", (code) => {
       if (code === 0 || options.allowFailure) {
-        resolve({ code, stdout, stderr });
+        settle(resolve)({ code, stdout, stderr });
         return;
       }
 
       const error = new Error(
-        stderr.trim() || stdout.trim() || `Polecenie zakończyło się kodem ${code}.`
+        stderr.trim() || stdout.trim() || `Polecenie zakonczylo sie kodem ${code}.`
       );
       error.code = code;
       error.stdout = stdout;
       error.stderr = stderr;
-      reject(error);
+      settle(reject)(error);
     });
   });
 }

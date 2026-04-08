@@ -14,7 +14,7 @@ async function request(url, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    throw new Error(payload?.error || "Wystąpił błąd żądania.");
+    throw new Error(payload?.error || "Wystapil blad zadania.");
   }
 
   return payload;
@@ -23,6 +23,8 @@ async function request(url, options = {}) {
 export const api = {
   getBots: () => request("/api/bots"),
   createBot: (formData) => request("/api/bots", { method: "POST", body: formData }),
+  updateBotArchive: (id, formData) =>
+    request(`/api/bots/${id}/archive`, { method: "POST", body: formData }),
   getBot: (id) => request(`/api/bots/${id}`),
   updateBot: (id, payload) =>
     request(`/api/bots/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
@@ -31,6 +33,8 @@ export const api = {
   stopBot: (id) => request(`/api/bots/${id}/stop`, { method: "POST" }),
   restartBot: (id) => request(`/api/bots/${id}/restart`, { method: "POST" }),
   installBot: (id) => request(`/api/bots/${id}/install`, { method: "POST" }),
+  runConsoleCommand: (id, payload) =>
+    request(`/api/bots/${id}/console`, { method: "POST", body: JSON.stringify(payload) }),
   getLogs: (id) => request(`/api/bots/${id}/logs`),
   getFiles: (id, relativePath = "") =>
     request(`/api/bots/${id}/files?path=${encodeURIComponent(relativePath)}`),

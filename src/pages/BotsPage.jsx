@@ -26,11 +26,9 @@ function CreateBotPanel({ open, onClose, onCreated }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!open) {
-      return;
+    if (open) {
+      setError("");
     }
-
-    setError("");
   }, [open]);
 
   async function handleSubmit(event) {
@@ -78,13 +76,21 @@ function CreateBotPanel({ open, onClose, onCreated }) {
           </button>
         </div>
 
+        <div className="info-card">
+          ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum.
+          Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia.
+        </div>
+
         <form className="form-grid" onSubmit={handleSubmit}>
           <label>
             Nazwa bota
-            <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+            <input
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            />
           </label>
           <label>
-            Język projektu
+            Jezyk projektu
             <select
               value={form.language}
               onChange={(event) => setForm((current) => ({ ...current, language: event.target.value }))}
@@ -99,17 +105,19 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             Opis
             <input
               value={form.description}
-              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, description: event.target.value }))
+              }
             />
           </label>
           <label className="wide upload-dropzone">
             <span>Archiwum projektu (ZIP / RAR)</span>
             <input
               type="file"
-              accept=".zip,.rar"
+              accept=".zip,.rar,application/zip,application/x-rar-compressed"
               onChange={(event) => setArchive(event.target.files?.[0] || null)}
             />
-            <small>{archive ? archive.name : "Możesz dodać plik teraz lub utworzyć pusty workspace."}</small>
+            <small>{archive ? archive.name : "Mozesz dodac plik teraz lub utworzyc pusty workspace."}</small>
           </label>
           <label>
             Plik startowy
@@ -124,7 +132,9 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             <input
               placeholder='npm start lub python3 "main.py"'
               value={form.start_command}
-              onChange={(event) => setForm((current) => ({ ...current, start_command: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, start_command: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -140,7 +150,9 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             <input
               type="number"
               value={form.restart_delay}
-              onChange={(event) => setForm((current) => ({ ...current, restart_delay: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, restart_delay: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -148,7 +160,9 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             <input
               type="number"
               value={form.max_restarts}
-              onChange={(event) => setForm((current) => ({ ...current, max_restarts: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, max_restarts: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -156,7 +170,9 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             <input
               type="number"
               value={form.ram_limit_mb}
-              onChange={(event) => setForm((current) => ({ ...current, ram_limit_mb: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, ram_limit_mb: event.target.value }))
+              }
             />
           </label>
           <label>
@@ -164,16 +180,20 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             <input
               type="number"
               value={form.cpu_limit_percent}
-              onChange={(event) => setForm((current) => ({ ...current, cpu_limit_percent: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, cpu_limit_percent: event.target.value }))
+              }
             />
           </label>
           <label className="checkbox-field">
             <input
               type="checkbox"
               checked={form.auto_restart}
-              onChange={(event) => setForm((current) => ({ ...current, auto_restart: event.target.checked }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, auto_restart: event.target.checked }))
+              }
             />
-            <span>Auto restart włączony</span>
+            <span>Auto restart wlaczony</span>
           </label>
           <label className="checkbox-field">
             <input
@@ -183,7 +203,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
                 setForm((current) => ({ ...current, install_on_create: event.target.checked }))
               }
             />
-            <span>Instaluj zależności od razu po utworzeniu</span>
+            <span>Instaluj zaleznosci od razu po utworzeniu</span>
           </label>
 
           <div className="form-actions wide">
@@ -192,7 +212,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             </button>
             <button className="primary-button" type="submit" disabled={saving}>
               <Upload size={16} />
-              <span>{saving ? "Tworzenie..." : "Utwórz bota"}</span>
+              <span>{saving ? "Tworzenie..." : "Utworz bota"}</span>
             </button>
           </div>
         </form>
@@ -236,7 +256,7 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
           </div>
 
           <div className="list-summary">
-            <span>Łącznie: {formatNumber(system?.statuses?.total)}</span>
+            <span>Lacznie: {formatNumber(system?.statuses?.total)}</span>
             <span>ONLINE: {formatNumber(system?.statuses?.online)}</span>
             <span>EXPIRED: {formatNumber(system?.statuses?.expired)}</span>
           </div>
@@ -244,7 +264,7 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
           <div className="bot-list">
             {bots.length === 0 ? (
               <div className="empty-block">
-                <p>Nie masz jeszcze żadnych botów.</p>
+                <p>Nie masz jeszcze zadnych botow.</p>
                 <button className="ghost-button" onClick={() => setCreateOpen(true)}>
                   Dodaj pierwszy projekt
                 </button>
@@ -282,10 +302,11 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
           ) : (
             <div className="panel-card empty-workspace">
               <p className="eyebrow">Wybierz bota</p>
-              <h3>Panel zarządzania</h3>
+              <h3>Panel zarzadzania</h3>
               <p>
-                Po lewej stronie wybierz istniejącego bota albo utwórz nowy projekt. ByteHost
-                wykryje język, plik startowy i komendę, ale możesz wszystko poprawić ręcznie.
+                Po lewej stronie wybierz istniejacego bota albo utworz nowy projekt. ByteHost
+                automatycznie wykrywa plik startowy i komende startowa, ale mozesz je zawsze
+                poprawic recznie.
               </p>
             </div>
           )}

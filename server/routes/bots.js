@@ -13,6 +13,8 @@ const {
   stopBot,
   restartBot,
   installDependencies,
+  updateBotArchive,
+  executeBotConsoleCommand,
   getBotLogsPayload,
   getBotFiles,
   createBotFile,
@@ -56,9 +58,26 @@ router.post("/", upload.single("archive"), async (request, response, next) => {
   }
 });
 
+router.post("/:id/archive", upload.single("archive"), async (request, response, next) => {
+  try {
+    response.json(await updateBotArchive(request.params.id, request.file, request.body));
+  } catch (error) {
+    await cleanupFiles([request.file].filter(Boolean));
+    next(error);
+  }
+});
+
 router.get("/:id/logs", async (request, response, next) => {
   try {
     response.json(await getBotLogsPayload(request.params.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/console", async (request, response, next) => {
+  try {
+    response.json(await executeBotConsoleCommand(request.params.id, request.body));
   } catch (error) {
     next(error);
   }
@@ -98,9 +117,9 @@ router.delete("/:id/files", async (request, response, next) => {
 
 router.post("/:id/upload", upload.array("files"), async (request, response, next) => {
   try {
-    response.status(201).json(
-      await uploadBotFiles(request.params.id, request.body.target_path || "", request.files || [])
-    );
+    response
+      .status(201)
+      .json(await uploadBotFiles(request.params.id, request.body.target_path || "", request.files || []));
   } catch (error) {
     await cleanupFiles(request.files || []);
     next(error);

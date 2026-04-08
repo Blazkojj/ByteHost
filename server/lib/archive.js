@@ -9,6 +9,41 @@ function getArchiveExtension(archivePath, originalName) {
   return path.extname(originalName || archivePath || "").toLowerCase();
 }
 
+async function detectArchiveFormat(archivePath, originalName) {
+  const extension = getArchiveExtension(archivePath, originalName);
+  if (extension === ".zip" || extension === ".rar") {
+    return extension;
+  }
+
+  const handle = await fs.open(archivePath, "r");
+
+  try {
+    const buffer = Buffer.alloc(8);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const header = buffer.subarray(0, bytesRead);
+
+    if (header.length >= 4 && header[0] === 0x50 && header[1] === 0x4b) {
+      return ".zip";
+    }
+
+    if (
+      header.length >= 7 &&
+      header[0] === 0x52 &&
+      header[1] === 0x61 &&
+      header[2] === 0x72 &&
+      header[3] === 0x21 &&
+      header[4] === 0x1a &&
+      header[5] === 0x07
+    ) {
+      return ".rar";
+    }
+  } finally {
+    await handle.close();
+  }
+
+  throw createHttpError(400, "Obslugiwane formaty archiwum to ZIP oraz RAR.");
+}
+
 async function removeMacArtifacts(targetDirectory) {
   const macOsDirectory = path.join(targetDirectory, "__MACOSX");
   await fs.rm(macOsDirectory, { recursive: true, force: true });
@@ -46,9 +81,7 @@ async function flattenSingleDirectory(targetDirectory) {
   const nestedEntries = await fs.readdir(nestedDirectory, { withFileTypes: true });
 
   for (const entry of nestedEntries) {
-    const sourcePath = path.join(nestedDirectory, entry.name);
-    const targetPath = path.join(targetDirectory, entry.name);
-    await fs.rename(sourcePath, targetPath);
+    await fs.rename(path.join(nestedDirectory, entry.name), path.join(targetDirectory, entry.name));
   }
 
   await fs.rm(nestedDirectory, { recursive: true, force: true });
@@ -57,7 +90,8 @@ async function flattenSingleDirectory(targetDirectory) {
 async function extractRar(archivePath, destination) {
   try {
     await spawnBuffered("unrar", ["x", "-o+", "-idq", archivePath, destination], {
-      cwd: destination
+      cwd: destination,
+      timeoutMs: 120000
     });
   } catch (error) {
     if (error.code === "ENOENT") {
@@ -67,21 +101,21 @@ async function extractRar(archivePath, destination) {
       );
     }
 
-    throw createHttpError(400, `Nie udało się rozpakować archiwum RAR: ${error.message}`);
+    throw createHttpError(400, `Nie udalo sie rozpakowac archiwum RAR: ${error.message}`);
   }
 }
 
 async function extractArchive(archivePath, destination, options = {}) {
   await fs.mkdir(destination, { recursive: true });
 
-  const extension = getArchiveExtension(archivePath, options.originalName);
+  const format = await detectArchiveFormat(archivePath, options.originalName);
 
-  if (extension === ".zip") {
+  if (format === ".zip") {
     await extractZip(archivePath, { dir: destination });
-  } else if (extension === ".rar") {
+  } else if (format === ".rar") {
     await extractRar(archivePath, destination);
   } else {
-    throw createHttpError(400, "Obsługiwane formaty archiwum to ZIP oraz RAR.");
+    throw createHttpError(400, "Obslugiwane formaty archiwum to ZIP oraz RAR.");
   }
 
   await removeMacArtifacts(destination);
@@ -89,6 +123,7 @@ async function extractArchive(archivePath, destination, options = {}) {
 }
 
 module.exports = {
+  detectArchiveFormat,
   extractArchive,
   getArchiveExtension
 };

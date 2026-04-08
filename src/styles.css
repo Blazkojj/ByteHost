@@ -677,7 +677,13 @@ textarea:focus {
 
 .file-manager,
 .directory-grid,
-.editor-shell {
+.editor-shell,
+.console-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.console-form {
   display: grid;
   gap: 14px;
 }
@@ -729,6 +735,15 @@ textarea:focus {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 18px;
+}
+
+.info-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(47, 183, 216, 0.08);
+  border: 1px solid rgba(47, 183, 216, 0.14);
+  color: #c8edf3;
+  line-height: 1.6;
 }
 
 .banner.success {
