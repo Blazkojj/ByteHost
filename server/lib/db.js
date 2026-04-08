@@ -12,7 +12,8 @@ function mapBotRow(row) {
 
   return {
     ...row,
-    auto_restart: Boolean(row.auto_restart)
+    auto_restart: Boolean(row.auto_restart),
+    accept_eula: Boolean(row.accept_eula)
   };
 }
 
@@ -26,10 +27,26 @@ function mapSystemLimitsRow(row) {
 
 function getDb() {
   if (!database) {
-    throw new Error("Baza danych nie została zainicjalizowana.");
+    throw new Error("Baza danych nie zostala zainicjalizowana.");
   }
 
   return database;
+}
+
+function getTableColumns(db, tableName) {
+  return new Set(
+    db
+      .prepare(`PRAGMA table_info(${tableName})`)
+      .all()
+      .map((column) => column.name)
+  );
+}
+
+function ensureColumn(db, tableName, columnName, definition) {
+  const columns = getTableColumns(db, tableName);
+  if (!columns.has(columnName)) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
 }
 
 function initDatabase() {
@@ -85,6 +102,11 @@ function initDatabase() {
       updated_at TEXT NOT NULL
     );
   `);
+
+  ensureColumn(database, "bots", "service_type", "TEXT NOT NULL DEFAULT 'discord_bot'");
+  ensureColumn(database, "bots", "accept_eula", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(database, "bots", "public_host", "TEXT");
+  ensureColumn(database, "bots", "public_port", "INTEGER");
 
   const existingLimits = database.prepare("SELECT id FROM system_limits WHERE id = 1").get();
   if (!existingLimits) {

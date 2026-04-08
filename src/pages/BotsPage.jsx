@@ -4,10 +4,16 @@ import { Plus, Upload } from "lucide-react";
 
 import { api } from "../api";
 import { BotWorkspace } from "../components/BotWorkspace";
-import { formatCountdown, formatNumber } from "../utils";
+import {
+  formatCountdown,
+  formatNumber,
+  serviceArtifactLabel,
+  serviceTypeLabel
+} from "../utils";
 
 function CreateBotPanel({ open, onClose, onCreated }) {
   const [form, setForm] = useState({
+    service_type: "discord_bot",
     name: "",
     description: "",
     language: "",
@@ -19,11 +25,16 @@ function CreateBotPanel({ open, onClose, onCreated }) {
     max_restarts: 5,
     ram_limit_mb: 512,
     cpu_limit_percent: 35,
-    install_on_create: false
+    install_on_create: false,
+    accept_eula: false,
+    public_host: "",
+    public_port: 25565
   });
   const [archive, setArchive] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const isMinecraft = form.service_type === "minecraft_server";
 
   useEffect(() => {
     if (open) {
@@ -68,8 +79,8 @@ function CreateBotPanel({ open, onClose, onCreated }) {
       <div className="modal-card large">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Nowy bot</p>
-            <h3>Dodaj projekt ZIP lub RAR</h3>
+            <p className="eyebrow">Nowa usluga</p>
+            <h3>{isMinecraft ? "Dodaj serwer Minecraft" : "Dodaj bota Discord"}</h3>
           </div>
           <button className="ghost-button" onClick={onClose}>
             Zamknij
@@ -77,29 +88,46 @@ function CreateBotPanel({ open, onClose, onCreated }) {
         </div>
 
         <div className="info-card">
-          ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum.
-          Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia.
+          {isMinecraft
+            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Adres publiczny jest polem informacyjnym dla graczy i wymaga osobnego wystawienia portu gry."
+            : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
         </div>
 
         <form className="form-grid" onSubmit={handleSubmit}>
           <label>
-            Nazwa bota
+            Typ uslugi
+            <select
+              value={form.service_type}
+              onChange={(event) =>
+                setForm((current) =>
+                  event.target.value === "minecraft_server"
+                    ? {
+                        ...current,
+                        service_type: event.target.value,
+                        language: "Java",
+                        entry_file: current.entry_file || "server.jar",
+                        install_on_create: false,
+                        public_port: current.public_port || 25565
+                      }
+                    : {
+                        ...current,
+                        service_type: event.target.value,
+                        language: current.language === "Java" ? "" : current.language,
+                        entry_file: current.entry_file === "server.jar" ? "" : current.entry_file
+                      }
+                )
+              }
+            >
+              <option value="discord_bot">Bot Discord</option>
+              <option value="minecraft_server">Serwer Minecraft</option>
+            </select>
+          </label>
+          <label>
+            Nazwa
             <input
               value={form.name}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
             />
-          </label>
-          <label>
-            Jezyk projektu
-            <select
-              value={form.language}
-              onChange={(event) => setForm((current) => ({ ...current, language: event.target.value }))}
-            >
-              <option value="">Auto detect</option>
-              <option value="Node.js">Node.js</option>
-              <option value="TypeScript">TypeScript</option>
-              <option value="Python">Python</option>
-            </select>
           </label>
           <label className="wide">
             Opis
@@ -111,26 +139,54 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             />
           </label>
           <label className="wide upload-dropzone">
-            <span>Archiwum projektu (ZIP / RAR)</span>
+            <span>{serviceArtifactLabel(form.service_type)}</span>
             <input
               type="file"
-              accept=".zip,.rar,application/zip,application/x-rar-compressed"
+              accept={
+                isMinecraft
+                  ? ".jar,.zip,.rar,application/java-archive,application/x-java-archive,application/zip,application/x-rar-compressed"
+                  : ".zip,.rar,application/zip,application/x-rar-compressed"
+              }
               onChange={(event) => setArchive(event.target.files?.[0] || null)}
             />
-            <small>{archive ? archive.name : "Mozesz dodac plik teraz lub utworzyc pusty workspace."}</small>
+            <small>
+              {archive
+                ? archive.name
+                : isMinecraft
+                  ? "Mozesz wrzucic gotowy JAR serwera albo caly pakiet ZIP/RAR."
+                  : "Mozesz dodac plik teraz lub utworzyc pusty workspace."}
+            </small>
+          </label>
+          <label>
+            Jezyk projektu
+            <select
+              value={form.language}
+              disabled={isMinecraft}
+              onChange={(event) => setForm((current) => ({ ...current, language: event.target.value }))}
+            >
+              <option value="">Auto detect</option>
+              <option value="Node.js">Node.js</option>
+              <option value="TypeScript">TypeScript</option>
+              <option value="Python">Python</option>
+              <option value="Java">Java</option>
+            </select>
           </label>
           <label>
             Plik startowy
             <input
-              placeholder="dist/index.js"
+              placeholder={isMinecraft ? "server.jar" : "dist/index.js"}
               value={form.entry_file}
               onChange={(event) => setForm((current) => ({ ...current, entry_file: event.target.value }))}
             />
           </label>
-          <label>
+          <label className="wide">
             Komenda startowa
             <input
-              placeholder='npm start lub python3 "main.py"'
+              placeholder={
+                isMinecraft
+                  ? 'java -Xms1024M -Xmx2048M -jar "server.jar" nogui'
+                  : 'npm start lub python3 "main.py"'
+              }
               value={form.start_command}
               onChange={(event) =>
                 setForm((current) => ({ ...current, start_command: event.target.value }))
@@ -185,6 +241,42 @@ function CreateBotPanel({ open, onClose, onCreated }) {
               }
             />
           </label>
+
+          {isMinecraft ? (
+            <>
+              <label>
+                Adres publiczny
+                <input
+                  placeholder="mc.twojadomena.pl"
+                  value={form.public_host}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, public_host: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Port publiczny
+                <input
+                  type="number"
+                  value={form.public_port}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, public_port: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="checkbox-field wide">
+                <input
+                  type="checkbox"
+                  checked={form.accept_eula}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, accept_eula: event.target.checked }))
+                  }
+                />
+                <span>Akceptuje Minecraft EULA i pozwalam panelowi ustawic eula=true</span>
+              </label>
+            </>
+          ) : null}
+
           <label className="checkbox-field">
             <input
               type="checkbox"
@@ -195,16 +287,18 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             />
             <span>Auto restart wlaczony</span>
           </label>
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={form.install_on_create}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, install_on_create: event.target.checked }))
-              }
-            />
-            <span>Instaluj zaleznosci od razu po utworzeniu</span>
-          </label>
+          {!isMinecraft ? (
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={form.install_on_create}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, install_on_create: event.target.checked }))
+                }
+              />
+              <span>Instaluj zaleznosci od razu po utworzeniu</span>
+            </label>
+          ) : null}
 
           <div className="form-actions wide">
             <button className="ghost-button" type="button" onClick={onClose}>
@@ -212,7 +306,13 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             </button>
             <button className="primary-button" type="submit" disabled={saving}>
               <Upload size={16} />
-              <span>{saving ? "Tworzenie..." : "Utworz bota"}</span>
+              <span>
+                {saving
+                  ? "Tworzenie..."
+                  : isMinecraft
+                    ? "Utworz serwer Minecraft"
+                    : "Utworz bota"}
+              </span>
             </button>
           </div>
         </form>
@@ -246,12 +346,12 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
         <section className="panel-card bot-list-panel">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Boty</p>
+              <p className="eyebrow">Uslugi</p>
               <h3>Workspace</h3>
             </div>
             <button className="primary-button" onClick={() => setCreateOpen(true)}>
               <Plus size={16} />
-              <span>Nowy bot</span>
+              <span>Nowa usluga</span>
             </button>
           </div>
 
@@ -264,9 +364,9 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
           <div className="bot-list">
             {bots.length === 0 ? (
               <div className="empty-block">
-                <p>Nie masz jeszcze zadnych botow.</p>
+                <p>Nie masz jeszcze zadnych uslug.</p>
                 <button className="ghost-button" onClick={() => setCreateOpen(true)}>
-                  Dodaj pierwszy projekt
+                  Dodaj pierwsza usluge
                 </button>
               </div>
             ) : (
@@ -278,7 +378,7 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
                 >
                   <div>
                     <strong>{bot.name}</strong>
-                    <span>{bot.language || "Auto"}</span>
+                    <span>{serviceTypeLabel(bot.service_type)}</span>
                   </div>
                   <div className="bot-list-meta">
                     <span>{bot.status}</span>
@@ -301,12 +401,12 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
             />
           ) : (
             <div className="panel-card empty-workspace">
-              <p className="eyebrow">Wybierz bota</p>
+              <p className="eyebrow">Wybierz usluge</p>
               <h3>Panel zarzadzania</h3>
               <p>
-                Po lewej stronie wybierz istniejacego bota albo utworz nowy projekt. ByteHost
-                automatycznie wykrywa plik startowy i komende startowa, ale mozesz je zawsze
-                poprawic recznie.
+                Po lewej stronie wybierz istniejaca usluge albo utworz nowa. ByteHost obsluguje
+                teraz boty Discord i serwery Minecraft, z auto-detekcja startu i recznymi
+                nadpisaniami.
               </p>
             </div>
           )}

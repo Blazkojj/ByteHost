@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Activity, Clock3, Cpu, HardDrive, Server, TriangleAlert } from "lucide-react";
 
-import { formatCountdown, formatDate, formatNumber } from "../utils";
+import { formatCountdown, formatDate, formatNumber, serviceTypeLabel } from "../utils";
 
 function MetricCard({ icon: Icon, label, value, hint }) {
   return (
@@ -26,16 +26,16 @@ export function DashboardPage({ bots, system, loading }) {
       <section className="hero-card">
         <div>
           <p className="eyebrow">Prywatny panel hostingu</p>
-          <h2>Hostuj boty Discord bezpośrednio na PM2.</h2>
+          <h2>Hostuj boty Discord i serwery Minecraft na prawdziwych procesach.</h2>
           <p className="hero-copy">
-            ByteHost zarządza prawdziwymi procesami, plikami projektu, schedulerem wygaśnięcia,
-            auto restartem i pełnym file managerem dla jednego operatora.
+            ByteHost zarzadza realnymi plikami, PM2, schedulerem wygasniecia, auto restartem,
+            limitami zasobow i file managerem dla jednego operatora.
           </p>
           <div className="hero-pills">
             <span>PM2</span>
             <span>SQLite</span>
-            <span>ZIP / RAR</span>
-            <span>Node.js / TS / Python</span>
+            <span>ZIP / RAR / JAR</span>
+            <span>Discord + Minecraft</span>
           </div>
         </div>
 
@@ -45,11 +45,11 @@ export function DashboardPage({ bots, system, loading }) {
             <strong>{loading ? "Synchronizacja..." : "Gotowy"}</strong>
           </div>
           <div className="resource-bar">
-            <label>CPU botów</label>
+            <label>CPU uslug</label>
             <progress value={system?.usage?.cpu_percent || 0} max={system?.limits?.cpu_limit_percent || 100} />
           </div>
           <div className="resource-bar">
-            <label>RAM botów</label>
+            <label>RAM uslug</label>
             <progress value={system?.usage?.ram_mb || 0} max={system?.limits?.ram_limit_mb || 100} />
           </div>
           <div className="resource-bar">
@@ -65,7 +65,7 @@ export function DashboardPage({ bots, system, loading }) {
       <section className="stats-grid">
         <MetricCard
           icon={Server}
-          label="Wszystkie boty"
+          label="Wszystkie uslugi"
           value={formatNumber(system?.statuses?.total)}
           hint={`Limit: ${formatNumber(system?.limits?.max_bots)}`}
         />
@@ -92,11 +92,11 @@ export function DashboardPage({ bots, system, loading }) {
       <section className="panel-card">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Boty</p>
+            <p className="eyebrow">Uslugi</p>
             <h3>Ostatnio dodane</h3>
           </div>
           <Link className="inline-link" to="/bots">
-            Otwórz workspace
+            Otworz workspace
           </Link>
         </div>
 
@@ -106,8 +106,8 @@ export function DashboardPage({ bots, system, loading }) {
               <tr>
                 <th>Nazwa</th>
                 <th>Status</th>
-                <th>Język</th>
-                <th>Wygaśnięcie</th>
+                <th>Typ</th>
+                <th>Wygasniecie</th>
                 <th>RAM</th>
               </tr>
             </thead>
@@ -115,7 +115,7 @@ export function DashboardPage({ bots, system, loading }) {
               {featuredBots.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="empty-state">
-                    Brak botów. Przejdź do sekcji Boty i dodaj pierwszy projekt.
+                    Brak uslug. Przejdz do sekcji Uslugi i dodaj pierwszy projekt.
                   </td>
                 </tr>
               ) : (
@@ -127,7 +127,7 @@ export function DashboardPage({ bots, system, loading }) {
                       </Link>
                     </td>
                     <td>{bot.status}</td>
-                    <td>{bot.language || "Auto"}</td>
+                    <td>{serviceTypeLabel(bot.service_type)}</td>
                     <td>{formatCountdown(bot.expires_at)}</td>
                     <td>{formatNumber(bot.ram_usage_mb || bot.ram_limit_mb, " MB")}</td>
                   </tr>

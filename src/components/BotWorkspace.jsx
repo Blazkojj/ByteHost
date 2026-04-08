@@ -20,6 +20,8 @@ import {
   formatDuration,
   formatNumber,
   fromDatetimeLocal,
+  serviceJoinAddress,
+  serviceTypeLabel,
   statusTheme,
   toDatetimeLocal
 } from "../utils";
@@ -73,7 +75,10 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
           restart_delay: nextBot.restart_delay ?? 5000,
           max_restarts: nextBot.max_restarts ?? 5,
           ram_limit_mb: nextBot.ram_limit_mb ?? 512,
-          cpu_limit_percent: nextBot.cpu_limit_percent ?? 35
+          cpu_limit_percent: nextBot.cpu_limit_percent ?? 35,
+          accept_eula: Boolean(nextBot.accept_eula),
+          public_host: nextBot.public_host || "",
+          public_port: nextBot.public_port ?? 25565
         });
       } catch (loadError) {
         setError(loadError.message);
@@ -155,7 +160,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
     try {
       if (type === "delete") {
-        if (!window.confirm("Usunac tego bota razem z plikami i procesem PM2?")) {
+        if (!window.confirm("Usunac te usluge razem z plikami i procesem PM2?")) {
           return;
         }
 
@@ -203,7 +208,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       const updatedBot = await api.updateBot(botId, payload);
       setBot(updatedBot);
       await onRefreshAll();
-      setMessage("Ustawienia bota zostaly zapisane.");
+      setMessage("Ustawienia uslugi zostaly zapisane.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -356,8 +361,11 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     try {
       const formData = new FormData();
       formData.append("archive", archive);
-      formData.append("preserve_env", "true");
-      formData.append("reinstall_dependencies", "true");
+      formData.append("preserve_env", bot?.service_type === "minecraft_server" ? "false" : "true");
+      formData.append(
+        "reinstall_dependencies",
+        bot?.service_type === "minecraft_server" ? "false" : "true"
+      );
       formData.append("restart_after_update", "true");
 
       const result = await api.updateBotArchive(botId, formData);
@@ -366,7 +374,11 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
         setInstallResult(result.install);
       }
       await onRefreshAll();
-      setMessage("Bot zostal zaktualizowany z nowego archiwum. .env zostal zachowany.");
+      setMessage(
+        bot?.service_type === "minecraft_server"
+          ? "Serwer Minecraft zostal zaktualizowany. Sam JAR podmienia silnik bez czyszczenia swiata, a ZIP/RAR podmienia caly katalog uslugi."
+          : "Bot zostal zaktualizowany z nowego archiwum. .env zostal zachowany."
+      );
     } catch (updateError) {
       setError(updateError.message);
     } finally {
@@ -379,6 +391,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     return <div className="panel-card">Ladowanie workspace...</div>;
   }
 
+  const isMinecraft = bot.service_type === "minecraft_server";
   const tabs = [
     { id: "overview", label: "Przeglad" },
     { id: "logs", label: "Logi" },
@@ -392,7 +405,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       <section className="panel-card">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Bot workspace</p>
+            <p className="eyebrow">Workspace</p>
             <h3>{bot.name}</h3>
           </div>
 
@@ -400,7 +413,11 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             <input
               ref={archiveUpdateInputRef}
               type="file"
-              accept=".zip,.rar,application/zip,application/x-rar-compressed"
+              accept={
+                isMinecraft
+                  ? ".jar,.zip,.rar,application/java-archive,application/x-java-archive,application/zip,application/x-rar-compressed"
+                  : ".zip,.rar,application/zip,application/x-rar-compressed"
+              }
               className="hidden-input"
               onChange={handleArchiveUpdate}
             />
@@ -411,7 +428,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               disabled={actionState}
             >
               <Upload size={16} />
-              <span>Aktualizuj ZIP/RAR</span>
+              <span>{isMinecraft ? "Aktualizuj JAR/ZIP/RAR" : "Aktualizuj ZIP/RAR"}</span>
             </button>
             <button className="ghost-button" onClick={() => runAction("start")} disabled={actionState}>
               <Play size={16} />
@@ -427,7 +444,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             </button>
             <button className="ghost-button" onClick={() => runAction("install")} disabled={actionState}>
               <Wrench size={16} />
-              <span>Dependencies</span>
+              <span>{isMinecraft ? "Przygotuj" : "Dependencies"}</span>
             </button>
             <button className="danger-button" onClick={() => runAction("delete")} disabled={actionState}>
               <Trash2 size={16} />
@@ -437,14 +454,86 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
         </div>
 
         <div className="summary-grid">
-          <SummaryTile label="Jezyk" value={bot.language || "Auto"} hint={`Auto: ${bot.detected_language || "brak"}`} />
-          <SummaryTile label="Plik startowy" value={bot.entry_file || "Brak"} hint={`Auto: ${bot.detected_entry_file || "brak"}`} />
-          <SummaryTile label="Komenda" value={bot.start_command || "Brak"} hint={`Auto: ${bot.detected_start_command || "brak"}`} />
-          <SummaryTile label="Uptime" value={formatDuration(bot.uptime_seconds)} hint={`Restarty: ${bot.restart_count || 0}`} />
-          <SummaryTile label="RAM" value={formatNumber(bot.ram_usage_mb, " MB")} hint={`Limit: ${formatNumber(bot.ram_limit_mb, " MB")}`} />
-          <SummaryTile label="CPU" value={formatNumber(bot.cpu_usage_percent, "%")} hint={`Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`} />
-          <SummaryTile label="Wygasa za" value={formatCountdown(bot.expires_at)} hint={formatDate(bot.expires_at)} />
-          <SummaryTile label="Stabilnosc" value={bot.stability_status || "STOPPED"} hint={bot.status_message || "Brak alertow"} />
+          <SummaryTile
+            label="Typ"
+            value={serviceTypeLabel(bot.service_type)}
+            hint={isMinecraft ? "Java + PM2" : "Discord + PM2"}
+          />
+          <SummaryTile
+            label="Jezyk"
+            value={bot.language || "Auto"}
+            hint={`Auto: ${bot.detected_language || "brak"}`}
+          />
+          <SummaryTile
+            label="Plik startowy"
+            value={bot.entry_file || "Brak"}
+            hint={`Auto: ${bot.detected_entry_file || "brak"}`}
+          />
+          <SummaryTile
+            label="Komenda"
+            value={bot.start_command || "Brak"}
+            hint={`Auto: ${bot.detected_start_command || "brak"}`}
+          />
+          <SummaryTile
+            label={isMinecraft ? "Adres graczy" : "Uptime"}
+            value={isMinecraft ? serviceJoinAddress(bot) : formatDuration(bot.uptime_seconds)}
+            hint={
+              isMinecraft
+                ? "Wymaga publicznego TCP dla portu gry"
+                : `Restarty: ${bot.restart_count || 0}`
+            }
+          />
+          <SummaryTile
+            label={isMinecraft ? "EULA" : "RAM"}
+            value={isMinecraft ? (bot.accept_eula ? "Zaakceptowana" : "Wymagana") : formatNumber(bot.ram_usage_mb, " MB")}
+            hint={
+              isMinecraft
+                ? "Panel moze ustawic eula=true przed startem"
+                : `Limit: ${formatNumber(bot.ram_limit_mb, " MB")}`
+            }
+          />
+          <SummaryTile
+            label={isMinecraft ? "RAM" : "CPU"}
+            value={
+              isMinecraft
+                ? formatNumber(bot.ram_usage_mb, " MB")
+                : formatNumber(bot.cpu_usage_percent, "%")
+            }
+            hint={
+              isMinecraft
+                ? `Limit: ${formatNumber(bot.ram_limit_mb, " MB")}`
+                : `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
+            }
+          />
+          <SummaryTile
+            label={isMinecraft ? "CPU" : "Wygasa za"}
+            value={
+              isMinecraft
+                ? formatNumber(bot.cpu_usage_percent, "%")
+                : formatCountdown(bot.expires_at)
+            }
+            hint={
+              isMinecraft
+                ? `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
+                : formatDate(bot.expires_at)
+            }
+          />
+          <SummaryTile
+            label={isMinecraft ? "Uptime" : "Stabilnosc"}
+            value={isMinecraft ? formatDuration(bot.uptime_seconds) : bot.stability_status || "STOPPED"}
+            hint={
+              isMinecraft
+                ? `Restarty: ${bot.restart_count || 0}`
+                : bot.status_message || "Brak alertow"
+            }
+          />
+          {isMinecraft ? (
+            <SummaryTile
+              label="Wygasa za"
+              value={formatCountdown(bot.expires_at)}
+              hint={formatDate(bot.expires_at)}
+            />
+          ) : null}
         </div>
 
         {message ? <div className="banner success">{message}</div> : null}
@@ -471,16 +560,24 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
         {activeTab === "overview" ? (
           <form className="form-grid" onSubmit={saveSettings}>
             <div className="info-card wide">
-              ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po
-              wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect
-              sie pomyli.
+              {isMinecraft
+                ? "ByteHost wykrywa plik JAR serwera Minecraft i buduje komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
+                : "ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect sie pomyli."}
             </div>
 
             <div className="info-card wide">
-              Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje `.env`,
-              odswieza auto-detekcje i moze automatycznie przeinstalowac zaleznosci oraz wznowic
-              proces.
+              {isMinecraft
+                ? "Aktualizacja samym JAR-em podmienia silnik serwera bez czyszczenia swiata i pluginow. Wrzucenie ZIP lub RAR zastapi caly katalog uslugi, wiec traktuj to jak pelny reinstall serwera."
+                : "Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje .env, odswieza auto-detekcje i moze automatycznie przeinstalowac zaleznosci oraz wznowic proces."}
             </div>
+
+            {isMinecraft ? (
+              <div className="info-card wide">
+                Kazdy gracz wejdzie dopiero wtedy, gdy publiczny host i port gry rzeczywiscie beda
+                wystawione na zewnatrz. Panel zapisuje ten adres dla operatora, ale nie zastapi
+                przekierowania portu lub tunelu TCP do Minecrafta.
+              </div>
+            ) : null}
 
             <label>
               Nazwa
@@ -490,15 +587,8 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               />
             </label>
             <label>
-              Jezyk
-              <select
-                value={settings.language}
-                onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}
-              >
-                <option value="Node.js">Node.js</option>
-                <option value="TypeScript">TypeScript</option>
-                <option value="Python">Python</option>
-              </select>
+              Typ uslugi
+              <input value={serviceTypeLabel(bot.service_type)} disabled />
             </label>
             <label className="wide">
               Opis
@@ -510,6 +600,19 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               />
             </label>
             <label>
+              Jezyk
+              <select
+                value={settings.language}
+                disabled={isMinecraft}
+                onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}
+              >
+                <option value="Node.js">Node.js</option>
+                <option value="TypeScript">TypeScript</option>
+                <option value="Python">Python</option>
+                <option value="Java">Java</option>
+              </select>
+            </label>
+            <label>
               Plik startowy
               <input
                 value={settings.entry_file}
@@ -518,7 +621,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 }
               />
             </label>
-            <label>
+            <label className="wide">
               Komenda startowa
               <input
                 value={settings.start_command}
@@ -577,6 +680,40 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 }
               />
             </label>
+            {isMinecraft ? (
+              <>
+                <label>
+                  Adres publiczny
+                  <input
+                    placeholder="mc.twojadomena.pl"
+                    value={settings.public_host}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, public_host: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Port publiczny
+                  <input
+                    type="number"
+                    value={settings.public_port}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, public_port: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="checkbox-field wide">
+                  <input
+                    type="checkbox"
+                    checked={settings.accept_eula}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, accept_eula: event.target.checked }))
+                    }
+                  />
+                  <span>Akceptuje Minecraft EULA i pozwalam panelowi ustawic eula=true</span>
+                </label>
+              </>
+            ) : null}
             <label className="checkbox-field">
               <input
                 type="checkbox"
@@ -610,11 +747,15 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
           <div className="console-stack">
             <form className="console-form" onSubmit={runConsoleCommand}>
               <label className="wide">
-                Konsola robocza bota
+                Konsola robocza uslugi
                 <input
                   value={consoleCommand}
                   onChange={(event) => setConsoleCommand(event.target.value)}
-                  placeholder='np. npm run lint, ls -la, python3 -V'
+                  placeholder={
+                    isMinecraft
+                      ? 'np. java -version, ls -la, cat server.properties'
+                      : 'np. npm run lint, ls -la, python3 -V'
+                  }
                 />
               </label>
               <div className="form-actions wide">
@@ -626,8 +767,8 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             </form>
 
             <div className="info-card">
-              Konsola wykonuje polecenia w katalogu projektu bota. To nie jest stdin procesu PM2,
-              tylko robocza konsola serwisowa do testow, npm, pip i komend systemowych.
+              Konsola wykonuje polecenia w katalogu projektu uslugi. To nie jest stdin procesu PM2,
+              tylko robocza konsola serwisowa do testow, npm, pip, javac i komend systemowych.
             </div>
 
             <div className="terminal-card">

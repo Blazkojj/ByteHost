@@ -44,6 +44,15 @@ async function detectArchiveFormat(archivePath, originalName) {
   throw createHttpError(400, "Obslugiwane formaty archiwum to ZIP oraz RAR.");
 }
 
+function detectUploadedArtifactKind(uploadPath, originalName) {
+  const extension = getArchiveExtension(uploadPath, originalName);
+  if (extension === ".jar") {
+    return Promise.resolve(".jar");
+  }
+
+  return detectArchiveFormat(uploadPath, originalName);
+}
+
 async function removeMacArtifacts(targetDirectory) {
   const macOsDirectory = path.join(targetDirectory, "__MACOSX");
   await fs.rm(macOsDirectory, { recursive: true, force: true });
@@ -105,6 +114,12 @@ async function extractRar(archivePath, destination) {
   }
 }
 
+async function copyJar(uploadPath, destination, originalName) {
+  const targetName = path.basename(originalName || "server.jar");
+  await fs.mkdir(destination, { recursive: true });
+  await fs.copyFile(uploadPath, path.join(destination, targetName));
+}
+
 async function extractArchive(archivePath, destination, options = {}) {
   await fs.mkdir(destination, { recursive: true });
 
@@ -122,8 +137,22 @@ async function extractArchive(archivePath, destination, options = {}) {
   await flattenSingleDirectory(destination);
 }
 
+async function importProjectArtifact(uploadPath, destination, options = {}) {
+  const kind = await detectUploadedArtifactKind(uploadPath, options.originalName);
+
+  if (kind === ".jar") {
+    await copyJar(uploadPath, destination, options.originalName);
+    return { kind };
+  }
+
+  await extractArchive(uploadPath, destination, options);
+  return { kind };
+}
+
 module.exports = {
   detectArchiveFormat,
+  detectUploadedArtifactKind,
   extractArchive,
-  getArchiveExtension
+  getArchiveExtension,
+  importProjectArtifact
 };

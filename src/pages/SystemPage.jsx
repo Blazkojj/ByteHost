@@ -36,7 +36,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
 
     try {
       await api.updateSystemLimits(form);
-      setMessage("Limity systemowe zostały zapisane.");
+      setMessage("Limity systemowe zostaly zapisane.");
       await onRefreshSystem();
       await onRefresh();
     } catch (submitError) {
@@ -52,7 +52,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">Limity globalne</p>
-            <h3>Polityka zasobów</h3>
+            <h3>Polityka zasobow</h3>
           </div>
           <ShieldCheck size={18} />
         </div>
@@ -84,7 +84,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
             />
           </label>
           <label>
-            Maksymalna liczba botów
+            Maksymalna liczba uslug
             <input
               value={form.max_bots}
               onChange={(event) => setForm((current) => ({ ...current, max_bots: event.target.value }))}
@@ -106,7 +106,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
       <section className="panel-card">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Zużycie</p>
+            <p className="eyebrow">Zuzycie</p>
             <h3>Aktualny stan</h3>
           </div>
         </div>
@@ -114,14 +114,14 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
         <div className="stats-grid compact">
           <article className="metric-card">
             <div>
-              <p>RAM botów</p>
+              <p>RAM uslug</p>
               <strong>{formatNumber(system?.usage?.ram_mb, " MB")}</strong>
               <span>Limit: {formatNumber(system?.limits?.ram_limit_mb, " MB")}</span>
             </div>
           </article>
           <article className="metric-card">
             <div>
-              <p>CPU botów</p>
+              <p>CPU uslug</p>
               <strong>{formatNumber(system?.usage?.cpu_percent, "%")}</strong>
               <span>Limit: {formatNumber(system?.limits?.cpu_limit_percent, "%")}</span>
             </div>

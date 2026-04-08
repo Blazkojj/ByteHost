@@ -3,8 +3,8 @@ const path = require("path");
 
 const { DEFAULT_BOT_LIMITS, BOTS_DIR, TMP_DIR } = require("../config");
 const { getDb, mapBotRow } = require("./db");
-const { extractArchive } = require("./archive");
-const { analyzeProject } = require("./analyzer");
+const { detectUploadedArtifactKind, importProjectArtifact } = require("./archive");
+const { analyzeProject, buildMinecraftStartCommand } = require("./analyzer");
 const { runShellCommand } = require("./commands");
 const { getBotLogs, removeBotLogs } = require("./logs");
 const { mergeBotWithRuntime, deriveBotRuntime, isExpired } = require("./runtime");
@@ -43,16 +43,43 @@ const {
   toMb
 } = require("./utils");
 
-const ALLOWED_LANGUAGES = new Set(["Node.js", "TypeScript", "Python"]);
+const ALLOWED_LANGUAGES = new Set(["Node.js", "TypeScript", "Python", "Java"]);
+const ALLOWED_SERVICE_TYPES = new Set(["discord_bot", "minecraft_server"]);
 const DEFAULT_CONSOLE_TIMEOUT_MS = 20000;
 const MAX_CONSOLE_COMMAND_LENGTH = 2000;
 
-function sanitizeLanguage(value, fallback) {
+function sanitizeServiceType(value, fallback = "discord_bot") {
+  if (!value) {
+    return fallback;
+  }
+
+  return ALLOWED_SERVICE_TYPES.has(value) ? value : fallback;
+}
+
+function sanitizeLanguage(value, fallback, serviceType = "discord_bot") {
+  if (serviceType === "minecraft_server") {
+    return "Java";
+  }
+
   if (!value) {
     return fallback;
   }
 
   return ALLOWED_LANGUAGES.has(value) ? value : fallback;
+}
+
+function sanitizePublicPort(value, fallback = null) {
+  const parsed = coerceNullableNumber(value, fallback);
+  if (parsed === null || parsed === undefined) {
+    return fallback;
+  }
+
+  const port = Math.trunc(Number(parsed));
+  if (port < 1 || port > 65535) {
+    throw createHttpError(400, "Port publiczny musi byc z zakresu 1-65535.");
+  }
+
+  return port;
 }
 
 function normalizeExpiresAt(value) {
@@ -77,7 +104,7 @@ function getBotRow(botId) {
   const bot = mapBotRow(getDb().prepare("SELECT * FROM bots WHERE id = ?").get(botId));
 
   if (!bot) {
-    throw createHttpError(404, "Bot nie zostal znaleziony.");
+    throw createHttpError(404, "Usluga nie zostala znaleziona.");
   }
 
   return bot;
@@ -100,24 +127,28 @@ function createBotRecord(record) {
     .prepare(
       `
         INSERT INTO bots (
-          id, name, slug, description, language, detected_language, entry_file, detected_entry_file,
-          start_command, detected_start_command, install_command, detected_install_command, package_manager,
-          project_path, status, status_message, expires_at, auto_restart, restart_delay, max_restarts,
-          restart_count, last_restart_at, stability_status, ram_limit_mb, cpu_limit_percent, archive_name,
-          pm2_name, created_at, updated_at
+          id, service_type, name, slug, description, language, detected_language, entry_file,
+          detected_entry_file, start_command, detected_start_command, install_command,
+          detected_install_command, package_manager, project_path, status, status_message,
+          expires_at, auto_restart, restart_delay, max_restarts, restart_count, last_restart_at,
+          stability_status, ram_limit_mb, cpu_limit_percent, accept_eula, public_host,
+          public_port, archive_name, pm2_name, created_at, updated_at
         )
         VALUES (
-          @id, @name, @slug, @description, @language, @detected_language, @entry_file, @detected_entry_file,
-          @start_command, @detected_start_command, @install_command, @detected_install_command, @package_manager,
-          @project_path, @status, @status_message, @expires_at, @auto_restart, @restart_delay, @max_restarts,
-          @restart_count, @last_restart_at, @stability_status, @ram_limit_mb, @cpu_limit_percent, @archive_name,
-          @pm2_name, @created_at, @updated_at
+          @id, @service_type, @name, @slug, @description, @language, @detected_language,
+          @entry_file, @detected_entry_file, @start_command, @detected_start_command,
+          @install_command, @detected_install_command, @package_manager, @project_path, @status,
+          @status_message, @expires_at, @auto_restart, @restart_delay, @max_restarts,
+          @restart_count, @last_restart_at, @stability_status, @ram_limit_mb, @cpu_limit_percent,
+          @accept_eula, @public_host, @public_port, @archive_name, @pm2_name, @created_at,
+          @updated_at
         )
       `
     )
     .run({
       ...record,
-      auto_restart: record.auto_restart ? 1 : 0
+      auto_restart: record.auto_restart ? 1 : 0,
+      accept_eula: record.accept_eula ? 1 : 0
     });
 
   return getBotRow(record.id);
@@ -232,6 +263,95 @@ async function assertStartWithinLimits(bot) {
   await assertStorageWithinLimit();
 }
 
+function resolveEffectiveEntryFile(bot) {
+  return normalizeRelativePath(bot.entry_file || bot.detected_entry_file || "");
+}
+
+function resolveEffectiveStartCommand(bot) {
+  if (bot.start_command) {
+    return bot.start_command;
+  }
+
+  if (bot.detected_start_command) {
+    return bot.detected_start_command;
+  }
+
+  if (bot.service_type === "minecraft_server") {
+    return buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb);
+  }
+
+  return null;
+}
+
+function assertArtifactAllowed(serviceType, artifactKind) {
+  if (serviceType !== "minecraft_server" && artifactKind === ".jar") {
+    throw createHttpError(
+      400,
+      "Boty Discord obsluguja tylko ZIP albo RAR. Plik JAR jest dostepny dla serwerow Minecraft."
+    );
+  }
+}
+
+async function analyzeServiceProject(projectPath, serviceType, ramLimitMb) {
+  return analyzeProject(projectPath, {
+    serviceType,
+    ramLimitMb
+  });
+}
+
+function getDefaultStartCommand(serviceType, entryFile, detectedStartCommand, ramLimitMb) {
+  if (serviceType === "minecraft_server") {
+    return buildMinecraftStartCommand(entryFile, ramLimitMb);
+  }
+
+  return detectedStartCommand;
+}
+
+async function isMinecraftEulaAccepted(projectPath) {
+  const content = await readUtf8IfExists(path.join(projectPath, "eula.txt"));
+  if (!content) {
+    return false;
+  }
+
+  return /^eula\s*=\s*true$/im.test(content);
+}
+
+async function ensureMinecraftEula(projectPath) {
+  const eulaPath = path.join(projectPath, "eula.txt");
+  const current = await readUtf8IfExists(eulaPath);
+
+  if (current && /^eula\s*=\s*true$/im.test(current)) {
+    return;
+  }
+
+  if (current && /^eula\s*=\s*false$/im.test(current)) {
+    await fs.writeFile(eulaPath, current.replace(/^eula\s*=\s*false$/im, "eula=true"), "utf8");
+    return;
+  }
+
+  await fs.writeFile(
+    eulaPath,
+    [
+      "# ByteHost accepted the Minecraft EULA on behalf of the operator.",
+      `# ${new Date().toISOString()}`,
+      "eula=true",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+async function replaceMinecraftServerJar(bot, artifactFile) {
+  const currentEntry = resolveEffectiveEntryFile(bot);
+  if (currentEntry && currentEntry.toLowerCase().endsWith(".jar")) {
+    await fs.rm(path.join(bot.project_path, currentEntry), { force: true });
+  }
+
+  await importProjectArtifact(artifactFile.path, bot.project_path, {
+    originalName: artifactFile.originalname
+  });
+}
+
 async function getBotWithRuntime(botId) {
   const bot = getBotRow(botId);
   const processInfo = await describeProcess(bot.pm2_name);
@@ -254,53 +374,65 @@ async function listBots() {
   );
 }
 
-async function createBot(payload, archiveFile) {
+async function createBot(payload, artifactFile) {
   const limits = getSystemLimits();
   const currentBotCount = getDb().prepare("SELECT COUNT(*) AS total FROM bots").get().total;
 
   if (limits.max_bots && currentBotCount >= limits.max_bots) {
-    throw createHttpError(400, `Osiagnieto limit liczby botow (${limits.max_bots}).`);
+    throw createHttpError(400, `Osiagnieto limit liczby uslug (${limits.max_bots}).`);
   }
 
+  const serviceType = sanitizeServiceType(payload.service_type, "discord_bot");
+  const ramLimitMb = coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb);
   const botId = randomId();
   const botDirectory = await ensureBotDirectory(botId);
 
   try {
-    if (archiveFile) {
-      await extractArchive(archiveFile.path, botDirectory, {
-        originalName: archiveFile.originalname
+    if (artifactFile) {
+      const artifactKind = await detectUploadedArtifactKind(artifactFile.path, artifactFile.originalname);
+      assertArtifactAllowed(serviceType, artifactKind);
+      await importProjectArtifact(artifactFile.path, botDirectory, {
+        originalName: artifactFile.originalname
       });
     }
 
-    const analysis = await analyzeProject(botDirectory);
+    const analysis = await analyzeServiceProject(botDirectory, serviceType, ramLimitMb);
     const createdAt = nowIso();
     const expiresAt = normalizeExpiresAt(payload.expires_at);
     const derivedName =
       coerceNullableString(payload.name, null) ||
       path.basename(
-        archiveFile?.originalname || `bot-${botId.slice(0, 8)}`,
-        path.extname(archiveFile?.originalname || "")
+        artifactFile?.originalname || `${serviceType === "minecraft_server" ? "minecraft" : "bot"}-${botId.slice(0, 8)}`,
+        path.extname(artifactFile?.originalname || "")
       );
+    const entryFile = normalizeRelativePath(
+      coerceNullableString(payload.entry_file, analysis.detected_entry_file) || ""
+    );
+    const defaultStartCommand = getDefaultStartCommand(
+      serviceType,
+      entryFile || analysis.detected_entry_file,
+      analysis.detected_start_command,
+      ramLimitMb
+    );
 
     createBotRecord({
       id: botId,
+      service_type: serviceType,
       name: derivedName,
       slug: slugify(derivedName) || botId.slice(0, 8),
       description: coerceNullableString(payload.description, "") || "",
-      language: sanitizeLanguage(payload.language, analysis.detected_language || "Node.js"),
+      language: sanitizeLanguage(payload.language, analysis.detected_language || "Node.js", serviceType),
       detected_language: analysis.detected_language,
-      entry_file: normalizeRelativePath(
-        coerceNullableString(payload.entry_file, analysis.detected_entry_file) || ""
-      ),
+      entry_file: entryFile,
       detected_entry_file: analysis.detected_entry_file,
-      start_command: coerceNullableString(payload.start_command, analysis.detected_start_command),
-      detected_start_command: analysis.detected_start_command,
+      start_command: coerceNullableString(payload.start_command, defaultStartCommand),
+      detected_start_command: defaultStartCommand || analysis.detected_start_command,
       install_command: analysis.install_command,
       detected_install_command: analysis.install_command,
       package_manager: analysis.package_manager,
       project_path: botDirectory,
       status: isExpired(expiresAt) ? "EXPIRED" : "OFFLINE",
-      status_message: isExpired(expiresAt) ? "Bot wygasl i zostal zablokowany." : null,
+      status_message: isExpired(expiresAt) ? "Usluga wygasla i zostala zablokowana." : null,
       expires_at: expiresAt,
       auto_restart: coerceBoolean(payload.auto_restart, true),
       restart_delay: coerceNullableNumber(payload.restart_delay, DEFAULT_BOT_LIMITS.restart_delay),
@@ -308,12 +440,17 @@ async function createBot(payload, archiveFile) {
       restart_count: 0,
       last_restart_at: null,
       stability_status: "STOPPED",
-      ram_limit_mb: coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb),
+      ram_limit_mb: ramLimitMb,
       cpu_limit_percent: coerceNullableNumber(
         payload.cpu_limit_percent,
         DEFAULT_BOT_LIMITS.cpu_limit_percent
       ),
-      archive_name: archiveFile?.originalname || null,
+      accept_eula: serviceType === "minecraft_server" ? coerceBoolean(payload.accept_eula, false) : false,
+      public_host:
+        serviceType === "minecraft_server" ? coerceNullableString(payload.public_host, null) : null,
+      public_port:
+        serviceType === "minecraft_server" ? sanitizePublicPort(payload.public_port, 25565) : null,
+      archive_name: artifactFile?.originalname || null,
       pm2_name: getBotProcessName(botId),
       created_at: createdAt,
       updated_at: createdAt
@@ -321,19 +458,19 @@ async function createBot(payload, archiveFile) {
 
     await assertStorageWithinLimit();
 
-    if (archiveFile) {
-      await fs.rm(archiveFile.path, { force: true });
+    if (artifactFile) {
+      await fs.rm(artifactFile.path, { force: true });
     }
 
-    if (coerceBoolean(payload.install_on_create, false)) {
+    if (coerceBoolean(payload.install_on_create, false) && serviceType !== "minecraft_server") {
       await installDependencies(botId);
     }
 
     return getBotWithRuntime(botId);
   } catch (error) {
     await removePath(botDirectory);
-    if (archiveFile) {
-      await fs.rm(archiveFile.path, { force: true });
+    if (artifactFile) {
+      await fs.rm(artifactFile.path, { force: true });
     }
     throw error;
   }
@@ -345,6 +482,41 @@ async function updateBot(botId, payload) {
     payload.expires_at !== undefined
       ? normalizeExpiresAt(payload.expires_at)
       : existingBot.expires_at;
+  const nextRamLimit =
+    payload.ram_limit_mb !== undefined
+      ? coerceNullableNumber(payload.ram_limit_mb, existingBot.ram_limit_mb)
+      : existingBot.ram_limit_mb;
+  const nextEntryFile =
+    payload.entry_file !== undefined
+      ? normalizeRelativePath(coerceNullableString(payload.entry_file, "") || "")
+      : existingBot.entry_file;
+  const previousMinecraftAuto = buildMinecraftStartCommand(
+    resolveEffectiveEntryFile(existingBot),
+    existingBot.ram_limit_mb
+  );
+  const nextMinecraftAuto = buildMinecraftStartCommand(
+    nextEntryFile || existingBot.detected_entry_file,
+    nextRamLimit
+  );
+  const defaultStartCommand =
+    existingBot.service_type === "minecraft_server"
+      ? nextMinecraftAuto
+      : existingBot.detected_start_command;
+
+  let nextStartCommand =
+    payload.start_command !== undefined
+      ? coerceNullableString(payload.start_command, null)
+      : existingBot.start_command;
+
+  if (
+    existingBot.service_type === "minecraft_server" &&
+    payload.start_command === undefined &&
+    (!existingBot.start_command ||
+      existingBot.start_command === existingBot.detected_start_command ||
+      existingBot.start_command === previousMinecraftAuto)
+  ) {
+    nextStartCommand = defaultStartCommand;
+  }
 
   const changes = {
     name: coerceNullableString(payload.name, existingBot.name) || existingBot.name,
@@ -352,15 +524,14 @@ async function updateBot(botId, payload) {
       payload.description !== undefined
         ? coerceNullableString(payload.description, "") || ""
         : existingBot.description,
-    language: sanitizeLanguage(payload.language, existingBot.language),
-    entry_file:
-      payload.entry_file !== undefined
-        ? normalizeRelativePath(coerceNullableString(payload.entry_file, "") || "")
-        : existingBot.entry_file,
-    start_command:
-      payload.start_command !== undefined
-        ? coerceNullableString(payload.start_command, null)
-        : existingBot.start_command,
+    language: sanitizeLanguage(
+      payload.language,
+      existingBot.language,
+      existingBot.service_type
+    ),
+    entry_file: nextEntryFile,
+    start_command: nextStartCommand,
+    detected_start_command: defaultStartCommand,
     expires_at: nextExpiresAt,
     auto_restart:
       payload.auto_restart !== undefined
@@ -374,20 +545,29 @@ async function updateBot(botId, payload) {
       payload.max_restarts !== undefined
         ? coerceNullableNumber(payload.max_restarts, existingBot.max_restarts)
         : existingBot.max_restarts,
-    ram_limit_mb:
-      payload.ram_limit_mb !== undefined
-        ? coerceNullableNumber(payload.ram_limit_mb, existingBot.ram_limit_mb)
-        : existingBot.ram_limit_mb,
+    ram_limit_mb: nextRamLimit,
     cpu_limit_percent:
       payload.cpu_limit_percent !== undefined
         ? coerceNullableNumber(payload.cpu_limit_percent, existingBot.cpu_limit_percent)
         : existingBot.cpu_limit_percent,
+    accept_eula:
+      existingBot.service_type === "minecraft_server" && payload.accept_eula !== undefined
+        ? coerceBoolean(payload.accept_eula, existingBot.accept_eula)
+        : existingBot.accept_eula,
+    public_host:
+      existingBot.service_type === "minecraft_server" && payload.public_host !== undefined
+        ? coerceNullableString(payload.public_host, null)
+        : existingBot.public_host,
+    public_port:
+      existingBot.service_type === "minecraft_server" && payload.public_port !== undefined
+        ? sanitizePublicPort(payload.public_port, existingBot.public_port || 25565)
+        : existingBot.public_port,
     updated_at: nowIso()
   };
 
   if (isExpired(nextExpiresAt)) {
     changes.status = "EXPIRED";
-    changes.status_message = "Bot wygasl i zostal zatrzymany przez scheduler.";
+    changes.status_message = "Usluga wygasla i zostala zatrzymana przez scheduler.";
   } else if (existingBot.status === "EXPIRED") {
     changes.status = "OFFLINE";
     changes.status_message = null;
@@ -395,7 +575,8 @@ async function updateBot(botId, payload) {
 
   updateBotRow(botId, {
     ...changes,
-    auto_restart: changes.auto_restart ? 1 : 0
+    auto_restart: changes.auto_restart ? 1 : 0,
+    accept_eula: changes.accept_eula ? 1 : 0
   });
 
   if (isExpired(nextExpiresAt)) {
@@ -428,18 +609,50 @@ async function deleteBotById(botId) {
 }
 
 async function startBot(botId) {
-  const bot = getBotRow(botId);
+  let bot = getBotRow(botId);
 
   if (isExpired(bot.expires_at)) {
-    throw createHttpError(400, "Bot wygasl. Zmien expires_at, aby go uruchomic.");
+    throw createHttpError(400, "Usluga wygasla. Zmien expires_at, aby ja uruchomic.");
   }
 
-  if (!bot.start_command) {
+  if (bot.service_type === "minecraft_server") {
+    const accepted = bot.accept_eula || (await isMinecraftEulaAccepted(bot.project_path));
+    if (!accepted) {
+      throw createHttpError(
+        400,
+        "Aby uruchomic serwer Minecraft, zaznacz akceptacje EULA albo ustaw eula=true w eula.txt."
+      );
+    }
+
+    await ensureMinecraftEula(bot.project_path);
+  }
+
+  const resolvedStartCommand = resolveEffectiveStartCommand(bot);
+  if (!resolvedStartCommand) {
     throw createHttpError(400, "Brakuje komendy startowej.");
   }
 
+  const nextDetectedStartCommand =
+    bot.service_type === "minecraft_server"
+      ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+      : bot.detected_start_command;
+
+  if (
+    bot.start_command !== resolvedStartCommand ||
+    bot.detected_start_command !== nextDetectedStartCommand
+  ) {
+    bot = updateBotRow(botId, {
+      start_command: resolvedStartCommand,
+      detected_start_command: nextDetectedStartCommand,
+      updated_at: nowIso()
+    });
+  }
+
   await assertStartWithinLimits(bot);
-  await startBotProcess(bot);
+  await startBotProcess({
+    ...bot,
+    start_command: resolvedStartCommand
+  });
   updateBotRow(botId, {
     status: "ONLINE",
     status_message: null,
@@ -468,6 +681,21 @@ async function restartBot(botId) {
 
 async function installDependencies(botId) {
   const bot = getBotRow(botId);
+
+  if (bot.service_type === "minecraft_server") {
+    return {
+      bot: await getBotWithRuntime(botId),
+      install: {
+        skipped: true,
+        command: null,
+        stdout: "",
+        stderr: "",
+        message:
+          "Serwer Minecraft nie wymaga instalacji zaleznosci przez panel. Wgraj plik JAR albo gotowy pakiet serwera."
+      }
+    };
+  }
+
   const command = bot.install_command || bot.detected_install_command;
 
   if (!command) {
@@ -507,76 +735,104 @@ async function installDependencies(botId) {
   }
 }
 
-async function updateBotArchive(botId, archiveFile, payload = {}) {
-  if (!archiveFile) {
-    throw createHttpError(400, "Dodaj plik ZIP lub RAR do aktualizacji bota.");
+async function updateBotArchive(botId, artifactFile, payload = {}) {
+  if (!artifactFile) {
+    throw createHttpError(400, "Dodaj plik JAR, ZIP albo RAR do aktualizacji uslugi.");
   }
 
   const bot = getBotRow(botId);
   const processInfo = await describeProcess(bot.pm2_name);
   const runtime = deriveBotRuntime(bot, processInfo);
   const wasOnline = runtime.status === "ONLINE";
-  const preserveEnv = payload.preserve_env !== undefined
-    ? coerceBoolean(payload.preserve_env, true)
-    : true;
-  const reinstallDependenciesFlag = payload.reinstall_dependencies !== undefined
-    ? coerceBoolean(payload.reinstall_dependencies, true)
-    : true;
-  const restartAfterUpdate = payload.restart_after_update !== undefined
-    ? coerceBoolean(payload.restart_after_update, wasOnline)
-    : wasOnline;
-  const tempDirectory = path.join(TMP_DIR, `archive-${botId}-${Date.now()}`);
-  const envPath = resolveBotPath(botId, ".env");
+  const preserveEnv =
+    payload.preserve_env !== undefined ? coerceBoolean(payload.preserve_env, true) : true;
+  const reinstallDependenciesFlag =
+    payload.reinstall_dependencies !== undefined
+      ? coerceBoolean(payload.reinstall_dependencies, true)
+      : true;
+  const restartAfterUpdate =
+    payload.restart_after_update !== undefined
+      ? coerceBoolean(payload.restart_after_update, wasOnline)
+      : wasOnline;
+  const artifactKind = await detectUploadedArtifactKind(artifactFile.path, artifactFile.originalname);
   let install = null;
 
-  await fs.mkdir(tempDirectory, { recursive: true });
+  assertArtifactAllowed(bot.service_type, artifactKind);
 
   try {
-    await extractArchive(archiveFile.path, tempDirectory, {
-      originalName: archiveFile.originalname
-    });
-
-    const preservedEnv = preserveEnv ? await readUtf8IfExists(envPath) : null;
-
     await stopProcess(bot.pm2_name);
-    await clearDirectoryContents(bot.project_path);
-    await moveDirectoryContents(tempDirectory, bot.project_path);
 
-    if (preservedEnv !== null) {
-      await fs.writeFile(envPath, preservedEnv, "utf8");
+    if (bot.service_type === "minecraft_server" && artifactKind === ".jar") {
+      await replaceMinecraftServerJar(bot, artifactFile);
+    } else {
+      const tempDirectory = path.join(TMP_DIR, `archive-${botId}-${Date.now()}`);
+      const envPath = resolveBotPath(botId, ".env");
+      const preservedEnv = preserveEnv ? await readUtf8IfExists(envPath) : null;
+
+      await fs.mkdir(tempDirectory, { recursive: true });
+      await importProjectArtifact(artifactFile.path, tempDirectory, {
+        originalName: artifactFile.originalname
+      });
+      await clearDirectoryContents(bot.project_path);
+      await moveDirectoryContents(tempDirectory, bot.project_path);
+
+      if (preservedEnv !== null) {
+        await fs.writeFile(envPath, preservedEnv, "utf8");
+      }
+
+      await fs.rm(tempDirectory, { recursive: true, force: true });
     }
 
-    const analysis = await analyzeProject(bot.project_path);
-    const nextLanguage = resolveUpdatedSetting(
-      bot.language,
-      bot.detected_language,
-      analysis.detected_language,
-      (value) => sanitizeLanguage(value, "")
-    );
+    const analysis = await analyzeServiceProject(bot.project_path, bot.service_type, bot.ram_limit_mb);
+    const nextLanguage =
+      bot.service_type === "minecraft_server"
+        ? "Java"
+        : resolveUpdatedSetting(
+            bot.language,
+            bot.detected_language,
+            analysis.detected_language,
+            (value) => sanitizeLanguage(value, "", bot.service_type)
+          );
     const nextEntryFile = resolveUpdatedSetting(
       bot.entry_file,
       bot.detected_entry_file,
       analysis.detected_entry_file,
       (value) => normalizeRelativePath(value || "")
     );
-    const nextStartCommand = resolveUpdatedSetting(
-      bot.start_command,
-      bot.detected_start_command,
-      analysis.detected_start_command,
-      (value) => String(value || "").trim()
-    );
+    const previousAutoStart =
+      bot.service_type === "minecraft_server"
+        ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+        : bot.detected_start_command;
+    const nextAutoStart =
+      bot.service_type === "minecraft_server"
+        ? buildMinecraftStartCommand(nextEntryFile || analysis.detected_entry_file, bot.ram_limit_mb)
+        : analysis.detected_start_command;
+    const nextStartCommand =
+      bot.service_type === "minecraft_server"
+        ? resolveUpdatedSetting(
+            bot.start_command,
+            previousAutoStart,
+            nextAutoStart,
+            (value) => String(value || "").trim()
+          )
+        : resolveUpdatedSetting(
+            bot.start_command,
+            bot.detected_start_command,
+            analysis.detected_start_command,
+            (value) => String(value || "").trim()
+          );
 
     updateBotRow(botId, {
-      language: sanitizeLanguage(nextLanguage, analysis.detected_language || "Node.js"),
+      language: sanitizeLanguage(nextLanguage, analysis.detected_language || "Node.js", bot.service_type),
       detected_language: analysis.detected_language,
       entry_file: normalizeRelativePath(nextEntryFile || ""),
       detected_entry_file: analysis.detected_entry_file,
-      start_command: coerceNullableString(nextStartCommand, analysis.detected_start_command),
-      detected_start_command: analysis.detected_start_command,
+      start_command: coerceNullableString(nextStartCommand, nextAutoStart),
+      detected_start_command: nextAutoStart,
       install_command: analysis.install_command,
       detected_install_command: analysis.install_command,
       package_manager: analysis.package_manager,
-      archive_name: archiveFile.originalname || bot.archive_name,
+      archive_name: artifactFile.originalname || bot.archive_name,
       status: isExpired(bot.expires_at) ? "EXPIRED" : "OFFLINE",
       status_message: null,
       updated_at: nowIso()
@@ -584,7 +840,7 @@ async function updateBotArchive(botId, archiveFile, payload = {}) {
 
     await assertStorageWithinLimit();
 
-    if (reinstallDependenciesFlag) {
+    if (reinstallDependenciesFlag && bot.service_type !== "minecraft_server") {
       const installResponse = await installDependencies(botId);
       install = installResponse.install;
     }
@@ -600,8 +856,7 @@ async function updateBotArchive(botId, archiveFile, payload = {}) {
       install
     };
   } finally {
-    await fs.rm(tempDirectory, { recursive: true, force: true });
-    await fs.rm(archiveFile.path, { force: true });
+    await fs.rm(artifactFile.path, { force: true });
   }
 }
 

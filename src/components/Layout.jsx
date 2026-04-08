@@ -15,7 +15,7 @@ function StatChip({ label, value }) {
 export function Layout({ children, bots, system, onRefresh, loading, lastUpdated }) {
   const navItems = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/bots", label: "Boty", icon: Server },
+    { to: "/bots", label: "Uslugi", icon: Server },
     { to: "/system", label: "System", icon: ShieldCheck }
   ];
 
@@ -26,7 +26,7 @@ export function Layout({ children, bots, system, onRefresh, loading, lastUpdated
           <div className="brand-mark">B</div>
           <div>
             <strong>ByteHost</strong>
-            <span>Prywatny hosting botów Discord</span>
+            <span>Prywatny hosting botow i serwerow</span>
           </div>
         </Link>
 
@@ -48,7 +48,7 @@ export function Layout({ children, bots, system, onRefresh, loading, lastUpdated
         </nav>
 
         <div className="sidebar-card">
-          <p>Aktywne boty</p>
+          <p>Aktywne uslugi</p>
           <strong>{bots.filter((bot) => bot.status === "ONLINE").length}</strong>
           <small>Z PM2, schedulerem i monitoringiem</small>
         </div>
@@ -60,17 +60,17 @@ export function Layout({ children, bots, system, onRefresh, loading, lastUpdated
             <p className="eyebrow">Panel hostingowy</p>
             <h1>ByteHost</h1>
             <span className="topbar-meta">
-              Ostatnie odświeżenie: {lastUpdated ? lastUpdated.toLocaleTimeString("pl-PL") : "brak"}
+              Ostatnie odswiezenie: {lastUpdated ? lastUpdated.toLocaleTimeString("pl-PL") : "brak"}
             </span>
           </div>
 
           <div className="topbar-actions">
-            <StatChip label="Boty" value={formatNumber(system?.usage?.bots)} />
+            <StatChip label="Uslugi" value={formatNumber(system?.usage?.bots)} />
             <StatChip label="RAM" value={formatNumber(system?.usage?.ram_mb, " MB")} />
             <StatChip label="Storage" value={formatNumber(system?.usage?.storage_mb, " MB")} />
             <button className="ghost-button" onClick={onRefresh} disabled={loading}>
               <RefreshCw size={16} className={loading ? "spin" : ""} />
-              <span>Odśwież</span>
+              <span>Odswiez</span>
             </button>
           </div>
         </header>
@@ -80,7 +80,7 @@ export function Layout({ children, bots, system, onRefresh, loading, lastUpdated
         <footer className="footer-bar">
           <div>
             <Activity size={16} />
-            <span>Realny panel PM2 dla jednego użytkownika</span>
+            <span>Realny panel PM2 dla jednego operatora</span>
           </div>
           <div>
             <HardDrive size={16} />

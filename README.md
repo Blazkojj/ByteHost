@@ -1,6 +1,6 @@
 # ByteHost
 
-ByteHost to prywatny panel webowy do hostowania botów Discord dla jednego użytkownika. Aplikacja działa na realnych plikach i prawdziwych procesach PM2, bez mocków, bez logowania i bez rejestracji.
+ByteHost to prywatny panel webowy do hostowania botow Discord i serwerow Minecraft dla jednego operatora. Aplikacja dziala na realnych plikach i prawdziwych procesach PM2, bez mockow, bez logowania i bez rejestracji.
 
 ## Stack
 
@@ -13,16 +13,22 @@ ByteHost to prywatny panel webowy do hostowania botów Discord dla jednego użyt
 
 ## Funkcje
 
-- tworzenie bota z archiwum `ZIP` lub `RAR`
+- tworzenie bota Discord z archiwum `ZIP` lub `RAR`
+- tworzenie serwera Minecraft z `JAR`, `ZIP` albo `RAR`
 - automatyczne wykrywanie:
-  - języka: `Node.js`, `TypeScript`, `Python`
+  - bota Discord:
+    - jezyka `Node.js`, `TypeScript`, `Python`
+    - pliku startowego
+    - komendy startowej
+  - serwera Minecraft:
+    - pliku `JAR`
+    - komendy `java -jar ... nogui`
+- reczna korekta:
+  - jezyka
   - pliku startowego
   - komendy startowej
-- ręczna korekta:
-  - języka
-  - pliku startowego
-  - komendy startowej
-- realne uruchamianie botów przez `PM2`
+  - publicznego hosta i portu Minecraft
+- realne uruchamianie uslug przez `PM2`
 - auto restart z:
   - `autorestart`
   - `restart_delay`
@@ -33,17 +39,17 @@ ByteHost to prywatny panel webowy do hostowania botów Discord dla jednego użyt
   - RAM
   - CPU
   - storage
-  - liczba botów
-- limity per-bot:
+  - liczba uslug
+- limity per-usluga:
   - RAM
   - CPU
 - file manager:
-  - przeglądanie folderów
-  - edycja plików tekstowych
-  - tworzenie plików
-  - tworzenie folderów
-  - upload plików
-  - usuwanie plików i folderów
+  - przegladanie folderow
+  - edycja plikow tekstowych
+  - tworzenie plikow
+  - tworzenie folderow
+  - upload plikow
+  - usuwanie plikow i folderow
   - edycja `.env`
 - logi live przez polling API
 
@@ -53,7 +59,7 @@ ByteHost to prywatny panel webowy do hostowania botów Discord dla jednego użyt
 
 ```bash
 sudo apt update
-sudo apt install -y curl unzip unrar python3 python3-pip build-essential
+sudo apt install -y curl unzip unrar python3 python3-pip build-essential openjdk-21-jre-headless
 ```
 
 Zainstaluj Node.js LTS, najlepiej `20.x` lub `22.x`.
@@ -94,13 +100,22 @@ pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
-## Ważne uwagi
+## Minecraft i publiczny dostep
 
-- RAR wymaga polecenia `unrar` dostępnego na serwerze.
-- `.env` jest traktowany jak zwykły plik tekstowy. Panel go nie parsuje i nie przechowuje tokenów.
-- Dla projektów Node/TypeScript używany jest `npm`, `yarn` lub `pnpm` zależnie od lockfile.
-- Dla projektów Python instalacja korzysta z `requirements.txt`, jeśli istnieje.
-- Scheduler sprawdza wygasanie i crash loop co `60s` domyślnie.
+- Panel potrafi uruchomic serwer Minecraft, zarzadzac plikami, logami i PM2.
+- Pole `Adres publiczny` w panelu jest informacyjne i sluzy do pokazania operatorowi, pod jakim adresem gracze maja wejsc.
+- Aby gracze z internetu faktycznie polaczyli sie z serwerem Minecraft, musisz jeszcze wystawic publiczny ruch TCP dla portu gry, np. przez publiczne IP z przekierowaniem portu albo tunel TCP do Minecrafta.
+- `Cloudflare Tunnel` z HTTP do panelu webowego ByteHost nie wystawia automatycznie samego portu gry Minecraft.
+
+## Wazne uwagi
+
+- RAR wymaga polecenia `unrar` dostepnego na serwerze.
+- Minecraft wymaga zainstalowanej Javy na Ubuntu.
+- `.env` jest traktowany jak zwykly plik tekstowy. Panel go nie parsuje i nie przechowuje tokenow.
+- Dla projektow Node/TypeScript uzywany jest `npm`, `yarn` lub `pnpm` zaleznosci od lockfile.
+- Dla projektow Python instalacja korzysta z `requirements.txt`, jesli istnieje.
+- Dla serwerow Minecraft zaznaczenie akceptacji EULA pozwala panelowi zapisac `eula=true` przed startem.
+- Scheduler sprawdza wygasanie i crash loop co `60s` domyslnie.
 
 ## API
 
@@ -115,6 +130,7 @@ pm2 save
 - `POST /api/bots/:id/stop`
 - `POST /api/bots/:id/restart`
 - `POST /api/bots/:id/install`
+- `POST /api/bots/:id/archive`
 - `POST /api/bots/:id/upload`
 - `GET /api/bots/:id/logs`
 - `GET /api/bots/:id/files`
@@ -133,7 +149,6 @@ pm2 save
 ```text
 server/
   config.js
-  index.js
   lib/
   routes/
 src/
@@ -147,7 +162,7 @@ storage/
 
 ## Weryfikacja lokalna
 
-- backend JS sprawdzony składniowo przez `node --check`
+- backend JS sprawdzony skladniowo przez `node --check`
 - frontend produkcyjny zbudowany przez `npm run build`
 
-Na tym komputerze pełne `npm install` z natywnym buildem `better-sqlite3` nie przeszło przez lokalny `Node 25` i brak toolchaina Visual Studio. Docelowym środowiskiem dla ByteHost jest Ubuntu Server z Node LTS, gdzie moduł powinien zostać zbudowany poprawnie po `npm install`.
+Na tym komputerze pelne `npm install` z natywnym buildem `better-sqlite3` moze wymagac lokalnego toolchaina. Docelowym srodowiskiem dla ByteHost pozostaje Ubuntu Server z Node LTS.

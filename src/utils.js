@@ -54,7 +54,7 @@ export function formatCountdown(value) {
 
   const diff = new Date(value).getTime() - Date.now();
   if (diff <= 0) {
-    return "Wygasł";
+    return "Wygasl";
   }
 
   return formatDuration(Math.floor(diff / 1000));
@@ -83,4 +83,29 @@ export function fromDatetimeLocal(value) {
   }
 
   return new Date(value).toISOString();
+}
+
+export function serviceTypeLabel(serviceType) {
+  if (serviceType === "minecraft_server") {
+    return "Serwer Minecraft";
+  }
+
+  return "Bot Discord";
+}
+
+export function serviceArtifactLabel(serviceType) {
+  if (serviceType === "minecraft_server") {
+    return "Plik serwera (JAR / ZIP / RAR)";
+  }
+
+  return "Archiwum projektu (ZIP / RAR)";
+}
+
+export function serviceJoinAddress(service) {
+  if (service?.service_type !== "minecraft_server" || !service.public_host) {
+    return "Brak";
+  }
+
+  const port = service.public_port || 25565;
+  return port === 25565 ? service.public_host : `${service.public_host}:${port}`;
 }

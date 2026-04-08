@@ -35,11 +35,26 @@ const TS_ENTRY_CANDIDATES = [
 
 const PY_ENTRY_CANDIDATES = ["main.py", "bot.py", "app.py", "index.py", "src/main.py"];
 
+const MINECRAFT_JAR_PATTERNS = [
+  /^server\.jar$/i,
+  /^paper.*\.jar$/i,
+  /^purpur.*\.jar$/i,
+  /^spigot.*\.jar$/i,
+  /^craftbukkit.*\.jar$/i,
+  /^fabric.*\.jar$/i,
+  /^forge.*\.jar$/i,
+  /^neoforge.*\.jar$/i,
+  /^minecraft.*\.jar$/i,
+  /^velocity.*\.jar$/i,
+  /^waterfall.*\.jar$/i,
+  /^bungeecord.*\.jar$/i
+];
+
 async function fileExists(targetPath) {
   try {
     await fs.access(targetPath);
     return true;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -51,7 +66,7 @@ async function readJsonIfExists(targetPath) {
 
   try {
     return JSON.parse(await fs.readFile(targetPath, "utf8"));
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 }
@@ -245,9 +260,70 @@ async function detectInstallCommand(projectPath, language, packageJson) {
   };
 }
 
-async function analyzeProject(projectPath) {
-  const packageJson = await readJsonIfExists(path.join(projectPath, "package.json"));
+function buildMinecraftStartCommand(entryFile, ramLimitMb = 2048) {
+  if (!entryFile) {
+    return null;
+  }
+
+  const maxRam = Math.max(512, Number(ramLimitMb || 0) || 2048);
+  const minRam = Math.max(256, Math.min(1024, maxRam));
+  return `java -Xms${minRam}M -Xmx${maxRam}M -jar "${entryFile}" nogui`;
+}
+
+function getMinecraftJarPriority(relativePath) {
+  const baseName = path.basename(relativePath);
+  const rootBonus = relativePath.includes("/") ? 0 : 20;
+  const index = MINECRAFT_JAR_PATTERNS.findIndex((pattern) => pattern.test(baseName));
+  const patternBonus = index === -1 ? 0 : MINECRAFT_JAR_PATTERNS.length - index;
+  return rootBonus + patternBonus;
+}
+
+async function detectMinecraftEntryFile(projectPath, collectedFiles) {
+  const jarFiles = collectedFiles
+    .filter((filePath) => filePath.toLowerCase().endsWith(".jar"))
+    .map((filePath) => normalizeRelativePath(path.relative(projectPath, filePath)));
+
+  if (jarFiles.length === 0) {
+    return null;
+  }
+
+  jarFiles.sort((left, right) => {
+    const priorityDiff = getMinecraftJarPriority(right) - getMinecraftJarPriority(left);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+
+    return left.localeCompare(right);
+  });
+
+  return jarFiles[0];
+}
+
+async function analyzeMinecraftProject(projectPath, options, collectedFiles) {
+  const detected_entry_file = await detectMinecraftEntryFile(projectPath, collectedFiles);
+  const detected_start_command = buildMinecraftStartCommand(
+    detected_entry_file,
+    options.ramLimitMb
+  );
+
+  return {
+    detected_language: "Java",
+    detected_entry_file,
+    detected_start_command,
+    install_command: null,
+    package_manager: "jar"
+  };
+}
+
+async function analyzeProject(projectPath, options = {}) {
   const collectedFiles = await collectFiles(projectPath);
+  const serviceType = options.serviceType || "discord_bot";
+
+  if (serviceType === "minecraft_server") {
+    return analyzeMinecraftProject(projectPath, options, collectedFiles);
+  }
+
+  const packageJson = await readJsonIfExists(path.join(projectPath, "package.json"));
   const detected_language = await detectLanguage(projectPath, packageJson, collectedFiles);
   const detected_entry_file = await detectEntryFile(
     projectPath,
@@ -273,5 +349,6 @@ async function analyzeProject(projectPath) {
 }
 
 module.exports = {
-  analyzeProject
+  analyzeProject,
+  buildMinecraftStartCommand
 };
