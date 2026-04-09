@@ -1,6 +1,6 @@
 const { getDb, mapBotRow, mapUserRow } = require("./db");
 const { listBytehostProcesses, stopProcess } = require("./pm2");
-const { deriveBotRuntime, isExpired } = require("./runtime");
+const { deriveBotRuntime } = require("./runtime");
 const { isUserExpired } = require("./users");
 const { nowIso } = require("./utils");
 const { SCHEDULER_INTERVAL_MS } = require("../config");
@@ -15,7 +15,7 @@ async function runSchedulerTick() {
   const processList = await listBytehostProcesses().catch(() => []);
   const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
 
-  for (const bot of bots) {
+  for (let bot of bots) {
     const owner = userMap.get(bot.owner_user_id) || null;
 
     if (owner && (!owner.is_active || isUserExpired(owner))) {
@@ -42,24 +42,35 @@ async function runSchedulerTick() {
       continue;
     }
 
-    if (isExpired(bot.expires_at)) {
-      await stopProcess(bot.pm2_name);
+    if (
+      bot.expires_at ||
+      (bot.status === "EXPIRED" && String(bot.status_message || "").startsWith("Usluga wygasla"))
+    ) {
       db.prepare(
         `
           UPDATE bots
-          SET status = 'EXPIRED',
+          SET expires_at = NULL,
+              status = @status,
               status_message = @status_message,
-              stability_status = 'EXPIRED',
+              stability_status = @stability_status,
               updated_at = @updated_at
           WHERE id = @id
         `
       ).run({
         id: bot.id,
-        status_message: "Usluga wygasla i zostala automatycznie zatrzymana.",
+        status: "OFFLINE",
+        status_message: null,
+        stability_status: "STOPPED",
         updated_at: nowIso()
       });
+      bot = {
+        ...bot,
+        expires_at: null,
+        status: "OFFLINE",
+        status_message: null,
+        stability_status: "STOPPED"
+      };
       cpuViolations.delete(bot.id);
-      continue;
     }
 
     const runtime = deriveBotRuntime(bot, processMap.get(bot.pm2_name));

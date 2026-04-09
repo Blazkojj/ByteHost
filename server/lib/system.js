@@ -6,7 +6,7 @@ const { getDb, mapBotRow, mapSystemLimitsRow } = require("./db");
 const { listBytehostProcesses } = require("./pm2");
 const { deriveBotRuntime } = require("./runtime");
 const { getDirectorySize } = require("./storage");
-const { getUserAccountStatus, isAdminUser } = require("./users");
+const { getUserAccountStatus, hasProvisionedPlan, isAdminUser } = require("./users");
 const { nowIso, round, toMb } = require("./utils");
 
 function getSystemLimits() {
@@ -138,6 +138,7 @@ async function collectSystemStats(actor) {
         is_active: actor.is_active,
         expires_at: actor.expires_at || null,
         account_status: getUserAccountStatus(actor),
+        has_active_plan: hasProvisionedPlan(actor),
         limits: {
           max_bots: actor.max_bots ?? null,
           max_ram_mb: actor.max_ram_mb ?? null,

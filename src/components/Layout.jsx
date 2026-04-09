@@ -55,7 +55,7 @@ export function Layout({
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Link className="brand" to="/dashboard">
+        <Link className="brand panel-brand" to="/">
           <img className="brand-logo" src={logoUrl} alt="ByteHost" />
           <div className="brand-copy">
             <strong>ByteHost</strong>

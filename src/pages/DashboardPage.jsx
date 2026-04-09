@@ -3,9 +3,9 @@ import { Activity, Clock3, Cpu, HardDrive, Server, TriangleAlert } from "lucide-
 
 import {
   accountStatusLabel,
-  formatCountdown,
   formatDate,
   formatLimitValue,
+  hasVisibleAccountPlan,
   formatMemoryFromMb,
   formatNumber,
   serviceTypeLabel
@@ -31,9 +31,20 @@ export function DashboardPage({ user, bots, system, loading }) {
   const account = system?.account;
   const limits = system?.limits || {};
   const remaining = system?.remaining || {};
+  const previewAccount =
+    !user.is_admin &&
+    (account?.account_status === "PENDING_APPROVAL" || !hasVisibleAccountPlan(account?.limits || limits));
 
   return (
     <div className="page-grid">
+      {previewAccount ? (
+        <div className="info-card">
+          Konto jest w trybie podgladu. Mozesz obejrzec panel, ale nie utworzysz ani nie uruchomisz
+          zadnej uslugi, dopoki owner nie aktywuje konta i nie przypisze Ci planu. Obecnie nie masz
+          jeszcze wykupionych zasobow.
+        </div>
+      ) : null}
+
       <section className="hero-card">
         <div>
           <p className="eyebrow">{user.is_admin ? "Owner workspace" : "Panel uzytkownika"}</p>
@@ -133,7 +144,7 @@ export function DashboardPage({ user, bots, system, loading }) {
                 <th>Nazwa</th>
                 <th>Status</th>
                 <th>Typ</th>
-                <th>Wygasniecie</th>
+                <th>Storage</th>
                 <th>RAM</th>
               </tr>
             </thead>
@@ -154,7 +165,7 @@ export function DashboardPage({ user, bots, system, loading }) {
                     </td>
                     <td>{bot.status}</td>
                     <td>{serviceTypeLabel(bot.service_type)}</td>
-                    <td>{formatCountdown(bot.expires_at)}</td>
+                    <td>{formatMemoryFromMb(bot.storage_usage_mb || 0)}</td>
                     <td>{formatMemoryFromMb(bot.ram_usage_mb || bot.ram_limit_mb)}</td>
                   </tr>
                 ))

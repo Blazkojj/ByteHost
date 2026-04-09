@@ -1,23 +1,6 @@
 const { round, toMb } = require("./utils");
 
-function isExpired(expiresAt) {
-  return Boolean(expiresAt) && Date.parse(expiresAt) <= Date.now();
-}
-
 function deriveBotRuntime(bot, processInfo) {
-  if (isExpired(bot.expires_at)) {
-    return {
-      status: "EXPIRED",
-      pm2_status: processInfo?.pm2_env?.status || "stopped",
-      ram_usage_mb: 0,
-      cpu_usage_percent: 0,
-      uptime_seconds: 0,
-      restart_count: bot.restart_count || 0,
-      last_restart_at: bot.last_restart_at,
-      stability_status: "EXPIRED"
-    };
-  }
-
   if (!processInfo) {
     return {
       status: bot.status === "CRASH LOOP" ? "CRASH LOOP" : bot.status || "OFFLINE",
@@ -84,7 +67,6 @@ function mergeBotWithRuntime(bot, processInfo) {
 }
 
 module.exports = {
-  isExpired,
   deriveBotRuntime,
   mergeBotWithRuntime
 };

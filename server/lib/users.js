@@ -12,6 +12,12 @@ const {
 } = require("./utils");
 
 const MIN_PASSWORD_LENGTH = 8;
+const PENDING_ACCOUNT_PLAN = {
+  max_bots: 0,
+  max_ram_mb: 0,
+  max_cpu_percent: 0,
+  max_storage_mb: 0
+};
 
 function normalizeEmail(value) {
   const normalized = coerceNullableString(value, null);
@@ -60,11 +66,26 @@ function getUserAccountStatus(user) {
 }
 
 function canUserLogin(user) {
-  return Boolean(user && user.is_active && !user.pending_approval);
+  return Boolean(user && !isUserExpired(user) && (user.is_active || user.pending_approval));
 }
 
 function canUserManageServices(user) {
-  return Boolean(user && user.is_active && !user.pending_approval && !isUserExpired(user));
+  return Boolean(user && user.is_active && !user.pending_approval && hasProvisionedPlan(user) && !isUserExpired(user));
+}
+
+function hasProvisionedPlan(user) {
+  if (!user || isAdminUser(user)) {
+    return true;
+  }
+
+  const planFields = [
+    user.max_bots,
+    user.max_ram_mb,
+    user.max_cpu_percent,
+    user.max_storage_mb
+  ];
+
+  return planFields.every((value) => value === null || value === undefined || Number(value) > 0);
 }
 
 function mapUserForClient(user) {
@@ -78,6 +99,7 @@ function mapUserForClient(user) {
     ...safeUser,
     is_admin: isAdminUser(mapped),
     account_status: getUserAccountStatus(mapped),
+    has_active_plan: hasProvisionedPlan(mapped),
     limits: {
       max_bots: safeUser.max_bots,
       max_ram_mb: safeUser.max_ram_mb,
@@ -196,6 +218,7 @@ async function createUserAccount(payload, options = {}) {
   const role = options.role || "user";
   const pendingApproval = role === "owner" ? false : Boolean(options.pendingApproval);
   const defaultPlan = options.defaultPlan || DEFAULT_USER_PLAN;
+  const forceActive = Boolean(options.forceActive);
   const createdAt = nowIso();
 
   const userRecord = {
@@ -219,7 +242,7 @@ async function createUserAccount(payload, options = {}) {
     is_active:
       role === "owner"
         ? 1
-        : (pendingApproval ? 0 : (coerceBoolean(payload.is_active, true) ? 1 : 0)),
+        : (forceActive ? 1 : (pendingApproval ? 0 : (coerceBoolean(payload.is_active, true) ? 1 : 0))),
     pending_approval: role === "owner" ? 0 : (pendingApproval ? 1 : 0),
     created_at: createdAt,
     updated_at: createdAt
@@ -422,7 +445,11 @@ async function ensureDefaultOwner() {
 }
 
 async function registerPendingUser(payload) {
-  return createUserAccount(payload, { pendingApproval: true });
+  return createUserAccount(payload, {
+    pendingApproval: true,
+    forceActive: true,
+    defaultPlan: PENDING_ACCOUNT_PLAN
+  });
 }
 
 module.exports = {
@@ -432,6 +459,7 @@ module.exports = {
   getUserAccountStatus,
   canUserLogin,
   canUserManageServices,
+  hasProvisionedPlan,
   mapUserForClient,
   getUserById,
   getPublicUserById,

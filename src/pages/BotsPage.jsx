@@ -5,8 +5,8 @@ import { Plus, Upload } from "lucide-react";
 import { api } from "../api";
 import { BotWorkspace } from "../components/BotWorkspace";
 import {
-  formatCountdown,
   formatLimitValue,
+  hasVisibleAccountPlan,
   formatMemoryFromMb,
   formatMemoryLimit,
   formatNumber,
@@ -24,7 +24,6 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     minecraft_version: "",
     entry_file: "",
     start_command: "",
-    expires_at: "",
     auto_restart: true,
     restart_delay: 5000,
     max_restarts: 5,
@@ -267,14 +266,6 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             />
           </label>
           <label>
-            Wygasa o
-            <input
-              type="datetime-local"
-              value={form.expires_at}
-              onChange={(event) => setForm((current) => ({ ...current, expires_at: event.target.value }))}
-            />
-          </label>
-          <label>
             Restart delay (ms)
             <input
               type="number"
@@ -404,11 +395,15 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
   const [createOpen, setCreateOpen] = useState(false);
 
   const selectedBot = bots.find((bot) => bot.id === id) || null;
+  const accountLocked =
+    !user?.is_admin &&
+    (system?.account?.account_status === "PENDING_APPROVAL" ||
+      !hasVisibleAccountPlan(system?.account?.limits || system?.limits));
 
   return (
     <>
       <CreateBotPanel
-        open={createOpen}
+        open={createOpen && !accountLocked}
         user={user}
         system={system}
         onClose={() => setCreateOpen(false)}
@@ -426,18 +421,35 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
               <p className="eyebrow">Uslugi</p>
               <h3>Workspace</h3>
             </div>
-            <button className="primary-button" onClick={() => setCreateOpen(true)}>
+            <button
+              className="primary-button"
+              onClick={() => setCreateOpen(true)}
+              disabled={accountLocked}
+              title={
+                accountLocked
+                  ? "Konto jest w trybie podgladu i nie ma jeszcze aktywnego planu."
+                  : ""
+              }
+            >
               <Plus size={16} />
               <span>Nowa usluga</span>
             </button>
           </div>
+
+          {accountLocked ? (
+            <div className="info-card">
+              Konto nie ma jeszcze aktywnego planu. Mozesz obejrzec panel, ale tworzenie i
+              uruchamianie uslug jest zablokowane, dopoki owner nie aktywuje konta i nie ustawi
+              limitow.
+            </div>
+          ) : null}
 
           <div className="list-summary">
             <span>Lacznie: {formatNumber(system?.statuses?.total)}</span>
             <span>ONLINE: {formatNumber(system?.statuses?.online)}</span>
             <span>
               {user?.is_admin
-                ? `EXPIRED: ${formatNumber(system?.statuses?.expired)}`
+                ? `CRASH LOOP: ${formatNumber(system?.statuses?.crash_loop)}`
                 : `Pozostalo limitu: ${formatNumber(system?.remaining?.bots)}`}
             </span>
           </div>
@@ -463,8 +475,8 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
                   </div>
                   <div className="bot-list-meta">
                     <span>{bot.status}</span>
-                    <small>{formatCountdown(bot.expires_at)}</small>
-                    <small>{formatNumber(bot.storage_usage_mb, " MB")}</small>
+                    <small>RAM {formatMemoryLimit(bot.ram_limit_mb)}</small>
+                    <small>{formatMemoryFromMb(bot.storage_usage_mb || 0)}</small>
                   </div>
                 </Link>
               ))

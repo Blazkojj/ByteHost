@@ -16,19 +16,15 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import {
-  formatCountdown,
-  formatDate,
   formatDuration,
   formatMemoryFromMb,
   formatMemoryLimit,
   formatNumber,
-  fromDatetimeLocal,
   gbInputToMb,
   mbToGbInput,
   serviceJoinAddress,
   serviceTypeLabel,
-  statusTheme,
-  toDatetimeLocal
+  statusTheme
 } from "../utils";
 
 function StatusBadge({ status }) {
@@ -53,7 +49,6 @@ function buildSettingsState(service) {
     minecraft_version: service.minecraft_version || "",
     entry_file: service.entry_file || "",
     start_command: service.start_command || "",
-    expires_at: toDatetimeLocal(service.expires_at),
     auto_restart: Boolean(service.auto_restart),
     restart_delay: service.restart_delay ?? 5000,
     max_restarts: service.max_restarts ?? 5,
@@ -242,8 +237,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     try {
       const payload = {
         ...settings,
-        ram_limit_mb: gbInputToMb(settings.ram_limit_mb, settings.ram_limit_mb),
-        expires_at: fromDatetimeLocal(settings.expires_at)
+        ram_limit_mb: gbInputToMb(settings.ram_limit_mb, settings.ram_limit_mb)
       };
 
       const updatedBot = await api.updateBot(botId, payload);
@@ -581,16 +575,16 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             }
           />
           <SummaryTile
-            label={isMinecraft ? "CPU" : "Wygasa za"}
+            label={isMinecraft ? "CPU" : "Storage"}
             value={
               isMinecraft
                 ? formatNumber(bot.cpu_usage_percent, "%")
-                : formatCountdown(bot.expires_at)
+                : formatMemoryFromMb(bot.storage_usage_mb || 0)
             }
             hint={
               isMinecraft
                 ? `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
-                : formatDate(bot.expires_at)
+                : "Rozmiar plikow uslugi"
             }
           />
           <SummaryTile
@@ -602,13 +596,6 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 : bot.status_message || "Brak alertow"
             }
           />
-          {isMinecraft ? (
-            <SummaryTile
-              label="Wygasa za"
-              value={formatCountdown(bot.expires_at)}
-              hint={formatDate(bot.expires_at)}
-            />
-          ) : null}
         </div>
 
         {message ? <div className="banner success">{message}</div> : null}
@@ -726,16 +713,6 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 value={settings.start_command}
                 onChange={(event) =>
                   setSettings((current) => ({ ...current, start_command: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Wygasa o
-              <input
-                type="datetime-local"
-                value={settings.expires_at}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, expires_at: event.target.value }))
                 }
               />
             </label>

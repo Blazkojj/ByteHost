@@ -132,7 +132,7 @@ export function userRoleLabel(role) {
 }
 
 export function formatLimitValue(value, suffix = "") {
-  if (value === null || value === undefined || Number(value) === 0) {
+  if (value === null || value === undefined) {
     return "Bez limitu";
   }
 
@@ -155,11 +155,26 @@ export function formatMemoryFromMb(value) {
 }
 
 export function formatMemoryLimit(value) {
-  if (value === null || value === undefined || Number(value) === 0) {
+  if (value === null || value === undefined) {
     return "Bez limitu";
   }
 
   return formatMemoryFromMb(value);
+}
+
+export function hasVisibleAccountPlan(limits) {
+  if (!limits) {
+    return false;
+  }
+
+  const values = [
+    limits.max_bots,
+    limits.max_ram_mb,
+    limits.max_cpu_percent,
+    limits.max_storage_mb
+  ];
+
+  return values.every((value) => value === null || value === undefined || Number(value) > 0);
 }
 
 export function mbToGbInput(value, fallback = "") {

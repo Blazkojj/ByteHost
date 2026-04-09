@@ -85,10 +85,6 @@ async function loginWithPassword(email, password) {
     throw createHttpError(401, "Nieprawidlowy email lub haslo.");
   }
 
-  if (user.pending_approval) {
-    throw createHttpError(403, "Konto czeka na aktywacje przez ownera.");
-  }
-
   if (!canUserLogin(user)) {
     throw createHttpError(403, "To konto jest nieaktywne.");
   }

@@ -8,7 +8,7 @@ const { analyzeProject, buildMinecraftStartCommand } = require("./analyzer");
 const { runShellCommand } = require("./commands");
 const { getBotLogs, appendBotLog, removeBotLogs } = require("./logs");
 const { downloadMinecraftServerJar } = require("./minecraft");
-const { mergeBotWithRuntime, deriveBotRuntime, isExpired } = require("./runtime");
+const { mergeBotWithRuntime, deriveBotRuntime } = require("./runtime");
 const {
   ensureBotDirectory,
   getDirectorySize,
@@ -34,6 +34,7 @@ const {
 const {
   canUserManageServices,
   getUserById,
+  hasProvisionedPlan,
   isAdminUser,
   isUserExpired
 } = require("./users");
@@ -91,20 +92,6 @@ function sanitizePublicPort(value, fallback = null) {
 
 function normalizeMinecraftVersion(value, fallback = null) {
   return coerceNullableString(value, fallback);
-}
-
-function normalizeExpiresAt(value) {
-  const normalized = coerceNullableString(value, null);
-  if (!normalized) {
-    return null;
-  }
-
-  const parsed = new Date(normalized);
-  if (Number.isNaN(parsed.getTime())) {
-    throw createHttpError(400, "Nieprawidlowa data wygasniecia.");
-  }
-
-  return parsed.toISOString();
 }
 
 function listBotRows(actor = null) {
@@ -206,8 +193,22 @@ function assertOwnerCanProvisionServices(owner) {
     throw createHttpError(400, "Usluga nie ma przypisanego wlasciciela.");
   }
 
+  if (owner.pending_approval) {
+    throw createHttpError(
+      403,
+      "Konto jest w trybie podgladu. Owner musi je aktywowac i przypisac aktywny plan przed tworzeniem uslug."
+    );
+  }
+
   if (!owner.is_active) {
     throw createHttpError(403, "To konto jest nieaktywne. Administrator musi je ponownie aktywowac.");
+  }
+
+  if (!hasProvisionedPlan(owner)) {
+    throw createHttpError(
+      403,
+      "To konto nie ma aktywnego planu. Nie wykupiono jeszcze zasobow dla tworzenia i uruchamiania uslug."
+    );
   }
 
   if (isUserExpired(owner)) {
@@ -256,21 +257,25 @@ function assertBotReservationWithinUserPlan(owner, options = {}) {
   const projectedRamMb = reserved.ram_mb + Number(nextRamLimitMb || 0);
   const projectedCpuPercent = reserved.cpu_percent + Number(nextCpuLimitPercent || 0);
 
-  if (owner.max_bots && projectedBotCount > Number(owner.max_bots)) {
+  if (owner.max_bots !== null && owner.max_bots !== undefined && projectedBotCount > Number(owner.max_bots)) {
     throw createHttpError(
       400,
       `Przekroczono limit liczby uslug dla konta (${projectedBotCount} / ${owner.max_bots}).`
     );
   }
 
-  if (owner.max_ram_mb && projectedRamMb > Number(owner.max_ram_mb)) {
+  if (owner.max_ram_mb !== null && owner.max_ram_mb !== undefined && projectedRamMb > Number(owner.max_ram_mb)) {
     throw createHttpError(
       400,
       `Przekroczono limit planu RAM dla konta (${round(projectedRamMb)} MB / ${owner.max_ram_mb} MB).`
     );
   }
 
-  if (owner.max_cpu_percent && projectedCpuPercent > Number(owner.max_cpu_percent)) {
+  if (
+    owner.max_cpu_percent !== null &&
+    owner.max_cpu_percent !== undefined &&
+    projectedCpuPercent > Number(owner.max_cpu_percent)
+  ) {
     throw createHttpError(
       400,
       `Przekroczono limit planu CPU dla konta (${round(projectedCpuPercent)}% / ${owner.max_cpu_percent}%).`
@@ -347,7 +352,7 @@ async function assertStorageWithinLimit() {
 }
 
 async function assertUserStorageWithinLimit(owner) {
-  if (!owner || isAdminUser(owner) || !owner.max_storage_mb) {
+  if (!owner || isAdminUser(owner) || owner.max_storage_mb === null || owner.max_storage_mb === undefined) {
     return;
   }
 
@@ -421,14 +426,22 @@ async function assertStartWithinLimits(bot, owner) {
     const projectedOwnerRamMb = currentOwnerRamMb + getReservedRam(bot);
     const projectedOwnerCpuPercent = currentOwnerCpuPercent + getReservedCpu(bot);
 
-    if (owner.max_ram_mb && projectedOwnerRamMb > Number(owner.max_ram_mb)) {
+    if (
+      owner.max_ram_mb !== null &&
+      owner.max_ram_mb !== undefined &&
+      projectedOwnerRamMb > Number(owner.max_ram_mb)
+    ) {
       throw createHttpError(
         400,
         `Start zablokowany: limit RAM konta zostalby przekroczony (${round(projectedOwnerRamMb)} MB / ${owner.max_ram_mb} MB).`
       );
     }
 
-    if (owner.max_cpu_percent && projectedOwnerCpuPercent > Number(owner.max_cpu_percent)) {
+    if (
+      owner.max_cpu_percent !== null &&
+      owner.max_cpu_percent !== undefined &&
+      projectedOwnerCpuPercent > Number(owner.max_cpu_percent)
+    ) {
       throw createHttpError(
         400,
         `Start zablokowany: limit CPU konta zostalby przekroczony (${round(projectedOwnerCpuPercent)}% / ${owner.max_cpu_percent}%).`
@@ -711,7 +724,6 @@ async function createBot(actor, payload, artifactFile) {
 
     const analysis = await analyzeServiceProject(botDirectory, serviceType, ramLimitMb);
     const createdAt = nowIso();
-    const expiresAt = normalizeExpiresAt(payload.expires_at);
     const derivedName =
       coerceNullableString(payload.name, null) ||
       path.basename(
@@ -745,9 +757,9 @@ async function createBot(actor, payload, artifactFile) {
       detected_install_command: analysis.install_command,
       package_manager: analysis.package_manager,
       project_path: botDirectory,
-      status: isExpired(expiresAt) ? "EXPIRED" : "OFFLINE",
-      status_message: isExpired(expiresAt) ? "Usluga wygasla i zostala zablokowana." : null,
-      expires_at: expiresAt,
+      status: "OFFLINE",
+      status_message: null,
+      expires_at: null,
       auto_restart: coerceBoolean(payload.auto_restart, true),
       restart_delay: coerceNullableNumber(payload.restart_delay, DEFAULT_BOT_LIMITS.restart_delay),
       max_restarts: coerceNullableNumber(payload.max_restarts, DEFAULT_BOT_LIMITS.max_restarts),
@@ -797,10 +809,6 @@ async function createBot(actor, payload, artifactFile) {
 async function updateBot(botId, actor, payload) {
   const existingBot = getBotRow(botId, actor);
   const owner = getBotOwner(existingBot);
-  const nextExpiresAt =
-    payload.expires_at !== undefined
-      ? normalizeExpiresAt(payload.expires_at)
-      : existingBot.expires_at;
   const nextRamLimit =
     payload.ram_limit_mb !== undefined
       ? coerceNullableNumber(payload.ram_limit_mb, existingBot.ram_limit_mb)
@@ -887,7 +895,7 @@ async function updateBot(botId, actor, payload) {
     detected_entry_file: nextDetectedEntryFile,
     start_command: nextStartCommand,
     detected_start_command: defaultStartCommand,
-    expires_at: nextExpiresAt,
+    expires_at: null,
     auto_restart:
       payload.auto_restart !== undefined
         ? coerceBoolean(payload.auto_restart, existingBot.auto_restart)
@@ -934,10 +942,7 @@ async function updateBot(botId, actor, payload) {
     });
   }
 
-  if (isExpired(nextExpiresAt)) {
-    changes.status = "EXPIRED";
-    changes.status_message = "Usluga wygasla i zostala zatrzymana przez scheduler.";
-  } else if (existingBot.status === "EXPIRED") {
+  if (existingBot.status === "EXPIRED" && !isUserExpired(owner)) {
     changes.status = "OFFLINE";
     changes.status_message = null;
   }
@@ -947,10 +952,6 @@ async function updateBot(botId, actor, payload) {
     auto_restart: changes.auto_restart ? 1 : 0,
     accept_eula: changes.accept_eula ? 1 : 0
   });
-
-  if (isExpired(nextExpiresAt)) {
-    await stopProcess(existingBot.pm2_name);
-  }
 
   const requiresRestart =
     existingBot.status === "ONLINE" &&
@@ -984,10 +985,6 @@ async function startBot(botId, actor) {
 
   try {
     assertOwnerCanProvisionServices(owner);
-
-    if (isExpired(bot.expires_at)) {
-      throw createHttpError(400, "Usluga wygasla. Zmien expires_at, aby ja uruchomic.");
-    }
 
     if (bot.service_type === "minecraft_server") {
       await ensureJavaRuntimeAvailable(bot.project_path);
@@ -1266,8 +1263,9 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       detected_minecraft_version:
         bot.service_type === "minecraft_server" ? null : bot.detected_minecraft_version,
       archive_name: artifactFile.originalname || bot.archive_name,
-      status: isExpired(bot.expires_at) ? "EXPIRED" : "OFFLINE",
+      status: "OFFLINE",
       status_message: null,
+      expires_at: null,
       updated_at: nowIso()
     });
 
@@ -1281,7 +1279,7 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
 
     let updatedBot = await getBotWithRuntime(botId, actor);
 
-    if (restartAfterUpdate && !isExpired(updatedBot.expires_at)) {
+    if (restartAfterUpdate) {
       updatedBot = await startBot(botId, actor);
     }
 

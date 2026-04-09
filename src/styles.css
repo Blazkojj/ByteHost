@@ -214,6 +214,15 @@ strong,
   background: radial-gradient(circle at top, rgba(255, 255, 255, 0.28), transparent 70%);
 }
 
+.panel-brand .brand-logo {
+  width: 78px;
+  height: 78px;
+}
+
+.panel-brand .brand-copy strong {
+  font-size: 24px;
+}
+
 .brand-copy {
   display: grid;
   gap: 4px;
