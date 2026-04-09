@@ -2,27 +2,29 @@ import { useEffect, useState } from "react";
 import { Plus, Save, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 
 import { api } from "../api";
-import { accountStatusLabel, formatDate, formatNumber, fromDatetimeLocal, toDatetimeLocal, userRoleLabel } from "../utils";
+import {
+  accountStatusLabel,
+  formatDate,
+  formatLimitValue,
+  formatMemoryLimit,
+  fromDatetimeLocal,
+  gbInputToMb,
+  mbToGbInput,
+  toDatetimeLocal,
+  userRoleLabel
+} from "../utils";
 
 function buildUserForm(user) {
   return {
     email: user.email || "",
     password: "",
     max_bots: user.max_bots ?? "",
-    max_ram_mb: user.max_ram_mb ?? "",
+    max_ram_mb: mbToGbInput(user.max_ram_mb, ""),
     max_cpu_percent: user.max_cpu_percent ?? "",
     max_storage_mb: user.max_storage_mb ?? "",
     expires_at: toDatetimeLocal(user.expires_at),
     is_active: Boolean(user.is_active)
   };
-}
-
-function formatPlanValue(value, suffix = "") {
-  if (value === null || value === undefined || value === "" || Number(value) === 0) {
-    return `Bez limitu${suffix ? ` ${suffix.trim()}` : ""}`.trim();
-  }
-
-  return formatNumber(value, suffix);
 }
 
 export function AdminUsersPage() {
@@ -32,7 +34,7 @@ export function AdminUsersPage() {
     email: "",
     password: "",
     max_bots: 3,
-    max_ram_mb: 2048,
+    max_ram_mb: 2,
     max_cpu_percent: 100,
     max_storage_mb: 2048,
     expires_at: "",
@@ -51,9 +53,7 @@ export function AdminUsersPage() {
     try {
       const nextUsers = await api.getUsers();
       setUsers(nextUsers);
-      setUserForms(
-        Object.fromEntries(nextUsers.map((user) => [user.id, buildUserForm(user)]))
-      );
+      setUserForms(Object.fromEntries(nextUsers.map((user) => [user.id, buildUserForm(user)])));
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -74,13 +74,14 @@ export function AdminUsersPage() {
     try {
       await api.createUser({
         ...createForm,
+        max_ram_mb: gbInputToMb(createForm.max_ram_mb, createForm.max_ram_mb),
         expires_at: fromDatetimeLocal(createForm.expires_at)
       });
       setCreateForm({
         email: "",
         password: "",
         max_bots: 3,
-        max_ram_mb: 2048,
+        max_ram_mb: 2,
         max_cpu_percent: 100,
         max_storage_mb: 2048,
         expires_at: "",
@@ -104,6 +105,7 @@ export function AdminUsersPage() {
       const form = userForms[user.id];
       const payload = {
         ...form,
+        max_ram_mb: gbInputToMb(form.max_ram_mb, form.max_ram_mb),
         expires_at: fromDatetimeLocal(form.expires_at)
       };
 
@@ -184,14 +186,16 @@ export function AdminUsersPage() {
             />
           </label>
           <label>
-            Limit RAM (MB)
+            Limit RAM (GB)
             <input
               type="number"
+              step="0.25"
               value={createForm.max_ram_mb}
               onChange={(event) =>
                 setCreateForm((current) => ({ ...current, max_ram_mb: event.target.value }))
               }
             />
+            <small>Wpisz w GB. `1` oznacza 1024 MB.</small>
           </label>
           <label>
             Limit CPU (%)
@@ -270,9 +274,7 @@ export function AdminUsersPage() {
                   <div className="section-header compact-header">
                     <div>
                       <strong>{user.email}</strong>
-                      <small>
-                        {userRoleLabel(user.role)} · {accountStatusLabel(user.account_status)}
-                      </small>
+                      <small>{`${userRoleLabel(user.role)} | ${accountStatusLabel(user.account_status)}`}</small>
                     </div>
                     {!isOwner ? (
                       <button
@@ -288,10 +290,10 @@ export function AdminUsersPage() {
 
                   <div className="user-meta-grid">
                     <span>Wygasa: {formatDate(user.expires_at)}</span>
-                    <span>Boty: {formatPlanValue(user.max_bots)}</span>
-                    <span>RAM: {formatPlanValue(user.max_ram_mb, " MB")}</span>
-                    <span>CPU: {formatPlanValue(user.max_cpu_percent, "%")}</span>
-                    <span>Storage: {formatPlanValue(user.max_storage_mb, " MB")}</span>
+                    <span>Boty: {formatLimitValue(user.max_bots)}</span>
+                    <span>RAM: {formatMemoryLimit(user.max_ram_mb)}</span>
+                    <span>CPU: {formatLimitValue(user.max_cpu_percent, "%")}</span>
+                    <span>Storage: {formatLimitValue(user.max_storage_mb, " MB")}</span>
                   </div>
 
                   <div className="form-grid nested-form">
@@ -336,10 +338,11 @@ export function AdminUsersPage() {
                       />
                     </label>
                     <label>
-                      Limit RAM (MB)
+                      Limit RAM (GB)
                       <input
                         type="number"
                         disabled={isOwner}
+                        step="0.25"
                         value={form.max_ram_mb}
                         onChange={(event) =>
                           setUserForms((current) => ({
@@ -348,6 +351,7 @@ export function AdminUsersPage() {
                           }))
                         }
                       />
+                      <small>Wpisz w GB. ByteHost zapisze to jako MB.</small>
                     </label>
                     <label>
                       Limit CPU (%)

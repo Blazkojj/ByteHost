@@ -6,7 +6,11 @@ import { api } from "../api";
 import { BotWorkspace } from "../components/BotWorkspace";
 import {
   formatCountdown,
+  formatLimitValue,
+  formatMemoryFromMb,
+  formatMemoryLimit,
   formatNumber,
+  gbInputToMb,
   serviceArtifactLabel,
   serviceTypeLabel
 } from "../utils";
@@ -24,7 +28,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     auto_restart: true,
     restart_delay: 5000,
     max_restarts: 5,
-    ram_limit_mb: 512,
+    ram_limit_mb: "0.5",
     cpu_limit_percent: 35,
     install_on_create: false,
     accept_eula: false,
@@ -82,7 +86,10 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
 
       Object.entries(form).forEach(([key, value]) => {
         if (value !== "" && value !== null && value !== undefined) {
-          payload.append(key, String(value));
+          payload.append(
+            key,
+            key === "ram_limit_mb" ? String(gbInputToMb(value, value)) : String(value)
+          );
         }
       });
 
@@ -125,10 +132,11 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
 
         {!user?.is_admin ? (
           <div className="info-card">
-            Twoj plan: {system?.usage?.bots || 0}/{system?.limits?.max_bots || 0} uslug, RAM{" "}
-            {system?.usage?.ram_mb || 0}/{system?.limits?.ram_limit_mb || 0} MB, CPU{" "}
-            {system?.usage?.cpu_percent || 0}/{system?.limits?.cpu_limit_percent || 0}%,
-            storage {system?.usage?.storage_mb || 0}/{system?.limits?.storage_limit_mb || 0} MB.
+            Twoj plan: {system?.usage?.bots || 0}/{formatLimitValue(system?.limits?.max_bots)} uslug, RAM{" "}
+            {formatMemoryFromMb(system?.usage?.ram_mb || 0)}/
+            {formatMemoryLimit(system?.limits?.ram_limit_mb || 0)}, CPU{" "}
+            {system?.usage?.cpu_percent || 0}/{formatLimitValue(system?.limits?.cpu_limit_percent, "%")},
+            storage {system?.usage?.storage_mb || 0}/{formatLimitValue(system?.limits?.storage_limit_mb, " MB")}.
           </div>
         ) : null}
 
@@ -287,14 +295,16 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             />
           </label>
           <label>
-            Limit RAM (MB)
+            Limit RAM (GB)
             <input
               type="number"
+              step="0.25"
               value={form.ram_limit_mb}
               onChange={(event) =>
                 setForm((current) => ({ ...current, ram_limit_mb: event.target.value }))
               }
             />
+            <small>Wpisz wartosc w GB, np. `1` = 1024 MB.</small>
           </label>
           <label>
             Limit CPU (%)

@@ -10,7 +10,7 @@ import {
   Users
 } from "lucide-react";
 
-import { accountStatusLabel, formatDate, formatNumber, userRoleLabel } from "../utils";
+import { accountStatusLabel, formatDate, formatMemoryFromMb, formatNumber, userRoleLabel } from "../utils";
 
 function StatChip({ label, value }) {
   return (
@@ -91,7 +91,7 @@ export function Layout({ children, user, bots, system, onRefresh, onLogout, load
 
           <div className="topbar-actions">
             <StatChip label="Uslugi" value={formatNumber(system?.usage?.bots)} />
-            <StatChip label="RAM" value={formatNumber(system?.usage?.ram_mb, " MB")} />
+            <StatChip label="RAM" value={formatMemoryFromMb(system?.usage?.ram_mb)} />
             <StatChip label="Storage" value={formatNumber(system?.usage?.storage_mb, " MB")} />
             <button className="ghost-button" onClick={onRefresh} disabled={loading}>
               <RefreshCw size={16} className={loading ? "spin" : ""} />
@@ -117,7 +117,7 @@ export function Layout({ children, user, bots, system, onRefresh, onLogout, load
           </div>
           <div>
             <HardDrive size={16} />
-            <span>Storage: {formatNumber(system?.usage?.storage_mb, " MB")}</span>
+            <span>{`RAM: ${formatMemoryFromMb(system?.usage?.ram_mb)} | Storage: ${formatNumber(system?.usage?.storage_mb, " MB")}`}</span>
           </div>
         </footer>
       </div>

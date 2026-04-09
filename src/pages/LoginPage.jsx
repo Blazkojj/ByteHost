@@ -36,10 +36,10 @@ export function LoginPage({ onLogin, loading }) {
 
         <div className="login-copy">
           <p className="eyebrow">Logowanie</p>
-          <h1>Zaloguj sie do panelu hostingowego.</h1>
+          <h1>Wejdz do swojego panelu ByteHost.</h1>
           <p>
-            Rejestracja publiczna jest wylaczona. Konta tworzy tylko owner w panelu
-            administratora.
+            Rejestracja publiczna jest wylaczona. Konta tworzy tylko owner z panelu
+            administracyjnego.
           </p>
         </div>
 
@@ -64,11 +64,11 @@ export function LoginPage({ onLogin, loading }) {
               onChange={(event) =>
                 setForm((current) => ({ ...current, password: event.target.value }))
               }
-              placeholder="••••••••"
+              placeholder="********"
             />
           </label>
 
-          <div className="info-card wide">
+          <div className="info-card info-card-inline wide">
             <LockKeyhole size={18} />
             <span>Sesja dziala na JWT, a hasla sa przechowywane jako hash bcrypt.</span>
           </div>

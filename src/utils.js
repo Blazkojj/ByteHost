@@ -6,6 +6,8 @@ export const statusTheme = {
   "CRASH LOOP": "danger"
 };
 
+const MB_PER_GB = 1024;
+
 export function formatNumber(value, suffix = "") {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return `0${suffix}`;
@@ -125,4 +127,62 @@ export function accountStatusLabel(status) {
 
 export function userRoleLabel(role) {
   return role === "owner" ? "Owner" : "Uzytkownik";
+}
+
+export function formatLimitValue(value, suffix = "") {
+  if (value === null || value === undefined || Number(value) === 0) {
+    return "Bez limitu";
+  }
+
+  return formatNumber(value, suffix);
+}
+
+export function formatMemoryFromMb(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "0 MB";
+  }
+
+  const numeric = Number(value);
+  if (numeric >= MB_PER_GB) {
+    return `${new Intl.NumberFormat("pl-PL", {
+      maximumFractionDigits: numeric % MB_PER_GB === 0 ? 0 : 2
+    }).format(numeric / MB_PER_GB)} GB`;
+  }
+
+  return `${formatNumber(numeric, " MB")}`;
+}
+
+export function formatMemoryLimit(value) {
+  if (value === null || value === undefined || Number(value) === 0) {
+    return "Bez limitu";
+  }
+
+  return formatMemoryFromMb(value);
+}
+
+export function mbToGbInput(value, fallback = "") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  const gbValue = numeric / MB_PER_GB;
+  return String(Number.isInteger(gbValue) ? gbValue : Math.round(gbValue * 100) / 100);
+}
+
+export function gbInputToMb(value, fallback = "") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return String(Math.max(0, Math.round(numeric * MB_PER_GB)));
 }

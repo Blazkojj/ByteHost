@@ -5,6 +5,8 @@ import {
   accountStatusLabel,
   formatCountdown,
   formatDate,
+  formatLimitValue,
+  formatMemoryFromMb,
   formatNumber,
   serviceTypeLabel
 } from "../utils";
@@ -60,15 +62,24 @@ export function DashboardPage({ user, bots, system, loading }) {
           </div>
           <div className="resource-bar">
             <label>CPU</label>
-            <progress value={system?.usage?.cpu_percent || 0} max={limits.cpu_limit_percent || 100} />
+            <progress
+              value={system?.usage?.cpu_percent || 0}
+              max={limits.cpu_limit_percent || Math.max(100, system?.usage?.cpu_percent || 0)}
+            />
           </div>
           <div className="resource-bar">
             <label>RAM</label>
-            <progress value={system?.usage?.ram_mb || 0} max={limits.ram_limit_mb || 100} />
+            <progress
+              value={system?.usage?.ram_mb || 0}
+              max={limits.ram_limit_mb || Math.max(1024, system?.usage?.ram_mb || 0)}
+            />
           </div>
           <div className="resource-bar">
             <label>Storage</label>
-            <progress value={system?.usage?.storage_mb || 0} max={limits.storage_limit_mb || 100} />
+            <progress
+              value={system?.usage?.storage_mb || 0}
+              max={limits.storage_limit_mb || Math.max(1024, system?.usage?.storage_mb || 0)}
+            />
           </div>
         </div>
       </section>
@@ -78,12 +89,12 @@ export function DashboardPage({ user, bots, system, loading }) {
           icon={Server}
           label={user.is_admin ? "Wszystkie uslugi" : "Twoje uslugi"}
           value={formatNumber(system?.statuses?.total)}
-          hint={`Limit: ${formatNumber(limits.max_bots)}`}
+          hint={`Limit: ${formatLimitValue(limits.max_bots)}`}
         />
         <MetricCard
           icon={Activity}
           label={user.is_admin ? "ONLINE" : "Pozostalo botow"}
-          value={formatNumber(user.is_admin ? system?.statuses?.online : remaining.bots)}
+          value={user.is_admin ? formatNumber(system?.statuses?.online) : formatLimitValue(remaining.bots)}
           hint={user.is_admin ? "Procesy aktualnie uruchomione" : `Wykorzystane: ${formatNumber(system?.usage?.bots)}`}
         />
         <MetricCard
@@ -100,7 +111,7 @@ export function DashboardPage({ user, bots, system, loading }) {
           icon={HardDrive}
           label="Storage"
           value={formatNumber(system?.usage?.storage_mb, " MB")}
-          hint={`Pozostalo: ${formatNumber(remaining.storage_mb, " MB")}`}
+          hint={`Pozostalo: ${formatLimitValue(remaining.storage_mb, " MB")}`}
         />
       </section>
 
@@ -144,7 +155,7 @@ export function DashboardPage({ user, bots, system, loading }) {
                     <td>{bot.status}</td>
                     <td>{serviceTypeLabel(bot.service_type)}</td>
                     <td>{formatCountdown(bot.expires_at)}</td>
-                    <td>{formatNumber(bot.ram_usage_mb || bot.ram_limit_mb, " MB")}</td>
+                    <td>{formatMemoryFromMb(bot.ram_usage_mb || bot.ram_limit_mb)}</td>
                   </tr>
                 ))
               )}
@@ -191,7 +202,9 @@ export function DashboardPage({ user, bots, system, loading }) {
               <strong>
                 {user.is_admin
                   ? formatDate(new Date())
-                  : formatNumber(remaining.ram_mb, " MB")}
+                  : formatLimitValue(remaining.ram_mb, " MB") === "Bez limitu"
+                    ? "Bez limitu"
+                    : formatMemoryFromMb(remaining.ram_mb)}
               </strong>
             </div>
           </div>

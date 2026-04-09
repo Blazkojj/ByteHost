@@ -19,8 +19,12 @@ import {
   formatCountdown,
   formatDate,
   formatDuration,
+  formatMemoryFromMb,
+  formatMemoryLimit,
   formatNumber,
   fromDatetimeLocal,
+  gbInputToMb,
+  mbToGbInput,
   serviceJoinAddress,
   serviceTypeLabel,
   statusTheme,
@@ -53,7 +57,7 @@ function buildSettingsState(service) {
     auto_restart: Boolean(service.auto_restart),
     restart_delay: service.restart_delay ?? 5000,
     max_restarts: service.max_restarts ?? 5,
-    ram_limit_mb: service.ram_limit_mb ?? 512,
+    ram_limit_mb: mbToGbInput(service.ram_limit_mb ?? 512, "0.5"),
     cpu_limit_percent: service.cpu_limit_percent ?? 35,
     accept_eula: Boolean(service.accept_eula),
     public_host: service.public_host || "",
@@ -238,6 +242,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     try {
       const payload = {
         ...settings,
+        ram_limit_mb: gbInputToMb(settings.ram_limit_mb, settings.ram_limit_mb),
         expires_at: fromDatetimeLocal(settings.expires_at)
       };
 
@@ -555,23 +560,23 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
           />
           <SummaryTile
             label={isMinecraft ? "EULA" : "RAM"}
-            value={isMinecraft ? (bot.accept_eula ? "Zaakceptowana" : "Wymagana") : formatNumber(bot.ram_usage_mb, " MB")}
+            value={isMinecraft ? (bot.accept_eula ? "Zaakceptowana" : "Wymagana") : formatMemoryFromMb(bot.ram_usage_mb)}
             hint={
               isMinecraft
                 ? "Panel moze ustawic eula=true przed startem"
-                : `Limit: ${formatNumber(bot.ram_limit_mb, " MB")}`
+                : `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
             }
           />
           <SummaryTile
             label={isMinecraft ? "RAM" : "CPU"}
             value={
               isMinecraft
-                ? formatNumber(bot.ram_usage_mb, " MB")
+                ? formatMemoryFromMb(bot.ram_usage_mb)
                 : formatNumber(bot.cpu_usage_percent, "%")
             }
             hint={
               isMinecraft
-                ? `Limit: ${formatNumber(bot.ram_limit_mb, " MB")}`
+                ? `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
                 : `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
             }
           />
@@ -755,14 +760,16 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               />
             </label>
             <label>
-              RAM limit (MB)
+              RAM limit (GB)
               <input
                 type="number"
+                step="0.25"
                 value={settings.ram_limit_mb}
                 onChange={(event) =>
                   setSettings((current) => ({ ...current, ram_limit_mb: event.target.value }))
                 }
               />
+              <small>Wpisz w GB. ByteHost zapisze to jako MB po stronie backendu.</small>
             </label>
             <label>
               CPU limit (%)

@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { Save, ShieldCheck } from "lucide-react";
 
 import { api } from "../api";
-import { formatNumber } from "../utils";
+import {
+  formatLimitValue,
+  formatMemoryFromMb,
+  formatMemoryLimit,
+  formatNumber,
+  gbInputToMb,
+  mbToGbInput
+} from "../utils";
 
 export function SystemPage({ system, onRefresh, onRefreshSystem }) {
   const [form, setForm] = useState({
@@ -21,7 +28,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
     }
 
     setForm({
-      ram_limit_mb: String(system.limits.ram_limit_mb ?? ""),
+      ram_limit_mb: mbToGbInput(system.limits.ram_limit_mb, ""),
       cpu_limit_percent: String(system.limits.cpu_limit_percent ?? ""),
       storage_limit_mb: String(system.limits.storage_limit_mb ?? ""),
       max_bots: String(system.limits.max_bots ?? "")
@@ -35,7 +42,10 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
     setError("");
 
     try {
-      await api.updateSystemLimits(form);
+      await api.updateSystemLimits({
+        ...form,
+        ram_limit_mb: gbInputToMb(form.ram_limit_mb, "")
+      });
       setMessage("Limity systemowe zostaly zapisane.");
       await onRefreshSystem();
       await onRefresh();
@@ -59,11 +69,16 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
 
         <form className="form-grid" onSubmit={handleSubmit}>
           <label>
-            RAM globalny (MB)
+            RAM globalny (GB)
             <input
+              type="number"
+              step="0.25"
               value={form.ram_limit_mb}
-              onChange={(event) => setForm((current) => ({ ...current, ram_limit_mb: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, ram_limit_mb: event.target.value }))
+              }
             />
+            <small>Wpisz w GB. ByteHost zapisze to automatycznie jako MB.</small>
           </label>
           <label>
             CPU globalne (%)
@@ -115,8 +130,8 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
           <article className="metric-card">
             <div>
               <p>RAM uslug</p>
-              <strong>{formatNumber(system?.usage?.ram_mb, " MB")}</strong>
-              <span>Limit: {formatNumber(system?.limits?.ram_limit_mb, " MB")}</span>
+              <strong>{formatMemoryFromMb(system?.usage?.ram_mb)}</strong>
+              <span>Limit: {formatMemoryLimit(system?.limits?.ram_limit_mb)}</span>
             </div>
           </article>
           <article className="metric-card">
@@ -130,14 +145,14 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
             <div>
               <p>Storage</p>
               <strong>{formatNumber(system?.usage?.storage_mb, " MB")}</strong>
-              <span>Limit: {formatNumber(system?.limits?.storage_limit_mb, " MB")}</span>
+              <span>Limit: {formatLimitValue(system?.limits?.storage_limit_mb, " MB")}</span>
             </div>
           </article>
           <article className="metric-card">
             <div>
               <p>Host RAM</p>
-              <strong>{formatNumber(system?.host?.used_ram_mb, " MB")}</strong>
-              <span>Host total: {formatNumber(system?.host?.total_ram_mb, " MB")}</span>
+              <strong>{formatMemoryFromMb(system?.host?.used_ram_mb)}</strong>
+              <span>Host total: {formatMemoryFromMb(system?.host?.total_ram_mb)}</span>
             </div>
           </article>
         </div>
