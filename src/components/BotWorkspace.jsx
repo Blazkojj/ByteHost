@@ -781,7 +781,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
           <form className="form-grid" onSubmit={saveSettings}>
             <div className="info-card wide">
               {isMinecraft
-                ? "ByteHost moze sam pobrac oficjalny server.jar dla wybranej wersji Minecraft i zbudowac komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
+                ? "ByteHost moze sam pobrac oficjalny server.jar dla wybranej wersji Minecraft, ustawic port w server.properties i zbudowac komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
                 : isFiveM
                   ? "ByteHost pobiera oficjalny artefakt FXServer dla Linuxa, generuje zarzadzany blok server.cfg i ustawia podstawowe komendy startowe. Ponizej mozesz ustawic sloty, OneSync, licencje i publiczny port."
                 : "ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect sie pomyli."}

@@ -6,6 +6,9 @@ const {
   BOTS_DIR,
   BACKUPS_DIR,
   TMP_DIR,
+  MINECRAFT_DEFAULT_PORT,
+  MINECRAFT_PORT_RANGE_START,
+  MINECRAFT_PORT_RANGE_END,
   FIVEM_DEFAULT_PORT,
   FIVEM_PORT_RANGE_START,
   FIVEM_PORT_RANGE_END
@@ -138,7 +141,7 @@ function isGameService(serviceType) {
 
 function getDefaultServicePort(serviceType) {
   if (serviceType === "minecraft_server") {
-    return 25565;
+    return MINECRAFT_DEFAULT_PORT;
   }
 
   if (serviceType === "fivem_server") {
@@ -175,10 +178,16 @@ function allocateServicePort(serviceType, preferredPort = null, options = {}) {
   }
 
   if (serviceType === "minecraft_server") {
-    const minecraftDefaultPort = getDefaultServicePort(serviceType);
-    if (!reservedPorts.has(minecraftDefaultPort)) {
-      return minecraftDefaultPort;
+    for (let port = MINECRAFT_PORT_RANGE_START; port <= MINECRAFT_PORT_RANGE_END; port += 1) {
+      if (!reservedPorts.has(port)) {
+        return port;
+      }
     }
+
+    throw createHttpError(
+      400,
+      `Nie znaleziono wolnego portu Minecraft w zakresie ${MINECRAFT_PORT_RANGE_START}-${MINECRAFT_PORT_RANGE_END}.`
+    );
   }
 
   if (serviceType === "fivem_server") {
@@ -745,31 +754,44 @@ async function ensureJavaRuntimeAvailable(projectPath) {
   }
 }
 
+function upsertPropertiesLine(content, key, value) {
+  const line = `${key}=${value}`;
+  const pattern = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=.*$`, "m");
+
+  if (pattern.test(content)) {
+    return content.replace(pattern, line);
+  }
+
+  const trimmed = content.trimEnd();
+  return trimmed ? `${trimmed}\n${line}\n` : `${line}\n`;
+}
+
+async function writeMinecraftServerProperties(projectPath, options = {}) {
+  const serverPropertiesPath = path.join(projectPath, "server.properties");
+  const motd = coerceNullableString(options.name, "ByteHost Minecraft Server");
+  const serverPort = sanitizePublicPort(options.public_port, MINECRAFT_DEFAULT_PORT);
+  let nextContent = (await readUtf8IfExists(serverPropertiesPath)) || "";
+
+  nextContent = upsertPropertiesLine(nextContent, "enable-query", "false");
+  nextContent = upsertPropertiesLine(nextContent, "enable-rcon", "false");
+  nextContent = upsertPropertiesLine(nextContent, "gamemode", "survival");
+  nextContent = upsertPropertiesLine(nextContent, "max-players", "20");
+  nextContent = upsertPropertiesLine(nextContent, "motd", motd);
+  nextContent = upsertPropertiesLine(nextContent, "online-mode", "true");
+  nextContent = upsertPropertiesLine(nextContent, "server-ip", "");
+  nextContent = upsertPropertiesLine(nextContent, "server-port", String(serverPort));
+  nextContent = upsertPropertiesLine(nextContent, "view-distance", "10");
+
+  await fs.writeFile(serverPropertiesPath, nextContent, "utf8");
+  return serverPropertiesPath;
+}
+
 async function bootstrapMinecraftWorkspace(projectPath, options = {}) {
   const eulaAccepted = Boolean(options.acceptEula);
-  const motd = coerceNullableString(options.name, "ByteHost Minecraft Server");
-  const serverPropertiesPath = path.join(projectPath, "server.properties");
   const eulaPath = path.join(projectPath, "eula.txt");
   const readmePath = path.join(projectPath, "README_BYTEHOST_MINECRAFT.txt");
 
-  if (!(await fileExists(serverPropertiesPath))) {
-    await fs.writeFile(
-      serverPropertiesPath,
-      [
-        "enable-query=false",
-        "enable-rcon=false",
-        "gamemode=survival",
-        "max-players=20",
-        `motd=${motd}`,
-        "online-mode=true",
-        "server-ip=",
-        "server-port=25565",
-        "view-distance=10",
-        ""
-      ].join("\n"),
-      "utf8"
-    );
-  }
+  await writeMinecraftServerProperties(projectPath, options);
 
   if (!(await fileExists(eulaPath))) {
     await fs.writeFile(
@@ -1047,6 +1069,14 @@ async function restoreBotBackup(botId, actor, backupId, payload = {}) {
     updated_at: nowIso()
   });
 
+  if (bot.service_type === "minecraft_server") {
+    await writeMinecraftServerProperties(bot.project_path, bot);
+  }
+
+  if (bot.service_type === "fivem_server") {
+    await writeFiveMServerConfig(bot.project_path, bot);
+  }
+
   await assertStorageWithinLimit();
   await assertUserStorageWithinLimit(owner);
 
@@ -1168,13 +1198,11 @@ async function createBot(actor, payload, artifactFile) {
   const requestedFiveMOneSync =
     serviceType === "fivem_server" ? coerceBoolean(payload.fivem_onesync_enabled, true) : null;
   const resolvedPublicPort =
-    serviceType === "fivem_server"
+    isGameService(serviceType)
       ? allocateServicePort(serviceType, payload.public_port, { excludeBotId: null })
-      : serviceType === "minecraft_server"
-        ? sanitizePublicPort(payload.public_port, 25565)
-        : null;
+      : null;
   const resolvedPublicHost =
-    serviceType === "fivem_server" ? await resolveGamePublicHost(payload.public_host) : null;
+    isGameService(serviceType) ? await resolveGamePublicHost(payload.public_host) : null;
   const botId = randomId();
   const botDirectory = await ensureBotDirectory(botId);
   let resolvedMinecraftVersion = null;
@@ -1224,7 +1252,8 @@ async function createBot(actor, payload, artifactFile) {
     } else if (serviceType === "minecraft_server") {
       await bootstrapMinecraftWorkspace(botDirectory, {
         acceptEula: coerceBoolean(payload.accept_eula, false),
-        name: payload.name
+        name: payload.name,
+        public_port: resolvedPublicPort
       });
       const download = await downloadOfficialMinecraftServer(botDirectory, requestedMinecraftVersion);
       resolvedMinecraftVersion = download.minecraft_version;
@@ -1286,7 +1315,7 @@ async function createBot(actor, payload, artifactFile) {
       accept_eula: serviceType === "minecraft_server" ? coerceBoolean(payload.accept_eula, false) : false,
       public_host:
         serviceType === "minecraft_server"
-          ? coerceNullableString(payload.public_host, null)
+          ? resolvedPublicHost || null
           : serviceType === "fivem_server"
             ? resolvedPublicHost || null
             : null,
@@ -1401,8 +1430,10 @@ async function updateBot(botId, actor, payload) {
       ? payload.public_host !== undefined
         ? normalizePublicHost(payload.public_host)
         : existingBot.public_host || (await resolveGamePublicHost(null))
-      : existingBot.service_type === "minecraft_server" && payload.public_host !== undefined
-        ? coerceNullableString(payload.public_host, null)
+      : existingBot.service_type === "minecraft_server"
+        ? payload.public_host !== undefined
+          ? normalizePublicHost(payload.public_host)
+          : existingBot.public_host || (await resolveGamePublicHost(null))
         : existingBot.public_host;
   const nextPublicPort =
     existingBot.service_type === "fivem_server"
@@ -1413,8 +1444,15 @@ async function updateBot(botId, actor, payload) {
         : existingBot.public_port || allocateServicePort(existingBot.service_type, null, {
             excludeBotId: existingBot.id
           })
-      : existingBot.service_type === "minecraft_server" && payload.public_port !== undefined
-        ? sanitizePublicPort(payload.public_port, existingBot.public_port || 25565)
+      : existingBot.service_type === "minecraft_server"
+        ? payload.public_port !== undefined
+          ? allocateServicePort(existingBot.service_type, payload.public_port, {
+              excludeBotId: existingBot.id
+            })
+          : existingBot.public_port ||
+            allocateServicePort(existingBot.service_type, null, {
+              excludeBotId: existingBot.id
+            })
         : existingBot.public_port;
 
   if (existingBot.service_type === "minecraft_server") {
@@ -1573,6 +1611,10 @@ async function updateBot(botId, actor, payload) {
     fivem_onesync_enabled: changes.fivem_onesync_enabled ? 1 : 0
   });
 
+  if (updatedRow.service_type === "minecraft_server") {
+    await writeMinecraftServerProperties(updatedRow.project_path, updatedRow);
+  }
+
   if (updatedRow.service_type === "fivem_server") {
     await writeFiveMServerConfig(updatedRow.project_path, updatedRow);
   }
@@ -1622,6 +1664,25 @@ async function startBot(botId, actor) {
     if (bot.service_type === "minecraft_server") {
       await ensureJavaRuntimeAvailable(bot.project_path);
 
+      if (!bot.public_port) {
+        bot = updateBotRow(botId, {
+          public_port: allocateServicePort("minecraft_server", null, {
+            excludeBotId: bot.id
+          }),
+          updated_at: nowIso()
+        });
+      }
+
+      if (!bot.public_host) {
+        const detectedHost = await resolveGamePublicHost(null);
+        if (detectedHost) {
+          bot = updateBotRow(botId, {
+            public_host: detectedHost,
+            updated_at: nowIso()
+          });
+        }
+      }
+
       const accepted = bot.accept_eula || (await isMinecraftEulaAccepted(bot.project_path));
       if (!accepted) {
         throw createHttpError(
@@ -1631,6 +1692,7 @@ async function startBot(botId, actor) {
       }
 
       await ensureMinecraftEula(bot.project_path);
+      await writeMinecraftServerProperties(bot.project_path, bot);
 
       let entryFile = resolveEffectiveEntryFile(bot);
       const entryPath = entryFile ? path.join(bot.project_path, entryFile) : null;
@@ -2015,6 +2077,10 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       expires_at: null,
       updated_at: nowIso()
     });
+
+    if (updatedArchiveBot.service_type === "minecraft_server") {
+      await writeMinecraftServerProperties(updatedArchiveBot.project_path, updatedArchiveBot);
+    }
 
     if (updatedArchiveBot.service_type === "fivem_server") {
       await writeFiveMServerConfig(updatedArchiveBot.project_path, updatedArchiveBot);

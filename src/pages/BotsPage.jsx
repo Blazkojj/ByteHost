@@ -139,17 +139,17 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
 
         <div className="info-card">
           {isMinecraft
-            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej."
+            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej. Publiczny host moze ustawic sie automatycznie na Twoje IP."
             : isFiveM
               ? "ByteHost sam pobiera oficjalny artefakt FXServer oraz bazowe cfx-server-data. ZIP albo RAR jest opcjonalny i sluzy do nalozenia gotowego pakietu resources/modow/pluginow na swiezy serwer."
             : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
         </div>
 
-        {isFiveM ? (
+        {isGameService ? (
           <div className="info-card">
-            Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Zeby gracze
-            faktycznie weszli na serwer, ten sam port musi byc przekierowany na routerze do VM z
-            ByteHost.
+            {isMinecraft
+              ? "Panel moze sam ustawic adres publiczny jako `publiczne_IP[:port]`. Jesli port Minecraft nie jest domyslny, przekieruj ten sam port na routerze do VM z ByteHost."
+              : "Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Zeby gracze faktycznie weszli na serwer, ten sam port musi byc przekierowany na routerze do VM z ByteHost."}
           </div>
         ) : null}
 
@@ -358,7 +358,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               <label>
                 Adres publiczny
                 <input
-                  placeholder="mc.twojadomena.pl"
+                  placeholder="Auto: publiczne IP hosta"
                   value={form.public_host}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, public_host: event.target.value }))

@@ -22,7 +22,7 @@ ByteHost to realny panel webowy do hostowania botow Discord, serwerow Minecraft 
   - upload `JAR`, `ZIP` albo `RAR`
   - mozliwosc utworzenia pustego workspace bez pliku
   - automatyczne pobieranie oficjalnego `server.jar` dla wybranej wersji
-  - `EULA`, publiczny host i port, limity zasobow
+  - `EULA`, automatyczny publiczny host i automatyczny port, limity zasobow
 - serwery FiveM:
   - mozliwosc utworzenia serwera bez uploadu pliku
   - automatyczne pobieranie oficjalnego artefaktu `FXServer` dla Linuxa
@@ -88,6 +88,11 @@ Najwazniejsze pola w `.env`:
 - `PUBLIC_GAME_HOST`
   - opcjonalny host pokazywany graczom, np. `mc.bytehost.online`
   - jesli puste, ByteHost sprobuje wykryc publiczne IPv4
+- `MINECRAFT_DEFAULT_PORT`
+  - domyslny port Minecraft
+- `MINECRAFT_PORT_RANGE_START`
+- `MINECRAFT_PORT_RANGE_END`
+  - zakres, z ktorego ByteHost automatycznie wybiera wolny port dla nowych serwerow Minecraft
 - `FIVEM_DEFAULT_PORT`
   - domyslny port FiveM
 - `FIVEM_PORT_RANGE_START`
@@ -125,6 +130,7 @@ pm2 save
 - Panel webowy moze dzialac przez `Cloudflare Tunnel`.
 - Minecraft i FiveM to osobny ruch gry, nie zwykle HTTP.
 - Aby gracze z internetu weszli na serwer Minecraft, musisz wystawic publiczny ruch TCP dla portu gry.
+- ByteHost moze zapisac ten sam port rowniez w `server.properties`, zeby wiele serwerow Minecraft moglo dzialac na jednym hoście.
 - Aby gracze weszli na serwer FiveM, musisz przekierowac ten sam port gry dla `TCP` i `UDP` na routerze do maszyny z ByteHost.
 - Serwery FiveM wymagaja poprawnego `sv_licenseKey` przed startem publicznym.
 - `Cloudflare Tunnel` od panelu nie wystawia automatycznie portu Minecraft ani FiveM.
