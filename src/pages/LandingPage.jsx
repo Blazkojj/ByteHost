@@ -170,7 +170,7 @@ export function LandingPage({ theme, onToggleTheme }) {
         <section className="marketing-section" id="offer">
           <div className="marketing-section-heading centered reveal-up">
             <p className="eyebrow">Oferta</p>
-            <h2>Najwazniejsze funkcje bez przeładowanej strony glównej.</h2>
+            <h2>Najwazniejsze funkcje bez przeladowanej strony glownej.</h2>
           </div>
 
           <div className="marketing-card-grid three compact-grid">
