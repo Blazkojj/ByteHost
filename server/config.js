@@ -15,7 +15,7 @@ const CLIENT_DIST_DIR = path.join(ROOT_DIR, "dist");
 const PORT = Number(process.env.PORT || 3000);
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_MB || 512) * 1024 * 1024;
 const SCHEDULER_INTERVAL_MS = Number(process.env.SCHEDULER_INTERVAL_MS || 60000);
-const LOG_TAIL_BYTES = 150000;
+const LOG_TAIL_BYTES = Number(process.env.LOG_TAIL_BYTES || 1000000);
 const TEXT_FILE_MAX_BYTES = 1024 * 1024;
 
 const DEFAULT_SYSTEM_LIMITS = {

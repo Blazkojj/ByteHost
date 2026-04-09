@@ -29,16 +29,71 @@ async function readLogTail(filePath, maxBytes = LOG_TAIL_BYTES) {
   }
 }
 
+function splitLogLines(content, stream) {
+  if (!content) {
+    return [];
+  }
+
+  return content
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0)
+    .map((line, index) => ({
+      line,
+      stream,
+      index,
+      timestamp: extractTimestamp(line)
+    }));
+}
+
+function extractTimestamp(line) {
+  const match = String(line || "").match(
+    /^(\d{4}-\d{2}-\d{2}[T ][0-9:.+-]{8,})(?:\s|$)/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Date.parse(match[1].replace(" ", "T"));
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function mergeChronologicalLines(out, error) {
+  const outLines = splitLogLines(out, "out");
+  const errorLines = splitLogLines(error, "error");
+  const merged = [...outLines, ...errorLines];
+
+  if (merged.length === 0) {
+    return "";
+  }
+
+  merged.sort((left, right) => {
+    if (left.timestamp !== null && right.timestamp !== null && left.timestamp !== right.timestamp) {
+      return left.timestamp - right.timestamp;
+    }
+
+    if (left.timestamp !== null && right.timestamp === null) {
+      return -1;
+    }
+
+    if (left.timestamp === null && right.timestamp !== null) {
+      return 1;
+    }
+
+    if (left.index !== right.index) {
+      return left.index - right.index;
+    }
+
+    return left.stream.localeCompare(right.stream);
+  });
+
+  return merged.map((entry) => entry.line).join("\n");
+}
+
 async function getBotLogs(botId) {
   const paths = getBotLogPaths(botId);
   const [out, error] = await Promise.all([readLogTail(paths.out), readLogTail(paths.error)]);
-
-  const combined = [
-    out ? `[stdout]\n${out.trimEnd()}` : "",
-    error ? `[stderr]\n${error.trimEnd()}` : ""
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const combined = mergeChronologicalLines(out, error);
 
   return {
     out,
