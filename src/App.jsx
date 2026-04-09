@@ -6,8 +6,24 @@ import { Layout } from "./components/Layout";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { BotsPage } from "./pages/BotsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SystemPage } from "./pages/SystemPage";
+
+const THEME_STORAGE_KEY = "bytehost-theme";
+
+function resolveInitialTheme() {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 function LoadingScreen() {
   return (
@@ -28,6 +44,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [theme, setTheme] = useState(resolveInitialTheme);
 
   function resetSessionState() {
     setUser(null);
@@ -106,6 +123,11 @@ export default function App() {
   }
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
     restoreSession();
 
     const handleUnauthorized = () => {
@@ -143,12 +165,35 @@ export default function App() {
     resetSessionState();
   }
 
+  function handleToggleTheme() {
+    setTheme((current) => (current === "dark" ? "light" : "dark"));
+  }
+
   if (authLoading) {
     return <LoadingScreen />;
   }
 
   if (!user) {
-    return <LoginPage onLogin={handleLogin} loading={authLoading} />;
+    return (
+      <Routes>
+        <Route
+          path="/"
+          element={<LandingPage theme={theme} onToggleTheme={handleToggleTheme} />}
+        />
+        <Route
+          path="/login"
+          element={
+            <LoginPage
+              onLogin={handleLogin}
+              loading={authLoading}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+            />
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
   }
 
   return (
@@ -160,6 +205,8 @@ export default function App() {
       onLogout={handleLogout}
       loading={loading}
       lastUpdated={lastUpdated}
+      theme={theme}
+      onToggleTheme={handleToggleTheme}
     >
       {pageError ? <div className="banner error">{pageError}</div> : null}
 

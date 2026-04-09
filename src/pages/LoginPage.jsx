@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { LockKeyhole, LogIn } from "lucide-react";
+import { Link } from "react-router-dom";
 
-export function LoginPage({ onLogin, loading }) {
+import logoUrl from "../assets/bytehost-logo.svg";
+import { ThemeToggle } from "../components/ThemeToggle";
+
+export function LoginPage({ onLogin, loading, theme, onToggleTheme }) {
   const [form, setForm] = useState({
     email: "",
     password: ""
@@ -26,11 +30,17 @@ export function LoginPage({ onLogin, loading }) {
   return (
     <div className="login-shell">
       <div className="login-card">
+        <div className="login-topbar">
+          <Link className="ghost-button compact" to="/">
+            Wroc na start
+          </Link>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
+
         <div className="brand login-brand">
-          <div className="brand-mark">B</div>
-          <div>
+          <img className="brand-logo" src={logoUrl} alt="ByteHost" />
+          <div className="brand-copy">
             <strong>ByteHost</strong>
-            <span>Prywatny panel hostingu botow i serwerow</span>
           </div>
         </div>
 

@@ -1,6 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
 import {
-  Activity,
   HardDrive,
   LayoutDashboard,
   LogOut,
@@ -10,6 +9,8 @@ import {
   Users
 } from "lucide-react";
 
+import logoUrl from "../assets/bytehost-logo.svg";
+import { ThemeToggle } from "./ThemeToggle";
 import { accountStatusLabel, formatDate, formatMemoryFromMb, formatNumber, userRoleLabel } from "../utils";
 
 function StatChip({ label, value }) {
@@ -21,7 +22,18 @@ function StatChip({ label, value }) {
   );
 }
 
-export function Layout({ children, user, bots, system, onRefresh, onLogout, loading, lastUpdated }) {
+export function Layout({
+  children,
+  user,
+  bots,
+  system,
+  onRefresh,
+  onLogout,
+  loading,
+  lastUpdated,
+  theme,
+  onToggleTheme
+}) {
   const navItems = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/bots", label: "Uslugi", icon: Server }
@@ -44,10 +56,9 @@ export function Layout({ children, user, bots, system, onRefresh, onLogout, load
     <div className="app-shell">
       <aside className="sidebar">
         <Link className="brand" to="/">
-          <div className="brand-mark">B</div>
-          <div>
+          <img className="brand-logo" src={logoUrl} alt="ByteHost" />
+          <div className="brand-copy">
             <strong>ByteHost</strong>
-            <span>Prywatny hosting botow i serwerow</span>
           </div>
         </Link>
 
@@ -93,6 +104,7 @@ export function Layout({ children, user, bots, system, onRefresh, onLogout, load
             <StatChip label="Uslugi" value={formatNumber(system?.usage?.bots)} />
             <StatChip label="RAM" value={formatMemoryFromMb(system?.usage?.ram_mb)} />
             <StatChip label="Storage" value={formatNumber(system?.usage?.storage_mb, " MB")} />
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
             <button className="ghost-button" onClick={onRefresh} disabled={loading}>
               <RefreshCw size={16} className={loading ? "spin" : ""} />
               <span>Odswiez</span>
@@ -107,14 +119,6 @@ export function Layout({ children, user, bots, system, onRefresh, onLogout, load
         <main className="content-shell">{children}</main>
 
         <footer className="footer-bar">
-          <div>
-            <Activity size={16} />
-            <span>
-              {user?.is_admin
-                ? "Owner widzi caly system, uzytkownicy tylko swoje uslugi."
-                : "Widok ograniczony do wlasnych uslug i planu konta."}
-            </span>
-          </div>
           <div>
             <HardDrive size={16} />
             <span>{`RAM: ${formatMemoryFromMb(system?.usage?.ram_mb)} | Storage: ${formatNumber(system?.usage?.storage_mb, " MB")}`}</span>

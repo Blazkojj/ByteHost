@@ -1,0 +1,38 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ring" x1="18" y1="110" x2="112" y2="18" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D5CFF"/>
+      <stop offset="1" stop-color="#20DAF4"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="34" y1="96" x2="96" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D5CFF"/>
+      <stop offset="1" stop-color="#20DAF4"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="64" cy="64" r="53" stroke="url(#ring)" stroke-width="6"/>
+
+  <path
+    d="M49.5 28H67C84.1208 28 96 37.6316 96 53C96 61.374 92.2364 68.314 85.8284 72.7461C91.3648 76.5843 94.5 82.5629 94.5 90C94.5 106.481 81.8665 116 65.5 116H48.5V78H64.5C71.5837 78 76.5 73.7292 76.5 67.5C76.5 61.2708 71.5837 57 64.5 57H49.5V28Z"
+    fill="url(#mark)"/>
+
+  <path
+    d="M49.5 28H67C84.1208 28 96 37.6316 96 53C96 61.374 92.2364 68.314 85.8284 72.7461C91.3648 76.5843 94.5 82.5629 94.5 90C94.5 106.481 81.8665 116 65.5 116H48.5V78H64.5C71.5837 78 76.5 73.7292 76.5 67.5C76.5 61.2708 71.5837 57 64.5 57H49.5V28Z"
+    stroke="rgba(255,255,255,0.18)"
+    stroke-width="1.2"/>
+
+  <rect x="43" y="40" width="6" height="6" rx="1.5" fill="url(#mark)"/>
+  <rect x="36" y="50" width="8" height="8" rx="2" fill="url(#mark)"/>
+  <rect x="46" y="56" width="7" height="7" rx="1.75" fill="url(#mark)"/>
+  <rect x="38" y="68" width="8" height="8" rx="2" fill="url(#mark)"/>
+  <rect x="47" y="74" width="7" height="7" rx="1.75" fill="url(#mark)"/>
+
+  <path
+    d="M58 70C58 66.6863 60.6863 64 64 64H81C84.3137 64 87 66.6863 87 70V82C87 85.3137 84.3137 88 81 88H60L52 96V76C52 72.6863 54.6863 70 58 70Z"
+    fill="#0B1730"/>
+  <path d="M61 72H78.5C80.9853 72 83 74.0147 83 76.5C83 78.9853 80.9853 81 78.5 81H61V72Z" fill="url(#ring)"/>
+  <circle cx="60.5" cy="76.5" r="2.5" fill="url(#ring)"/>
+  <path d="M67 77H78" stroke="#0B1730" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M67 86H79" stroke="url(#ring)" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="60.5" cy="86" r="2.5" fill="url(#ring)"/>
+</svg>
