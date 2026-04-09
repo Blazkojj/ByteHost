@@ -34,6 +34,7 @@ const TS_ENTRY_CANDIDATES = [
 ];
 
 const PY_ENTRY_CANDIDATES = ["main.py", "bot.py", "app.py", "index.py", "src/main.py"];
+const FIVEM_ENTRY_CANDIDATES = ["run.sh"];
 
 const MINECRAFT_JAR_PATTERNS = [
   /^server\.jar$/i,
@@ -270,6 +271,14 @@ function buildMinecraftStartCommand(entryFile, ramLimitMb = 2048) {
   return `java -Xms${minRam}M -Xmx${maxRam}M -jar "${entryFile}" nogui`;
 }
 
+function buildFiveMStartCommand(entryFile = "run.sh", configFile = "server.cfg") {
+  if (!entryFile) {
+    return null;
+  }
+
+  return `bash "${entryFile}" +exec "${configFile}"`;
+}
+
 function getMinecraftJarPriority(relativePath) {
   const baseName = path.basename(relativePath);
   const rootBonus = relativePath.includes("/") ? 0 : 20;
@@ -315,12 +324,28 @@ async function analyzeMinecraftProject(projectPath, options, collectedFiles) {
   };
 }
 
+async function analyzeFiveMProject(projectPath) {
+  const detected_entry_file = await findFirstExisting(projectPath, FIVEM_ENTRY_CANDIDATES);
+
+  return {
+    detected_language: "FiveM",
+    detected_entry_file: detected_entry_file || "run.sh",
+    detected_start_command: buildFiveMStartCommand(detected_entry_file || "run.sh"),
+    install_command: null,
+    package_manager: "fxserver"
+  };
+}
+
 async function analyzeProject(projectPath, options = {}) {
   const collectedFiles = await collectFiles(projectPath);
   const serviceType = options.serviceType || "discord_bot";
 
   if (serviceType === "minecraft_server") {
     return analyzeMinecraftProject(projectPath, options, collectedFiles);
+  }
+
+  if (serviceType === "fivem_server") {
+    return analyzeFiveMProject(projectPath);
   }
 
   const packageJson = await readJsonIfExists(path.join(projectPath, "package.json"));
@@ -350,5 +375,6 @@ async function analyzeProject(projectPath, options = {}) {
 
 module.exports = {
   analyzeProject,
-  buildMinecraftStartCommand
+  buildMinecraftStartCommand,
+  buildFiveMStartCommand
 };

@@ -29,8 +29,8 @@ const offerCards = [
   },
   {
     icon: Users,
-    title: "Konta i aktywacja",
-    text: "Uzytkownik moze zalozyc konto sam, ale owner aktywuje je w panelu i dopiero wtedy ustawia limity."
+    title: "FiveM hosting",
+    text: "FXServer pobiera sie automatycznie, panel generuje port i adres do polaczenia, a resources wrzucasz przez File Manager."
   }
 ];
 
@@ -43,7 +43,7 @@ const workflowSteps = [
   {
     step: "02",
     title: "Dodajesz usluge",
-    text: "Bot Discord lub Minecraft trafia do panelu z limitem RAM, CPU, storage i statusem."
+    text: "Discord, Minecraft albo FiveM trafia do panelu z limitem RAM, CPU, storage i statusem."
   },
   {
     step: "03",
@@ -59,9 +59,9 @@ const faqItems = [
       "Tak. To nie jest sama makieta. Panel pracuje na plikach, PM2, logach, limitach i schedulerze wygasniec."
   },
   {
-    question: "Czy moge hostowac i Discord boty, i Minecraft?",
+    question: "Czy moge hostowac Discord, Minecraft i FiveM?",
     answer:
-      "Tak. ByteHost obsluguje oba typy uslug i rozdziela ich konfiguracje, wykrywanie oraz ustawienia startu."
+      "Tak. ByteHost obsluguje wszystkie trzy typy uslug i rozdziela ich konfiguracje, wykrywanie oraz ustawienia startu."
   },
   {
     question: "Czy uzytkownik moze sam zalozyc konto?",
@@ -120,10 +120,11 @@ export function LandingPage({ theme, onToggleTheme }) {
               <Sparkles size={16} />
               ByteHost hosting panel
             </p>
-            <h1>Nowoczesny, prywatny hosting dla botow Discord i serwerow Minecraft.</h1>
+            <h1>Nowoczesny hosting dla botow Discord, Minecraft i FiveM.</h1>
             <p className="marketing-hero-text">
               Jeden panel do uruchamiania projektow, zarzadzania plikami, logami, limitami i
-              kontami uzytkownikow. Czysty wyglad, realny backend i zero udawania.
+              kontami uzytkownikow. Discord boty, serwery Minecraft i FiveM dzialaja na realnych
+              plikach i procesach, bez udawania i bez atrap.
             </p>
 
             <div className="marketing-hero-actions">
@@ -138,7 +139,7 @@ export function LandingPage({ theme, onToggleTheme }) {
 
             <div className="marketing-pill-row">
               <span>PM2 + logi live</span>
-              <span>ZIP / RAR / JAR</span>
+              <span>ZIP / RAR / JAR / FXServer</span>
               <span>JWT + bcrypt</span>
               <span>Light / dark mode</span>
             </div>
@@ -160,8 +161,8 @@ export function LandingPage({ theme, onToggleTheme }) {
             <article className="marketing-floating-card floating-right">
               <Gamepad2 size={16} />
               <div>
-                <strong>Minecraft</strong>
-                <span>Wersje + start control</span>
+                <strong>Minecraft + FiveM</strong>
+                <span>Auto runtime + publiczny port</span>
               </div>
             </article>
           </div>

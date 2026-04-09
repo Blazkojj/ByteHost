@@ -13,7 +13,10 @@ function mapBotRow(row) {
   return {
     ...row,
     auto_restart: Boolean(row.auto_restart),
-    accept_eula: Boolean(row.accept_eula)
+    accept_eula: Boolean(row.accept_eula),
+    fivem_onesync_enabled: row.fivem_onesync_enabled === null || row.fivem_onesync_enabled === undefined
+      ? true
+      : Boolean(row.fivem_onesync_enabled)
   };
 }
 
@@ -150,6 +153,13 @@ function initDatabase() {
   ensureColumn(database, "bots", "public_port", "INTEGER");
   ensureColumn(database, "bots", "minecraft_version", "TEXT");
   ensureColumn(database, "bots", "detected_minecraft_version", "TEXT");
+  ensureColumn(database, "bots", "fivem_artifact_build", "TEXT");
+  ensureColumn(database, "bots", "fivem_license_key", "TEXT");
+  ensureColumn(database, "bots", "fivem_max_clients", "INTEGER");
+  ensureColumn(database, "bots", "fivem_project_name", "TEXT");
+  ensureColumn(database, "bots", "fivem_tags", "TEXT");
+  ensureColumn(database, "bots", "fivem_locale", "TEXT");
+  ensureColumn(database, "bots", "fivem_onesync_enabled", "INTEGER NOT NULL DEFAULT 1");
 
   const existingLimits = database.prepare("SELECT id FROM system_limits WHERE id = 1").get();
   if (!existingLimits) {

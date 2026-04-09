@@ -39,6 +39,11 @@ const DEFAULT_USER_PLAN = {
   max_storage_mb: Number(process.env.DEFAULT_USER_STORAGE_MB || 2048)
 };
 
+const PUBLIC_GAME_HOST = process.env.PUBLIC_GAME_HOST || "";
+const FIVEM_DEFAULT_PORT = Number(process.env.FIVEM_DEFAULT_PORT || 30120);
+const FIVEM_PORT_RANGE_START = Number(process.env.FIVEM_PORT_RANGE_START || FIVEM_DEFAULT_PORT);
+const FIVEM_PORT_RANGE_END = Number(process.env.FIVEM_PORT_RANGE_END || 30220);
+
 const OWNER_EMAIL = process.env.OWNER_EMAIL || "admin@bytehost.local";
 const OWNER_PASSWORD = process.env.OWNER_PASSWORD || "change-me-now";
 const JWT_SECRET = process.env.JWT_SECRET || "bytehost-change-this-secret";
@@ -61,6 +66,10 @@ module.exports = {
   DEFAULT_SYSTEM_LIMITS,
   DEFAULT_BOT_LIMITS,
   DEFAULT_USER_PLAN,
+  PUBLIC_GAME_HOST,
+  FIVEM_DEFAULT_PORT,
+  FIVEM_PORT_RANGE_START,
+  FIVEM_PORT_RANGE_END,
   OWNER_EMAIL,
   OWNER_PASSWORD,
   JWT_SECRET,

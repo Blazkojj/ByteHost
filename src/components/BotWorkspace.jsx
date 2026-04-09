@@ -43,11 +43,21 @@ function SummaryTile({ label, value, hint }) {
 }
 
 function buildSettingsState(service) {
+  const isMinecraft = service.service_type === "minecraft_server";
+  const isFiveM = service.service_type === "fivem_server";
+
   return {
     name: service.name || "",
     description: service.description || "",
     language: service.language || "",
     minecraft_version: service.minecraft_version || "",
+    fivem_license_key: service.fivem_license_key || "",
+    fivem_max_clients: service.fivem_max_clients ?? 48,
+    fivem_project_name: service.fivem_project_name || service.name || "",
+    fivem_tags: service.fivem_tags || "default",
+    fivem_locale: service.fivem_locale || "pl-PL",
+    fivem_onesync_enabled:
+      service.fivem_onesync_enabled === undefined ? true : Boolean(service.fivem_onesync_enabled),
     entry_file: service.entry_file || "",
     start_command: service.start_command || "",
     auto_restart: Boolean(service.auto_restart),
@@ -57,7 +67,7 @@ function buildSettingsState(service) {
     cpu_limit_percent: service.cpu_limit_percent ?? 35,
     accept_eula: Boolean(service.accept_eula),
     public_host: service.public_host || "",
-    public_port: service.public_port ?? 25565
+    public_port: service.public_port ?? (isMinecraft ? 25565 : isFiveM ? 30120 : "")
   };
 }
 
@@ -422,7 +432,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
   async function copyJoinAddress() {
     const joinAddress = serviceJoinAddress(bot);
-    if (!isMinecraft || joinAddress === "Brak") {
+    if (!isGameService || joinAddress === "Brak") {
       return;
     }
 
@@ -465,6 +475,8 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       setMessage(
         bot?.service_type === "minecraft_server"
           ? "Serwer Minecraft zostal zaktualizowany. Sam JAR podmienia silnik bez czyszczenia swiata, a ZIP/RAR podmienia caly katalog uslugi."
+          : bot?.service_type === "fivem_server"
+            ? "Serwer FiveM zostal odswiezony. ByteHost zachowal oficjalny runtime FXServer i nalozyl nowy pakiet ZIP/RAR z resources/modami/pluginami na swiezy workspace."
           : "Bot zostal zaktualizowany z nowego archiwum. .env zostal zachowany."
       );
     } catch (updateError) {
@@ -549,6 +561,9 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   }
 
   const isMinecraft = bot.service_type === "minecraft_server";
+  const isFiveM = bot.service_type === "fivem_server";
+  const isGameService = isMinecraft || isFiveM;
+  const joinAddress = serviceJoinAddress(bot);
   const tabs = [
     { id: "overview", label: "Przeglad" },
     { id: "logs", label: "Logi" },
@@ -574,13 +589,15 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               accept={
                 isMinecraft
                   ? ".jar,.zip,.rar,application/java-archive,application/x-java-archive,application/zip,application/x-rar-compressed"
+                  : isFiveM
+                    ? ".zip,.rar,application/zip,application/x-rar-compressed"
                   : ".zip,.rar,application/zip,application/x-rar-compressed"
               }
               className="hidden-input"
               onChange={handleArchiveUpdate}
             />
             <StatusBadge status={bot.status} />
-            {isMinecraft && serviceJoinAddress(bot) !== "Brak" ? (
+            {isGameService && joinAddress !== "Brak" ? (
               <button className="ghost-button" onClick={copyJoinAddress} disabled={actionState}>
                 <Copy size={16} />
                 <span>Kopiuj IP</span>
@@ -592,7 +609,9 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               disabled={actionState}
             >
               <Upload size={16} />
-              <span>{isMinecraft ? "Aktualizuj JAR/ZIP/RAR" : "Aktualizuj ZIP/RAR"}</span>
+              <span>
+                {isMinecraft ? "Aktualizuj JAR/ZIP/RAR" : "Aktualizuj ZIP/RAR"}
+              </span>
             </button>
             <button className="ghost-button" onClick={() => runAction("start")} disabled={actionState}>
               <Play size={16} />
@@ -608,7 +627,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             </button>
             <button className="ghost-button" onClick={() => runAction("install")} disabled={actionState}>
               <Wrench size={16} />
-              <span>{isMinecraft ? "Przygotuj" : "Dependencies"}</span>
+              <span>{isMinecraft ? "Przygotuj" : isFiveM ? "Napraw runtime" : "Dependencies"}</span>
             </button>
             <button className="danger-button" onClick={() => runAction("delete")} disabled={actionState}>
               <Trash2 size={16} />
@@ -621,7 +640,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
           <SummaryTile
             label="Typ"
             value={serviceTypeLabel(bot.service_type)}
-            hint={isMinecraft ? "Java + PM2" : "Discord + PM2"}
+            hint={isMinecraft ? "Java + PM2" : isFiveM ? "FXServer + PM2" : "Discord + PM2"}
           />
           {isMinecraft ? (
             <SummaryTile
@@ -632,6 +651,13 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                   ? `Pobrana: ${bot.detected_minecraft_version}`
                   : "Ustaw wersje, aby panel pobral oficjalny server.jar"
               }
+            />
+          ) : null}
+          {isFiveM ? (
+            <SummaryTile
+              label="Artefakt FiveM"
+              value={bot.fivem_artifact_build || "Auto"}
+              hint="Oficjalny Linux build FXServer"
             />
           ) : null}
           <SummaryTile
@@ -650,58 +676,84 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             hint={`Auto: ${bot.detected_start_command || "brak"}`}
           />
           <SummaryTile
-            label={isMinecraft ? "Adres graczy" : "Uptime"}
-            value={isMinecraft ? serviceJoinAddress(bot) : formatDuration(bot.uptime_seconds)}
+            label={isGameService ? "Adres graczy" : "Uptime"}
+            value={isGameService ? joinAddress : formatDuration(bot.uptime_seconds)}
             hint={
-              isMinecraft
-                ? "Wymaga publicznego TCP dla portu gry"
+              isGameService
+                ? "Wymaga publicznego przekierowania portu na routerze"
                 : `Restarty: ${bot.restart_count || 0}`
             }
           />
           <SummaryTile
-            label={isMinecraft ? "EULA" : "RAM"}
-            value={isMinecraft ? (bot.accept_eula ? "Zaakceptowana" : "Wymagana") : formatMemoryFromMb(bot.ram_usage_mb)}
+            label={isMinecraft ? "EULA" : isFiveM ? "Sloty" : "RAM"}
+            value={
+              isMinecraft
+                ? bot.accept_eula
+                  ? "Zaakceptowana"
+                  : "Wymagana"
+                : isFiveM
+                  ? formatNumber(bot.fivem_max_clients || 48)
+                  : formatMemoryFromMb(bot.ram_usage_mb)
+            }
             hint={
               isMinecraft
                 ? "Panel moze ustawic eula=true przed startem"
+                : isFiveM
+                  ? "Limit graczy ustawiany w sv_maxclients"
                 : `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
             }
           />
           <SummaryTile
-            label={isMinecraft ? "RAM" : "CPU"}
+            label={isMinecraft || isFiveM ? "RAM" : "CPU"}
             value={
-              isMinecraft
+              isMinecraft || isFiveM
                 ? formatMemoryFromMb(bot.ram_usage_mb)
                 : formatNumber(bot.cpu_usage_percent, "%")
             }
             hint={
-              isMinecraft
+              isMinecraft || isFiveM
                 ? `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
                 : `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
             }
           />
           <SummaryTile
-            label={isMinecraft ? "CPU" : "Storage"}
+            label={isMinecraft || isFiveM ? "CPU" : "Storage"}
             value={
-              isMinecraft
+              isMinecraft || isFiveM
                 ? formatNumber(bot.cpu_usage_percent, "%")
                 : formatMemoryFromMb(bot.storage_usage_mb || 0)
             }
             hint={
-              isMinecraft
+              isMinecraft || isFiveM
                 ? `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
                 : "Rozmiar plikow uslugi"
             }
           />
+          {isFiveM ? (
+            <SummaryTile
+              label="OneSync"
+              value={bot.fivem_onesync_enabled ? "Wlaczone" : "Wylaczone"}
+              hint={bot.fivem_project_name || "Panel zarzadza blokiem server.cfg"}
+            />
+          ) : null}
           <SummaryTile
-            label={isMinecraft ? "Uptime" : "Stabilnosc"}
-            value={isMinecraft ? formatDuration(bot.uptime_seconds) : bot.stability_status || "STOPPED"}
+            label={isMinecraft || isFiveM ? "Uptime" : "Stabilnosc"}
+            value={
+              isMinecraft || isFiveM ? formatDuration(bot.uptime_seconds) : bot.stability_status || "STOPPED"
+            }
             hint={
-              isMinecraft
+              isMinecraft || isFiveM
                 ? `Restarty: ${bot.restart_count || 0}`
                 : bot.status_message || "Brak alertow"
             }
           />
+          {isGameService ? (
+            <SummaryTile
+              label="Storage"
+              value={formatMemoryFromMb(bot.storage_usage_mb || 0)}
+              hint="Rozmiar plikow uslugi"
+            />
+          ) : null}
         </div>
 
         {message ? <div className="banner success">{message}</div> : null}
@@ -730,20 +782,24 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             <div className="info-card wide">
               {isMinecraft
                 ? "ByteHost moze sam pobrac oficjalny server.jar dla wybranej wersji Minecraft i zbudowac komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
+                : isFiveM
+                  ? "ByteHost pobiera oficjalny artefakt FXServer dla Linuxa, generuje zarzadzany blok server.cfg i ustawia podstawowe komendy startowe. Ponizej mozesz ustawic sloty, OneSync, licencje i publiczny port."
                 : "ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect sie pomyli."}
             </div>
 
             <div className="info-card wide">
               {isMinecraft
                 ? "Aktualizacja samym JAR-em podmienia silnik serwera bez czyszczenia swiata i pluginow. Wrzucenie ZIP lub RAR zastapi caly katalog uslugi, wiec traktuj to jak pelny reinstall serwera."
+                : isFiveM
+                  ? "ZIP lub RAR dla FiveM traktuj jako pakiet serwera albo resources. Panel zachowuje oficjalny runtime FXServer, a resources, pluginy i skrypty wgrywasz wygodnie przez File Manager do folderu resources/."
                 : "Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje .env, odswieza auto-detekcje i moze automatycznie przeinstalowac zaleznosci oraz wznowic proces."}
             </div>
 
-            {isMinecraft ? (
+            {isGameService ? (
               <div className="info-card wide">
-                Kazdy gracz wejdzie dopiero wtedy, gdy publiczny host i port gry rzeczywiscie beda
-                wystawione na zewnatrz. Panel zapisuje ten adres dla operatora, ale nie zastapi
-                przekierowania portu lub tunelu TCP do Minecrafta.
+                {isMinecraft
+                  ? "Kazdy gracz wejdzie dopiero wtedy, gdy publiczny host i port gry rzeczywiscie beda wystawione na zewnatrz. Panel zapisuje ten adres dla operatora, ale nie zastapi przekierowania portu lub tunelu TCP do Minecrafta."
+                  : "FiveM dostaje automatyczny adres publiczny `IP:port`, ale port nadal musi byc przekierowany na routerze do VM z ByteHost. Panel nie moze sam skonfigurowac przekierowania w Twoim routerze."}
               </div>
             ) : null}
 
@@ -771,13 +827,14 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               Jezyk
               <select
                 value={settings.language}
-                disabled={isMinecraft}
+                disabled={isMinecraft || isFiveM}
                 onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}
               >
                 <option value="Node.js">Node.js</option>
                 <option value="TypeScript">TypeScript</option>
                 <option value="Python">Python</option>
                 <option value="Java">Java</option>
+                <option value="FiveM">FiveM</option>
               </select>
             </label>
             {isMinecraft ? (
@@ -807,6 +864,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             <label>
               Plik startowy
               <input
+                placeholder={isFiveM ? "run.sh" : undefined}
                 value={settings.entry_file}
                 onChange={(event) =>
                   setSettings((current) => ({ ...current, entry_file: event.target.value }))
@@ -816,6 +874,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
             <label className="wide">
               Komenda startowa
               <input
+                placeholder={isFiveM ? 'bash "run.sh" +exec "server.cfg"' : undefined}
                 value={settings.start_command}
                 onChange={(event) =>
                   setSettings((current) => ({ ...current, start_command: event.target.value }))
@@ -898,6 +957,108 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 </label>
               </>
             ) : null}
+            {isFiveM ? (
+              <>
+                <label>
+                  Klucz FiveM
+                  <input
+                    placeholder="sv_licenseKey z portal.cfx.re"
+                    value={settings.fivem_license_key}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        fivem_license_key: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Sloty graczy
+                  <input
+                    type="number"
+                    min="1"
+                    max="128"
+                    value={settings.fivem_max_clients}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        fivem_max_clients: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Projekt FiveM
+                  <input
+                    value={settings.fivem_project_name}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        fivem_project_name: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Tagi
+                  <input
+                    value={settings.fivem_tags}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        fivem_tags: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Locale
+                  <input
+                    value={settings.fivem_locale}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        fivem_locale: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Adres publiczny
+                  <input
+                    placeholder="Auto: publiczne IP hosta"
+                    value={settings.public_host}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, public_host: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Port publiczny
+                  <input
+                    type="number"
+                    value={settings.public_port}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, public_port: event.target.value }))
+                    }
+                  />
+                  <small>Ten sam port musi byc przekierowany w routerze dla TCP i UDP.</small>
+                </label>
+                <label className="checkbox-field wide">
+                  <input
+                    type="checkbox"
+                    checked={settings.fivem_onesync_enabled}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        fivem_onesync_enabled: event.target.checked
+                      }))
+                    }
+                  />
+                  <span>Wlacz OneSync</span>
+                </label>
+              </>
+            ) : null}
             <label className="checkbox-field">
               <input
                 type="checkbox"
@@ -938,6 +1099,8 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                   placeholder={
                     isMinecraft
                       ? 'np. java -version, ls -la, cat server.properties'
+                      : isFiveM
+                        ? 'np. ls -la, cat server.cfg, ls resources'
                       : 'np. npm run lint, ls -la, python3 -V'
                   }
                 />

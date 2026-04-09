@@ -1,11 +1,30 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-const { DEFAULT_BOT_LIMITS, BOTS_DIR, BACKUPS_DIR, TMP_DIR } = require("../config");
+const {
+  DEFAULT_BOT_LIMITS,
+  BOTS_DIR,
+  BACKUPS_DIR,
+  TMP_DIR,
+  FIVEM_DEFAULT_PORT,
+  FIVEM_PORT_RANGE_START,
+  FIVEM_PORT_RANGE_END
+} = require("../config");
 const { getDb, mapBotRow } = require("./db");
 const { detectUploadedArtifactKind, importProjectArtifact } = require("./archive");
-const { analyzeProject, buildMinecraftStartCommand } = require("./analyzer");
+const {
+  analyzeProject,
+  buildMinecraftStartCommand,
+  buildFiveMStartCommand
+} = require("./analyzer");
 const { runShellCommand } = require("./commands");
+const {
+  bootstrapFiveMWorkspace,
+  detectPublicGameHost,
+  normalizePublicHost,
+  repairFiveMWorkspace,
+  writeFiveMServerConfig
+} = require("./fivem");
 const { getBotLogs, appendBotLog, removeBotLogs } = require("./logs");
 const { downloadMinecraftServerJar } = require("./minecraft");
 const { mergeBotWithRuntime, deriveBotRuntime } = require("./runtime");
@@ -51,8 +70,8 @@ const {
   toMb
 } = require("./utils");
 
-const ALLOWED_LANGUAGES = new Set(["Node.js", "TypeScript", "Python", "Java"]);
-const ALLOWED_SERVICE_TYPES = new Set(["discord_bot", "minecraft_server"]);
+const ALLOWED_LANGUAGES = new Set(["Node.js", "TypeScript", "Python", "Java", "FiveM"]);
+const ALLOWED_SERVICE_TYPES = new Set(["discord_bot", "minecraft_server", "fivem_server"]);
 const DEFAULT_CONSOLE_TIMEOUT_MS = 20000;
 const MAX_CONSOLE_COMMAND_LENGTH = 2000;
 
@@ -67,6 +86,10 @@ function sanitizeServiceType(value, fallback = "discord_bot") {
 function sanitizeLanguage(value, fallback, serviceType = "discord_bot") {
   if (serviceType === "minecraft_server") {
     return "Java";
+  }
+
+  if (serviceType === "fivem_server") {
+    return "FiveM";
   }
 
   if (!value) {
@@ -92,6 +115,86 @@ function sanitizePublicPort(value, fallback = null) {
 
 function normalizeMinecraftVersion(value, fallback = null) {
   return coerceNullableString(value, fallback);
+}
+
+function normalizeFiveMText(value, fallback = null) {
+  return coerceNullableString(value, fallback);
+}
+
+function sanitizeFiveMMaxClients(value, fallback = 48) {
+  const parsed = coerceNullableNumber(value, fallback);
+  const maxClients = Math.trunc(Number(parsed || fallback));
+
+  if (maxClients < 1 || maxClients > 128) {
+    throw createHttpError(400, "Liczba slotow FiveM musi byc z zakresu 1-128.");
+  }
+
+  return maxClients;
+}
+
+function isGameService(serviceType) {
+  return serviceType === "minecraft_server" || serviceType === "fivem_server";
+}
+
+function getDefaultServicePort(serviceType) {
+  if (serviceType === "minecraft_server") {
+    return 25565;
+  }
+
+  if (serviceType === "fivem_server") {
+    return FIVEM_DEFAULT_PORT;
+  }
+
+  return null;
+}
+
+function listReservedPublicPorts(options = {}) {
+  const { excludeBotId = null } = options;
+
+  return new Set(
+    listBotRows(null)
+      .filter((bot) => bot.id !== excludeBotId)
+      .map((bot) => Number(bot.public_port || 0))
+      .filter((port) => port > 0)
+  );
+}
+
+function allocateServicePort(serviceType, preferredPort = null, options = {}) {
+  const reservedPorts = listReservedPublicPorts(options);
+  const sanitizedPreferredPort = sanitizePublicPort(preferredPort, null);
+
+  if (sanitizedPreferredPort) {
+    if (reservedPorts.has(sanitizedPreferredPort)) {
+      throw createHttpError(
+        400,
+        `Port ${sanitizedPreferredPort} jest juz zajety przez inna usluge.`
+      );
+    }
+
+    return sanitizedPreferredPort;
+  }
+
+  if (serviceType === "minecraft_server") {
+    const minecraftDefaultPort = getDefaultServicePort(serviceType);
+    if (!reservedPorts.has(minecraftDefaultPort)) {
+      return minecraftDefaultPort;
+    }
+  }
+
+  if (serviceType === "fivem_server") {
+    for (let port = FIVEM_PORT_RANGE_START; port <= FIVEM_PORT_RANGE_END; port += 1) {
+      if (!reservedPorts.has(port)) {
+        return port;
+      }
+    }
+
+    throw createHttpError(
+      400,
+      `Nie znaleziono wolnego portu FiveM w zakresie ${FIVEM_PORT_RANGE_START}-${FIVEM_PORT_RANGE_END}.`
+    );
+  }
+
+  return null;
 }
 
 function listBotRows(actor = null) {
@@ -157,8 +260,9 @@ function createBotRecord(record) {
           detected_install_command, package_manager, project_path, status, status_message,
           expires_at, auto_restart, restart_delay, max_restarts, restart_count, last_restart_at,
           stability_status, ram_limit_mb, cpu_limit_percent, accept_eula, public_host,
-          public_port, minecraft_version, detected_minecraft_version, archive_name, pm2_name,
-          created_at, updated_at
+          public_port, minecraft_version, detected_minecraft_version, fivem_artifact_build,
+          fivem_license_key, fivem_max_clients, fivem_project_name, fivem_tags, fivem_locale,
+          fivem_onesync_enabled, archive_name, pm2_name, created_at, updated_at
         )
         VALUES (
           @id, @owner_user_id, @service_type, @name, @slug, @description, @language,
@@ -167,14 +271,17 @@ function createBotRecord(record) {
           @project_path, @status, @status_message, @expires_at, @auto_restart, @restart_delay,
           @max_restarts, @restart_count, @last_restart_at, @stability_status, @ram_limit_mb,
           @cpu_limit_percent, @accept_eula, @public_host, @public_port, @minecraft_version,
-          @detected_minecraft_version, @archive_name, @pm2_name, @created_at, @updated_at
+          @detected_minecraft_version, @fivem_artifact_build, @fivem_license_key,
+          @fivem_max_clients, @fivem_project_name, @fivem_tags, @fivem_locale,
+          @fivem_onesync_enabled, @archive_name, @pm2_name, @created_at, @updated_at
         )
       `
     )
     .run({
       ...record,
       auto_restart: record.auto_restart ? 1 : 0,
-      accept_eula: record.accept_eula ? 1 : 0
+      accept_eula: record.accept_eula ? 1 : 0,
+      fivem_onesync_enabled: record.fivem_onesync_enabled ? 1 : 0
     });
 
   return getBotRow(record.id, null, { skipAccessCheck: true });
@@ -519,6 +626,14 @@ function isUsingDetectedMinecraftStartCommand(bot) {
   );
 }
 
+function isUsingDetectedFiveMStartCommand(bot) {
+  return (
+    !bot.start_command ||
+    bot.start_command === bot.detected_start_command ||
+    bot.start_command === buildFiveMStartCommand(resolveEffectiveEntryFile(bot), "server.cfg")
+  );
+}
+
 function resolveEffectiveStartCommand(bot) {
   if (bot.start_command) {
     return bot.start_command;
@@ -532,6 +647,10 @@ function resolveEffectiveStartCommand(bot) {
     return buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb);
   }
 
+  if (bot.service_type === "fivem_server") {
+    return buildFiveMStartCommand(resolveEffectiveEntryFile(bot), "server.cfg");
+  }
+
   return null;
 }
 
@@ -539,7 +658,7 @@ function assertArtifactAllowed(serviceType, artifactKind) {
   if (serviceType !== "minecraft_server" && artifactKind === ".jar") {
     throw createHttpError(
       400,
-      "Boty Discord obsluguja tylko ZIP albo RAR. Plik JAR jest dostepny dla serwerow Minecraft."
+      "Plik JAR jest dostepny tylko dla serwerow Minecraft. Boty Discord i FiveM obsluguja ZIP albo RAR."
     );
   }
 }
@@ -554,6 +673,10 @@ async function analyzeServiceProject(projectPath, serviceType, ramLimitMb) {
 function getDefaultStartCommand(serviceType, entryFile, detectedStartCommand, ramLimitMb) {
   if (serviceType === "minecraft_server") {
     return buildMinecraftStartCommand(entryFile, ramLimitMb);
+  }
+
+  if (serviceType === "fivem_server") {
+    return buildFiveMStartCommand(entryFile || "run.sh", "server.cfg");
   }
 
   return detectedStartCommand;
@@ -674,6 +797,48 @@ async function bootstrapMinecraftWorkspace(projectPath, options = {}) {
       "utf8"
     );
   }
+}
+
+async function resolveGamePublicHost(payloadHost = null) {
+  const normalizedPayloadHost = normalizePublicHost(payloadHost);
+  if (normalizedPayloadHost) {
+    return normalizedPayloadHost;
+  }
+
+  return detectPublicGameHost();
+}
+
+function buildFiveMManagedSettings(source, options = {}) {
+  const fallbackPort = getDefaultServicePort("fivem_server");
+
+  return {
+    ...source,
+    service_type: "fivem_server",
+    public_port: sanitizePublicPort(source.public_port, fallbackPort),
+    fivem_project_name: normalizeFiveMText(source.fivem_project_name, source.name || "ByteHost FiveM"),
+    fivem_license_key: normalizeFiveMText(source.fivem_license_key, ""),
+    fivem_tags: normalizeFiveMText(source.fivem_tags, "default"),
+    fivem_locale: normalizeFiveMText(source.fivem_locale, "pl-PL"),
+    fivem_max_clients: sanitizeFiveMMaxClients(source.fivem_max_clients, 48),
+    fivem_onesync_enabled:
+      source.fivem_onesync_enabled === undefined
+        ? true
+        : coerceBoolean(source.fivem_onesync_enabled, true),
+    description:
+      coerceNullableString(source.description, null) ||
+      options.defaultDescription ||
+      "Serwer FiveM hostowany przez ByteHost."
+  };
+}
+
+async function bootstrapManagedFiveMWorkspace(projectPath, source) {
+  const settings = buildFiveMManagedSettings(source);
+  return bootstrapFiveMWorkspace(projectPath, settings);
+}
+
+async function repairManagedFiveMWorkspace(projectPath, source) {
+  const settings = buildFiveMManagedSettings(source);
+  return repairFiveMWorkspace(projectPath, settings);
 }
 
 async function replaceMinecraftServerJar(bot, artifactFile) {
@@ -817,6 +982,8 @@ async function restoreBotBackup(botId, actor, backupId, payload = {}) {
   const nextLanguage =
     bot.service_type === "minecraft_server"
       ? "Java"
+      : bot.service_type === "fivem_server"
+        ? "FiveM"
       : resolveUpdatedSetting(
           bot.language,
           bot.detected_language,
@@ -832,13 +999,20 @@ async function restoreBotBackup(botId, actor, backupId, payload = {}) {
   const previousAutoStart =
     bot.service_type === "minecraft_server"
       ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+      : bot.service_type === "fivem_server"
+        ? buildFiveMStartCommand(resolveEffectiveEntryFile(bot) || "run.sh", "server.cfg")
       : bot.detected_start_command;
   const nextAutoStart =
     bot.service_type === "minecraft_server"
       ? buildMinecraftStartCommand(nextEntryFile || analysis.detected_entry_file, bot.ram_limit_mb)
+      : bot.service_type === "fivem_server"
+        ? buildFiveMStartCommand(
+            nextEntryFile || analysis.detected_entry_file || "run.sh",
+            "server.cfg"
+          )
       : analysis.detected_start_command;
   const nextStartCommand =
-    bot.service_type === "minecraft_server"
+    bot.service_type === "minecraft_server" || bot.service_type === "fivem_server"
       ? resolveUpdatedSetting(
           bot.start_command,
           previousAutoStart,
@@ -862,9 +1036,11 @@ async function restoreBotBackup(botId, actor, backupId, payload = {}) {
     install_command: analysis.install_command,
     detected_install_command: analysis.install_command,
     package_manager: analysis.package_manager,
-    minecraft_version: bot.service_type === "minecraft_server" ? null : bot.minecraft_version,
+    minecraft_version: bot.service_type === "minecraft_server" ? bot.minecraft_version : null,
     detected_minecraft_version:
-      bot.service_type === "minecraft_server" ? null : bot.detected_minecraft_version,
+      bot.service_type === "minecraft_server" ? bot.detected_minecraft_version : null,
+    fivem_artifact_build:
+      bot.service_type === "fivem_server" ? bot.fivem_artifact_build : null,
     status: "OFFLINE",
     status_message: null,
     expires_at: null,
@@ -975,12 +1151,71 @@ async function createBot(actor, payload, artifactFile) {
     serviceType === "minecraft_server"
       ? normalizeMinecraftVersion(payload.minecraft_version, null)
       : null;
+  const requestedFiveMMaxClients =
+    serviceType === "fivem_server"
+      ? sanitizeFiveMMaxClients(payload.fivem_max_clients, 48)
+      : null;
+  const requestedFiveMProjectName =
+    serviceType === "fivem_server"
+      ? normalizeFiveMText(payload.fivem_project_name, coerceNullableString(payload.name, "ByteHost FiveM"))
+      : null;
+  const requestedFiveMLicenseKey =
+    serviceType === "fivem_server" ? normalizeFiveMText(payload.fivem_license_key, "") : null;
+  const requestedFiveMTags =
+    serviceType === "fivem_server" ? normalizeFiveMText(payload.fivem_tags, "default") : null;
+  const requestedFiveMLocale =
+    serviceType === "fivem_server" ? normalizeFiveMText(payload.fivem_locale, "pl-PL") : null;
+  const requestedFiveMOneSync =
+    serviceType === "fivem_server" ? coerceBoolean(payload.fivem_onesync_enabled, true) : null;
+  const resolvedPublicPort =
+    serviceType === "fivem_server"
+      ? allocateServicePort(serviceType, payload.public_port, { excludeBotId: null })
+      : serviceType === "minecraft_server"
+        ? sanitizePublicPort(payload.public_port, 25565)
+        : null;
+  const resolvedPublicHost =
+    serviceType === "fivem_server" ? await resolveGamePublicHost(payload.public_host) : null;
   const botId = randomId();
   const botDirectory = await ensureBotDirectory(botId);
   let resolvedMinecraftVersion = null;
+  let resolvedFiveMArtifactBuild = null;
 
   try {
-    if (artifactFile) {
+    if (serviceType === "fivem_server") {
+      const bootstrap = await bootstrapManagedFiveMWorkspace(botDirectory, {
+        name: payload.name,
+        description: payload.description,
+        public_port: resolvedPublicPort,
+        fivem_project_name: requestedFiveMProjectName,
+        fivem_license_key: requestedFiveMLicenseKey,
+        fivem_tags: requestedFiveMTags,
+        fivem_locale: requestedFiveMLocale,
+        fivem_max_clients: requestedFiveMMaxClients,
+        fivem_onesync_enabled: requestedFiveMOneSync
+      });
+
+      resolvedFiveMArtifactBuild = bootstrap.fivem_artifact_build;
+
+      if (artifactFile) {
+        const artifactKind = await detectUploadedArtifactKind(artifactFile.path, artifactFile.originalname);
+        assertArtifactAllowed(serviceType, artifactKind);
+        await importProjectArtifact(artifactFile.path, botDirectory, {
+          originalName: artifactFile.originalname
+        });
+      }
+
+      await writeFiveMServerConfig(botDirectory, {
+        name: payload.name,
+        description: payload.description,
+        public_port: resolvedPublicPort,
+        fivem_project_name: requestedFiveMProjectName,
+        fivem_license_key: requestedFiveMLicenseKey,
+        fivem_tags: requestedFiveMTags,
+        fivem_locale: requestedFiveMLocale,
+        fivem_max_clients: requestedFiveMMaxClients,
+        fivem_onesync_enabled: requestedFiveMOneSync
+      });
+    } else if (artifactFile) {
       const artifactKind = await detectUploadedArtifactKind(artifactFile.path, artifactFile.originalname);
       assertArtifactAllowed(serviceType, artifactKind);
       await importProjectArtifact(artifactFile.path, botDirectory, {
@@ -1000,7 +1235,14 @@ async function createBot(actor, payload, artifactFile) {
     const derivedName =
       coerceNullableString(payload.name, null) ||
       path.basename(
-        artifactFile?.originalname || `${serviceType === "minecraft_server" ? "minecraft" : "bot"}-${botId.slice(0, 8)}`,
+        artifactFile?.originalname ||
+          `${
+            serviceType === "minecraft_server"
+              ? "minecraft"
+              : serviceType === "fivem_server"
+                ? "fivem"
+                : "bot"
+          }-${botId.slice(0, 8)}`,
         path.extname(artifactFile?.originalname || "")
       );
     const entryFile = normalizeRelativePath(
@@ -1043,15 +1285,30 @@ async function createBot(actor, payload, artifactFile) {
       cpu_limit_percent: cpuLimitPercent,
       accept_eula: serviceType === "minecraft_server" ? coerceBoolean(payload.accept_eula, false) : false,
       public_host:
-        serviceType === "minecraft_server" ? coerceNullableString(payload.public_host, null) : null,
+        serviceType === "minecraft_server"
+          ? coerceNullableString(payload.public_host, null)
+          : serviceType === "fivem_server"
+            ? resolvedPublicHost || null
+            : null,
       public_port:
-        serviceType === "minecraft_server" ? sanitizePublicPort(payload.public_port, 25565) : null,
+        serviceType === "minecraft_server"
+          ? resolvedPublicPort
+          : serviceType === "fivem_server"
+            ? resolvedPublicPort
+            : null,
       minecraft_version:
         serviceType === "minecraft_server"
           ? normalizeMinecraftVersion(payload.minecraft_version, resolvedMinecraftVersion)
           : null,
       detected_minecraft_version:
         serviceType === "minecraft_server" ? resolvedMinecraftVersion : null,
+      fivem_artifact_build: serviceType === "fivem_server" ? resolvedFiveMArtifactBuild : null,
+      fivem_license_key: serviceType === "fivem_server" ? requestedFiveMLicenseKey : null,
+      fivem_max_clients: serviceType === "fivem_server" ? requestedFiveMMaxClients : null,
+      fivem_project_name: serviceType === "fivem_server" ? requestedFiveMProjectName : null,
+      fivem_tags: serviceType === "fivem_server" ? requestedFiveMTags : null,
+      fivem_locale: serviceType === "fivem_server" ? requestedFiveMLocale : null,
+      fivem_onesync_enabled: serviceType === "fivem_server" ? requestedFiveMOneSync : false,
       archive_name: artifactFile?.originalname || null,
       pm2_name: getBotProcessName(botId),
       created_at: createdAt,
@@ -1096,12 +1353,69 @@ async function updateBot(botId, actor, payload) {
       : existingBot.entry_file;
   let nextDetectedEntryFile = existingBot.detected_entry_file;
   let nextDetectedMinecraftVersion = existingBot.detected_minecraft_version;
+  let nextFiveMArtifactBuild = existingBot.fivem_artifact_build;
   const nextMinecraftVersion =
     existingBot.service_type === "minecraft_server"
       ? payload.minecraft_version !== undefined
         ? normalizeMinecraftVersion(payload.minecraft_version, null)
         : normalizeMinecraftVersion(existingBot.minecraft_version, null)
       : null;
+  const nextFiveMProjectName =
+    existingBot.service_type === "fivem_server"
+      ? payload.fivem_project_name !== undefined
+        ? normalizeFiveMText(payload.fivem_project_name, existingBot.fivem_project_name || existingBot.name)
+        : normalizeFiveMText(existingBot.fivem_project_name, existingBot.name)
+      : null;
+  const nextFiveMLicenseKey =
+    existingBot.service_type === "fivem_server"
+      ? payload.fivem_license_key !== undefined
+        ? normalizeFiveMText(payload.fivem_license_key, "")
+        : normalizeFiveMText(existingBot.fivem_license_key, "")
+      : null;
+  const nextFiveMMaxClients =
+    existingBot.service_type === "fivem_server"
+      ? payload.fivem_max_clients !== undefined
+        ? sanitizeFiveMMaxClients(payload.fivem_max_clients, existingBot.fivem_max_clients || 48)
+        : sanitizeFiveMMaxClients(existingBot.fivem_max_clients, 48)
+      : null;
+  const nextFiveMTags =
+    existingBot.service_type === "fivem_server"
+      ? payload.fivem_tags !== undefined
+        ? normalizeFiveMText(payload.fivem_tags, "default")
+        : normalizeFiveMText(existingBot.fivem_tags, "default")
+      : null;
+  const nextFiveMLocale =
+    existingBot.service_type === "fivem_server"
+      ? payload.fivem_locale !== undefined
+        ? normalizeFiveMText(payload.fivem_locale, "pl-PL")
+        : normalizeFiveMText(existingBot.fivem_locale, "pl-PL")
+      : null;
+  const nextFiveMOneSync =
+    existingBot.service_type === "fivem_server"
+      ? payload.fivem_onesync_enabled !== undefined
+        ? coerceBoolean(payload.fivem_onesync_enabled, existingBot.fivem_onesync_enabled)
+        : coerceBoolean(existingBot.fivem_onesync_enabled, true)
+      : null;
+  const nextPublicHost =
+    existingBot.service_type === "fivem_server"
+      ? payload.public_host !== undefined
+        ? normalizePublicHost(payload.public_host)
+        : existingBot.public_host || (await resolveGamePublicHost(null))
+      : existingBot.service_type === "minecraft_server" && payload.public_host !== undefined
+        ? coerceNullableString(payload.public_host, null)
+        : existingBot.public_host;
+  const nextPublicPort =
+    existingBot.service_type === "fivem_server"
+      ? payload.public_port !== undefined
+        ? allocateServicePort(existingBot.service_type, payload.public_port, {
+            excludeBotId: existingBot.id
+          })
+        : existingBot.public_port || allocateServicePort(existingBot.service_type, null, {
+            excludeBotId: existingBot.id
+          })
+      : existingBot.service_type === "minecraft_server" && payload.public_port !== undefined
+        ? sanitizePublicPort(payload.public_port, existingBot.public_port || 25565)
+        : existingBot.public_port;
 
   if (existingBot.service_type === "minecraft_server") {
     const selectedEntryFile = nextEntryFile || nextDetectedEntryFile;
@@ -1131,13 +1445,19 @@ async function updateBot(botId, actor, payload) {
     }
   }
 
-  const nextMinecraftAuto = buildMinecraftStartCommand(
-    nextEntryFile || nextDetectedEntryFile,
-    nextRamLimit
-  );
+  const nextMinecraftAuto =
+    existingBot.service_type === "minecraft_server"
+      ? buildMinecraftStartCommand(nextEntryFile || nextDetectedEntryFile, nextRamLimit)
+      : null;
+  const nextFiveMAuto =
+    existingBot.service_type === "fivem_server"
+      ? buildFiveMStartCommand(nextEntryFile || nextDetectedEntryFile || "run.sh", "server.cfg")
+      : null;
   const defaultStartCommand =
     existingBot.service_type === "minecraft_server"
       ? nextMinecraftAuto
+      : existingBot.service_type === "fivem_server"
+        ? nextFiveMAuto
       : existingBot.detected_start_command;
 
   let nextStartCommand =
@@ -1149,6 +1469,14 @@ async function updateBot(botId, actor, payload) {
     existingBot.service_type === "minecraft_server" &&
     payload.start_command === undefined &&
     isUsingDetectedMinecraftStartCommand(existingBot)
+  ) {
+    nextStartCommand = defaultStartCommand;
+  }
+
+  if (
+    existingBot.service_type === "fivem_server" &&
+    payload.start_command === undefined &&
+    isUsingDetectedFiveMStartCommand(existingBot)
   ) {
     nextStartCommand = defaultStartCommand;
   }
@@ -1187,14 +1515,8 @@ async function updateBot(botId, actor, payload) {
       existingBot.service_type === "minecraft_server" && payload.accept_eula !== undefined
         ? coerceBoolean(payload.accept_eula, existingBot.accept_eula)
         : existingBot.accept_eula,
-    public_host:
-      existingBot.service_type === "minecraft_server" && payload.public_host !== undefined
-        ? coerceNullableString(payload.public_host, null)
-        : existingBot.public_host,
-    public_port:
-      existingBot.service_type === "minecraft_server" && payload.public_port !== undefined
-        ? sanitizePublicPort(payload.public_port, existingBot.public_port || 25565)
-        : existingBot.public_port,
+    public_host: nextPublicHost,
+    public_port: nextPublicPort,
     minecraft_version:
       existingBot.service_type === "minecraft_server"
         ? nextMinecraftVersion
@@ -1203,6 +1525,30 @@ async function updateBot(botId, actor, payload) {
       existingBot.service_type === "minecraft_server"
         ? nextDetectedMinecraftVersion
         : existingBot.detected_minecraft_version,
+    fivem_artifact_build:
+      existingBot.service_type === "fivem_server"
+        ? nextFiveMArtifactBuild
+        : existingBot.fivem_artifact_build,
+    fivem_license_key:
+      existingBot.service_type === "fivem_server"
+        ? nextFiveMLicenseKey
+        : existingBot.fivem_license_key,
+    fivem_max_clients:
+      existingBot.service_type === "fivem_server"
+        ? nextFiveMMaxClients
+        : existingBot.fivem_max_clients,
+    fivem_project_name:
+      existingBot.service_type === "fivem_server"
+        ? nextFiveMProjectName
+        : existingBot.fivem_project_name,
+    fivem_tags:
+      existingBot.service_type === "fivem_server" ? nextFiveMTags : existingBot.fivem_tags,
+    fivem_locale:
+      existingBot.service_type === "fivem_server" ? nextFiveMLocale : existingBot.fivem_locale,
+    fivem_onesync_enabled:
+      existingBot.service_type === "fivem_server"
+        ? nextFiveMOneSync
+        : existingBot.fivem_onesync_enabled,
     updated_at: nowIso()
   };
 
@@ -1220,11 +1566,16 @@ async function updateBot(botId, actor, payload) {
     changes.status_message = null;
   }
 
-  updateBotRow(botId, {
+  const updatedRow = updateBotRow(botId, {
     ...changes,
     auto_restart: changes.auto_restart ? 1 : 0,
-    accept_eula: changes.accept_eula ? 1 : 0
+    accept_eula: changes.accept_eula ? 1 : 0,
+    fivem_onesync_enabled: changes.fivem_onesync_enabled ? 1 : 0
   });
+
+  if (updatedRow.service_type === "fivem_server") {
+    await writeFiveMServerConfig(updatedRow.project_path, updatedRow);
+  }
 
   const requiresRestart =
     existingBot.status === "ONLINE" &&
@@ -1234,7 +1585,15 @@ async function updateBot(botId, actor, payload) {
       payload.restart_delay !== undefined ||
       payload.max_restarts !== undefined ||
       payload.ram_limit_mb !== undefined ||
-      payload.minecraft_version !== undefined);
+      payload.minecraft_version !== undefined ||
+      payload.public_port !== undefined ||
+      payload.public_host !== undefined ||
+      payload.fivem_license_key !== undefined ||
+      payload.fivem_max_clients !== undefined ||
+      payload.fivem_project_name !== undefined ||
+      payload.fivem_tags !== undefined ||
+      payload.fivem_locale !== undefined ||
+      payload.fivem_onesync_enabled !== undefined);
 
   if (requiresRestart) {
     await restartBot(botId, actor);
@@ -1323,6 +1682,70 @@ async function startBot(botId, actor) {
       }
     }
 
+    if (bot.service_type === "fivem_server") {
+      let entryFile = resolveEffectiveEntryFile(bot) || "run.sh";
+      const runtimeDirectory = path.join(bot.project_path, "alpine", "opt", "cfx-server");
+      const entryExists = await fileExists(path.join(bot.project_path, entryFile));
+      const runtimeExists = await fileExists(runtimeDirectory);
+
+      if (!entryExists || !runtimeExists) {
+        const repair = await repairManagedFiveMWorkspace(bot.project_path, bot);
+        const nextDetectedStartCommand = buildFiveMStartCommand(repair.entry_file, "server.cfg");
+        const nextRow = {
+          detected_entry_file: repair.entry_file,
+          detected_start_command: nextDetectedStartCommand,
+          fivem_artifact_build: repair.fivem_artifact_build,
+          updated_at: nowIso()
+        };
+
+        if (isUsingDetectedEntryFile(bot) || !bot.entry_file) {
+          nextRow.entry_file = repair.entry_file;
+        }
+
+        if (isUsingDetectedFiveMStartCommand(bot)) {
+          nextRow.start_command = nextDetectedStartCommand;
+        }
+
+        bot = updateBotRow(botId, nextRow);
+        entryFile = resolveEffectiveEntryFile(bot) || repair.entry_file;
+      }
+
+      if (!bot.public_port) {
+        bot = updateBotRow(botId, {
+          public_port: allocateServicePort("fivem_server", null, {
+            excludeBotId: bot.id
+          }),
+          updated_at: nowIso()
+        });
+      }
+
+      if (!bot.public_host) {
+        const detectedHost = await resolveGamePublicHost(null);
+        if (detectedHost) {
+          bot = updateBotRow(botId, {
+            public_host: detectedHost,
+            updated_at: nowIso()
+          });
+        }
+      }
+
+      if (!bot.fivem_license_key || bot.fivem_license_key === "changeme") {
+        throw createHttpError(
+          400,
+          "Aby uruchomic serwer FiveM, ustaw poprawny `sv_licenseKey` w ustawieniach uslugi."
+        );
+      }
+
+      await writeFiveMServerConfig(bot.project_path, bot);
+
+      if (!(await fileExists(path.join(bot.project_path, entryFile)))) {
+        throw createHttpError(
+          400,
+          `Nie znaleziono pliku startowego ${entryFile}. Napraw artefakt FiveM albo wrzuc poprawny pakiet serwera.`
+        );
+      }
+    }
+
     const resolvedStartCommand = resolveEffectiveStartCommand(bot);
     if (!resolvedStartCommand) {
       throw createHttpError(400, "Brakuje komendy startowej.");
@@ -1331,6 +1754,8 @@ async function startBot(botId, actor) {
     const nextDetectedStartCommand =
       bot.service_type === "minecraft_server"
         ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+        : bot.service_type === "fivem_server"
+          ? buildFiveMStartCommand(resolveEffectiveEntryFile(bot) || "run.sh", "server.cfg")
         : bot.detected_start_command;
 
     if (
@@ -1396,6 +1821,39 @@ async function installDependencies(botId, actor) {
     };
   }
 
+  if (bot.service_type === "fivem_server") {
+    const repair = await repairManagedFiveMWorkspace(bot.project_path, bot);
+    const nextDetectedStartCommand = buildFiveMStartCommand(repair.entry_file, "server.cfg");
+    const nextRow = {
+      detected_entry_file: repair.entry_file,
+      detected_start_command: nextDetectedStartCommand,
+      fivem_artifact_build: repair.fivem_artifact_build,
+      updated_at: nowIso()
+    };
+
+    if (isUsingDetectedEntryFile(bot)) {
+      nextRow.entry_file = repair.entry_file;
+    }
+
+    if (isUsingDetectedFiveMStartCommand(bot)) {
+      nextRow.start_command = nextDetectedStartCommand;
+    }
+
+    updateBotRow(botId, nextRow);
+
+    return {
+      bot: await getBotWithRuntime(botId, actor),
+      install: {
+        skipped: false,
+        command: "repair-fivem-runtime",
+        stdout: "",
+        stderr: "",
+        message:
+          "ByteHost pobral lub naprawil oficjalny artefakt FXServer i odswiezyl podstawowy server.cfg."
+      }
+    };
+  }
+
   const command = bot.install_command || bot.detected_install_command;
 
   if (!command) {
@@ -1457,6 +1915,7 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       : wasOnline;
   const artifactKind = await detectUploadedArtifactKind(artifactFile.path, artifactFile.originalname);
   let install = null;
+  let nextFiveMArtifactBuild = bot.fivem_artifact_build;
 
   assertArtifactAllowed(bot.service_type, artifactKind);
 
@@ -1471,6 +1930,12 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       const preservedEnv = preserveEnv ? await readUtf8IfExists(envPath) : null;
 
       await fs.mkdir(tempDirectory, { recursive: true });
+
+      if (bot.service_type === "fivem_server") {
+        const repair = await bootstrapManagedFiveMWorkspace(tempDirectory, bot);
+        nextFiveMArtifactBuild = repair.fivem_artifact_build;
+      }
+
       await importProjectArtifact(artifactFile.path, tempDirectory, {
         originalName: artifactFile.originalname
       });
@@ -1488,6 +1953,8 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
     const nextLanguage =
       bot.service_type === "minecraft_server"
         ? "Java"
+        : bot.service_type === "fivem_server"
+          ? "FiveM"
         : resolveUpdatedSetting(
             bot.language,
             bot.detected_language,
@@ -1503,13 +1970,17 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
     const previousAutoStart =
       bot.service_type === "minecraft_server"
         ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+        : bot.service_type === "fivem_server"
+          ? buildFiveMStartCommand(resolveEffectiveEntryFile(bot) || "run.sh", "server.cfg")
         : bot.detected_start_command;
     const nextAutoStart =
       bot.service_type === "minecraft_server"
         ? buildMinecraftStartCommand(nextEntryFile || analysis.detected_entry_file, bot.ram_limit_mb)
+        : bot.service_type === "fivem_server"
+          ? buildFiveMStartCommand(nextEntryFile || analysis.detected_entry_file || "run.sh", "server.cfg")
         : analysis.detected_start_command;
     const nextStartCommand =
-      bot.service_type === "minecraft_server"
+      bot.service_type === "minecraft_server" || bot.service_type === "fivem_server"
         ? resolveUpdatedSetting(
             bot.start_command,
             previousAutoStart,
@@ -1523,7 +1994,7 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
             (value) => String(value || "").trim()
           );
 
-    updateBotRow(botId, {
+    const updatedArchiveBot = updateBotRow(botId, {
       language: sanitizeLanguage(nextLanguage, analysis.detected_language || "Node.js", bot.service_type),
       detected_language: analysis.detected_language,
       entry_file: normalizeRelativePath(nextEntryFile || ""),
@@ -1533,15 +2004,21 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       install_command: analysis.install_command,
       detected_install_command: analysis.install_command,
       package_manager: analysis.package_manager,
-      minecraft_version: bot.service_type === "minecraft_server" ? null : bot.minecraft_version,
+      minecraft_version: bot.service_type === "minecraft_server" ? bot.minecraft_version : null,
       detected_minecraft_version:
-        bot.service_type === "minecraft_server" ? null : bot.detected_minecraft_version,
+        bot.service_type === "minecraft_server" ? bot.detected_minecraft_version : null,
+      fivem_artifact_build:
+        bot.service_type === "fivem_server" ? nextFiveMArtifactBuild : null,
       archive_name: artifactFile.originalname || bot.archive_name,
       status: "OFFLINE",
       status_message: null,
       expires_at: null,
       updated_at: nowIso()
     });
+
+    if (updatedArchiveBot.service_type === "fivem_server") {
+      await writeFiveMServerConfig(updatedArchiveBot.project_path, updatedArchiveBot);
+    }
 
     await assertStorageWithinLimit();
     await assertUserStorageWithinLimit(owner);

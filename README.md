@@ -1,6 +1,6 @@
 # ByteHost
 
-ByteHost to prywatny panel webowy do hostowania botow Discord i serwerow Minecraft dla jednego operatora. Aplikacja dziala na realnych plikach i prawdziwych procesach PM2, bez mockow, bez logowania i bez rejestracji.
+ByteHost to realny panel webowy do hostowania botow Discord, serwerow Minecraft i serwerow FiveM. Aplikacja pracuje na prawdziwych plikach, procesach PM2 i SQLite, a nie na mockach. Panel ma logowanie JWT, role owner/user i publiczna rejestracje kont z aktywacja przez ownera.
 
 ## Stack
 
@@ -8,53 +8,56 @@ ByteHost to prywatny panel webowy do hostowania botow Discord i serwerow Minecra
 - Frontend: React + Vite
 - Storage:
   - `storage/bots/{botId}`
+  - `storage/backups/{botId}`
   - `storage/tmp`
   - `storage/logs`
 
 ## Funkcje
 
-- tworzenie bota Discord z archiwum `ZIP` lub `RAR`
-- tworzenie serwera Minecraft z `JAR`, `ZIP` albo `RAR`, albo jako pusty workspace bez pliku
-- automatyczne pobieranie oficjalnego `server.jar` Minecraft dla wybranej wersji
-- automatyczne wykrywanie:
-  - bota Discord:
-    - jezyka `Node.js`, `TypeScript`, `Python`
-    - pliku startowego
-    - komendy startowej
-- serwera Minecraft:
-    - pliku `JAR`
-    - komendy `java -jar ... nogui`
-    - pustego workspace, jesli plik dodasz dopiero pozniej
-    - oficjalnej wersji serwera z listy Mojanga
-- reczna korekta:
-  - jezyka
-  - pliku startowego
-  - komendy startowej
-  - publicznego hosta i portu Minecraft
-- realne uruchamianie uslug przez `PM2`
-- auto restart z:
-  - `autorestart`
-  - `restart_delay`
-  - `max_restarts`
-- wykrywanie `CRASH LOOP`
-- scheduler wygasania `expires_at`
-- limity globalne:
-  - RAM
-  - CPU
-  - storage
-  - liczba uslug
-- limity per-usluga:
-  - RAM
-  - CPU
+- boty Discord:
+  - upload `ZIP` albo `RAR`
+  - auto-detekcja jezyka, pliku startowego i komendy
+  - start/stop/restart przez PM2
+- serwery Minecraft:
+  - upload `JAR`, `ZIP` albo `RAR`
+  - mozliwosc utworzenia pustego workspace bez pliku
+  - automatyczne pobieranie oficjalnego `server.jar` dla wybranej wersji
+  - `EULA`, publiczny host i port, limity zasobow
+- serwery FiveM:
+  - mozliwosc utworzenia serwera bez uploadu pliku
+  - automatyczne pobieranie oficjalnego artefaktu `FXServer` dla Linuxa
+  - automatyczne pobieranie `cfx-server-data`
+  - generowanie `server.cfg`
+  - automatyczny przydzial publicznego portu
+  - automatyczne wykrycie publicznego hosta albo host z `.env`
+  - ustawienia `sv_licenseKey`, `sv_maxclients`, `OneSync`, `tags`, `locale`, `project name`
+  - upload `ZIP` albo `RAR` jako gotowy pakiet resources/modow/pluginow
 - file manager:
   - przegladanie folderow
   - edycja plikow tekstowych
-  - tworzenie plikow
-  - tworzenie folderow
+  - tworzenie plikow i folderow
   - upload plikow
   - usuwanie plikow i folderow
   - edycja `.env`
-- logi live przez polling API
+- backupy uslug:
+  - tworzenie snapshotow
+  - przywracanie kopii
+  - usuwanie backupow
+- limity:
+  - globalne: RAM, CPU, storage, liczba uslug
+  - per konto: liczba uslug, RAM, CPU, storage
+  - per usluga: RAM, CPU
+- system kont:
+  - JWT auth
+  - hasla hashowane `bcrypt`
+  - owner tworzony przy pierwszym starcie z `.env`
+  - publiczna rejestracja z aktywacja przez ownera
+  - tryb podgladu dla nieaktywowanych kont
+- monitoring:
+  - live logi
+  - statusy `ONLINE`, `OFFLINE`, `ERROR`, `CRASH LOOP`
+  - auto restart
+  - scheduler kont i crash loop
 
 ## Uruchomienie na Ubuntu Server
 
@@ -62,10 +65,10 @@ ByteHost to prywatny panel webowy do hostowania botow Discord i serwerow Minecra
 
 ```bash
 sudo apt update
-sudo apt install -y curl unzip unrar python3 python3-pip build-essential openjdk-21-jre-headless
+sudo apt install -y curl unzip unrar xz-utils python3 python3-pip build-essential openjdk-21-jre-headless
 ```
 
-Zainstaluj Node.js LTS, najlepiej `20.x` lub `22.x`.
+Zainstaluj Node.js LTS, najlepiej `20.x` albo `22.x`.
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -79,6 +82,20 @@ sudo npm install -g pm2
 cp .env.example .env
 npm install
 ```
+
+Najwazniejsze pola w `.env`:
+
+- `PUBLIC_GAME_HOST`
+  - opcjonalny host pokazywany graczom, np. `mc.bytehost.online`
+  - jesli puste, ByteHost sprobuje wykryc publiczne IPv4
+- `FIVEM_DEFAULT_PORT`
+  - domyslny port FiveM
+- `FIVEM_PORT_RANGE_START`
+- `FIVEM_PORT_RANGE_END`
+  - zakres, z ktorego ByteHost automatycznie wybiera wolny port dla nowych serwerow FiveM
+- `OWNER_EMAIL`
+- `OWNER_PASSWORD`
+  - dane pierwszego ownera
 
 ### 3. Development
 
@@ -103,27 +120,34 @@ pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
-## Minecraft i publiczny dostep
+## Publiczny dostep do gier
 
-- Panel potrafi uruchomic serwer Minecraft, zarzadzac plikami, logami i PM2.
-- Pole `Adres publiczny` w panelu jest informacyjne i sluzy do pokazania operatorowi, pod jakim adresem gracze maja wejsc.
-- Aby gracze z internetu faktycznie polaczyli sie z serwerem Minecraft, musisz jeszcze wystawic publiczny ruch TCP dla portu gry, np. przez publiczne IP z przekierowaniem portu albo tunel TCP do Minecrafta.
-- `Cloudflare Tunnel` z HTTP do panelu webowego ByteHost nie wystawia automatycznie samego portu gry Minecraft.
+- Panel webowy moze dzialac przez `Cloudflare Tunnel`.
+- Minecraft i FiveM to osobny ruch gry, nie zwykle HTTP.
+- Aby gracze z internetu weszli na serwer Minecraft, musisz wystawic publiczny ruch TCP dla portu gry.
+- Aby gracze weszli na serwer FiveM, musisz przekierowac ten sam port gry dla `TCP` i `UDP` na routerze do maszyny z ByteHost.
+- Serwery FiveM wymagaja poprawnego `sv_licenseKey` przed startem publicznym.
+- `Cloudflare Tunnel` od panelu nie wystawia automatycznie portu Minecraft ani FiveM.
 
 ## Wazne uwagi
 
-- RAR wymaga polecenia `unrar` dostepnego na serwerze.
-- Minecraft wymaga zainstalowanej Javy na Ubuntu.
+- `RAR` wymaga polecenia `unrar`.
+- FiveM wymaga `tar` i `xz-utils`.
+- Minecraft wymaga zainstalowanej Javy.
 - `.env` jest traktowany jak zwykly plik tekstowy. Panel go nie parsuje i nie przechowuje tokenow.
-- Dla projektow Node/TypeScript uzywany jest `npm`, `yarn` lub `pnpm` zaleznosci od lockfile.
+- Dla Node/TypeScript uzywany jest `npm`, `yarn` albo `pnpm`, zaleznosci od lockfile.
 - Dla projektow Python instalacja korzysta z `requirements.txt`, jesli istnieje.
-- Dla serwerow Minecraft zaznaczenie akceptacji EULA pozwala panelowi zapisac `eula=true` przed startem.
-- Dla serwerow Minecraft bez wrzuconego pliku panel moze sam pobrac oficjalny `server.jar` dla wybranej wersji.
-- Scheduler sprawdza wygasanie i crash loop co `60s` domyslnie.
+- Resources, pluginy i skrypty FiveM wrzucasz przez File Manager albo aktualizacje `ZIP/RAR`.
 
 ## API
 
-### Bots
+### Auth
+
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `GET /api/auth/me`
+
+### Bots / Services
 
 - `GET /api/bots`
 - `POST /api/bots`
@@ -142,10 +166,22 @@ pm2 save
 - `PATCH /api/bots/:id/files`
 - `DELETE /api/bots/:id/files`
 - `PATCH /api/bots/:id/env`
+- `GET /api/bots/:id/backups`
+- `POST /api/bots/:id/backups`
+- `POST /api/bots/:id/backups/:backupId/restore`
+- `DELETE /api/bots/:id/backups/:backupId`
+
+### Admin
+
+- `GET /api/admin/users`
+- `POST /api/admin/users`
+- `PATCH /api/admin/users/:id`
+- `DELETE /api/admin/users/:id`
 
 ### System
 
 - `GET /api/system/stats`
+- `GET /api/system/minecraft-versions`
 - `PATCH /api/system/limits`
 
 ## Struktura
@@ -160,13 +196,14 @@ src/
   pages/
 storage/
   bots/
+  backups/
   logs/
   tmp/
 ```
 
 ## Weryfikacja lokalna
 
-- backend JS sprawdzony skladniowo przez `node --check`
+- backend JS sprawdzony przez `node --check`
 - frontend produkcyjny zbudowany przez `npm run build`
 
-Na tym komputerze pelne `npm install` z natywnym buildem `better-sqlite3` moze wymagac lokalnego toolchaina. Docelowym srodowiskiem dla ByteHost pozostaje Ubuntu Server z Node LTS.
+Na tym komputerze lokalne `npm install` z natywnym buildem `better-sqlite3` moze wymagac toolchaina systemowego. Docelowym srodowiskiem dla ByteHost pozostaje Ubuntu Server z Node LTS.

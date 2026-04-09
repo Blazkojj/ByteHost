@@ -51,7 +51,7 @@ export function DashboardPage({ user, bots, system, loading }) {
           <h2>
             {user.is_admin
               ? "Zarzadzaj kontami, limitami i uslugami z jednego panelu."
-              : "Widzisz tylko swoje boty, zuzycie zasobow i pozostaly limit planu."}
+              : "Widzisz tylko swoje uslugi, zuzycie zasobow i pozostaly limit planu."}
           </h2>
           <p className="hero-copy">
             {user.is_admin

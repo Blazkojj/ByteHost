@@ -92,6 +92,10 @@ export function serviceTypeLabel(serviceType) {
     return "Serwer Minecraft";
   }
 
+  if (serviceType === "fivem_server") {
+    return "Serwer FiveM";
+  }
+
   return "Bot Discord";
 }
 
@@ -100,16 +104,31 @@ export function serviceArtifactLabel(serviceType) {
     return "Plik serwera (JAR / ZIP / RAR)";
   }
 
+  if (serviceType === "fivem_server") {
+    return "Pakiet FiveM (ZIP / RAR)";
+  }
+
   return "Archiwum projektu (ZIP / RAR)";
 }
 
 export function serviceJoinAddress(service) {
-  if (service?.service_type !== "minecraft_server" || !service.public_host) {
+  if (
+    !["minecraft_server", "fivem_server"].includes(service?.service_type) ||
+    !service.public_host
+  ) {
     return "Brak";
   }
 
-  const port = service.public_port || 25565;
-  return port === 25565 ? service.public_host : `${service.public_host}:${port}`;
+  const rawHost = String(service.public_host);
+  const host = rawHost.includes(":") && !rawHost.startsWith("[") ? `[${rawHost}]` : rawHost;
+  const defaultPort = service.service_type === "minecraft_server" ? 25565 : 30120;
+  const port = service.public_port || defaultPort;
+
+  if (service.service_type === "minecraft_server" && port === defaultPort) {
+    return host;
+  }
+
+  return `${host}:${port}`;
 }
 
 export function accountStatusLabel(status) {

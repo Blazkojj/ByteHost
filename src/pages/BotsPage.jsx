@@ -22,6 +22,12 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     description: "",
     language: "",
     minecraft_version: "",
+    fivem_license_key: "",
+    fivem_max_clients: 48,
+    fivem_project_name: "",
+    fivem_tags: "default",
+    fivem_locale: "pl-PL",
+    fivem_onesync_enabled: true,
     entry_file: "",
     start_command: "",
     auto_restart: true,
@@ -41,6 +47,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
   const [latestMinecraftRelease, setLatestMinecraftRelease] = useState("");
 
   const isMinecraft = form.service_type === "minecraft_server";
+  const isFiveM = form.service_type === "fivem_server";
+  const isGameService = isMinecraft || isFiveM;
 
   useEffect(() => {
     if (open) {
@@ -116,7 +124,13 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">Nowa usluga</p>
-            <h3>{isMinecraft ? "Dodaj serwer Minecraft" : "Dodaj bota Discord"}</h3>
+            <h3>
+              {isMinecraft
+                ? "Dodaj serwer Minecraft"
+                : isFiveM
+                  ? "Dodaj serwer FiveM"
+                  : "Dodaj bota Discord"}
+            </h3>
           </div>
           <button className="ghost-button" onClick={onClose}>
             Zamknij
@@ -126,8 +140,18 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         <div className="info-card">
           {isMinecraft
             ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej."
+            : isFiveM
+              ? "ByteHost sam pobiera oficjalny artefakt FXServer oraz bazowe cfx-server-data. ZIP albo RAR jest opcjonalny i sluzy do nalozenia gotowego pakietu resources/modow/pluginow na swiezy serwer."
             : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
         </div>
+
+        {isFiveM ? (
+          <div className="info-card">
+            Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Zeby gracze
+            faktycznie weszli na serwer, ten sam port musi byc przekierowany na routerze do VM z
+            ByteHost.
+          </div>
+        ) : null}
 
         {!user?.is_admin ? (
           <div className="info-card">
@@ -156,10 +180,23 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                         install_on_create: false,
                         public_port: current.public_port || 25565
                       }
+                    : event.target.value === "fivem_server"
+                      ? {
+                          ...current,
+                          service_type: event.target.value,
+                          language: "FiveM",
+                          entry_file: current.entry_file || "run.sh",
+                          minecraft_version: "",
+                          install_on_create: false,
+                          public_port: current.public_port || 30120
+                        }
                     : {
                         ...current,
                         service_type: event.target.value,
-                        language: current.language === "Java" ? "" : current.language,
+                        language:
+                          current.language === "Java" || current.language === "FiveM"
+                            ? ""
+                            : current.language,
                         minecraft_version: "",
                         entry_file: current.entry_file === "server.jar" ? "" : current.entry_file
                       }
@@ -168,6 +205,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             >
               <option value="discord_bot">Bot Discord</option>
               <option value="minecraft_server">Serwer Minecraft</option>
+              <option value="fivem_server">Serwer FiveM</option>
             </select>
           </label>
           <label>
@@ -193,6 +231,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               accept={
                 isMinecraft
                   ? ".jar,.zip,.rar,application/java-archive,application/x-java-archive,application/zip,application/x-rar-compressed"
+                  : isFiveM
+                    ? ".zip,.rar,application/zip,application/x-rar-compressed"
                   : ".zip,.rar,application/zip,application/x-rar-compressed"
               }
               onChange={(event) => setArchive(event.target.files?.[0] || null)}
@@ -202,6 +242,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 ? archive.name
                 : isMinecraft
                   ? "Opcjonalne. Mozesz utworzyc pusty serwer i dodac JAR pozniej albo od razu wrzucic JAR/ZIP/RAR."
+                  : isFiveM
+                    ? "Opcjonalne. Bez pliku ByteHost postawi czysty FiveM z oficjalnym FXServerem i cfx-server-data. ZIP/RAR nalozy Twoje resources/mods/pluginy na gotowy runtime."
                   : "Mozesz dodac plik teraz lub utworzyc pusty workspace."}
             </small>
           </label>
@@ -209,7 +251,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             Jezyk projektu
             <select
               value={form.language}
-              disabled={isMinecraft}
+              disabled={isMinecraft || isFiveM}
               onChange={(event) => setForm((current) => ({ ...current, language: event.target.value }))}
             >
               <option value="">Auto detect</option>
@@ -217,6 +259,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               <option value="TypeScript">TypeScript</option>
               <option value="Python">Python</option>
               <option value="Java">Java</option>
+              <option value="FiveM">FiveM</option>
             </select>
           </label>
           {isMinecraft ? (
@@ -246,7 +289,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
           <label>
             Plik startowy
             <input
-              placeholder={isMinecraft ? "server.jar" : "dist/index.js"}
+              placeholder={isMinecraft ? "server.jar" : isFiveM ? "run.sh" : "dist/index.js"}
               value={form.entry_file}
               onChange={(event) => setForm((current) => ({ ...current, entry_file: event.target.value }))}
             />
@@ -257,6 +300,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               placeholder={
                 isMinecraft
                   ? 'java -Xms1024M -Xmx2048M -jar "server.jar" nogui'
+                  : isFiveM
+                    ? 'bash "run.sh" +exec "server.cfg"'
                   : 'npm start lub python3 "main.py"'
               }
               value={form.start_command}
@@ -343,6 +388,97 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             </>
           ) : null}
 
+          {isFiveM ? (
+            <>
+              <label>
+                Klucz FiveM
+                <input
+                  placeholder="sv_licenseKey z portal.cfx.re"
+                  value={form.fivem_license_key}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, fivem_license_key: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Sloty graczy
+                <input
+                  type="number"
+                  min="1"
+                  max="128"
+                  value={form.fivem_max_clients}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, fivem_max_clients: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Nazwa projektu FiveM
+                <input
+                  placeholder="ByteHost FiveM"
+                  value={form.fivem_project_name}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, fivem_project_name: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Tagi
+                <input
+                  placeholder="roleplay, economy, drift"
+                  value={form.fivem_tags}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, fivem_tags: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Locale
+                <input
+                  placeholder="pl-PL"
+                  value={form.fivem_locale}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, fivem_locale: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Adres publiczny
+                <input
+                  placeholder="Auto: publiczne IP hosta"
+                  value={form.public_host}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, public_host: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Port publiczny
+                <input
+                  type="number"
+                  value={form.public_port}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, public_port: event.target.value }))
+                  }
+                />
+                <small>Jesli zostawisz domyslny, ByteHost uzyje standardowego portu FiveM.</small>
+              </label>
+              <label className="checkbox-field wide">
+                <input
+                  type="checkbox"
+                  checked={form.fivem_onesync_enabled}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      fivem_onesync_enabled: event.target.checked
+                    }))
+                  }
+                />
+                <span>Wlacz OneSync</span>
+              </label>
+            </>
+          ) : null}
+
           <label className="checkbox-field">
             <input
               type="checkbox"
@@ -353,7 +489,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             />
             <span>Auto restart wlaczony</span>
           </label>
-          {!isMinecraft ? (
+          {!isMinecraft && !isFiveM ? (
             <label className="checkbox-field">
               <input
                 type="checkbox"
@@ -377,6 +513,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                   ? "Tworzenie..."
                   : isMinecraft
                     ? "Utworz serwer Minecraft"
+                    : isFiveM
+                      ? "Utworz serwer FiveM"
                     : "Utworz bota"}
               </span>
             </button>
@@ -498,8 +636,8 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
               <h3>Panel zarzadzania</h3>
               <p>
                 Po lewej stronie wybierz istniejaca usluge albo utworz nowa. ByteHost obsluguje
-                boty Discord i serwery Minecraft, z auto-detekcja startu, limitami per konto
-                oraz recznymi nadpisaniami dla operatora.
+                boty Discord, serwery Minecraft i serwery FiveM, z auto-detekcja startu,
+                limitami per konto oraz recznymi nadpisaniami dla operatora.
               </p>
             </div>
           )}
