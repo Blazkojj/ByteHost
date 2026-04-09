@@ -1,7 +1,16 @@
 import { Link, NavLink } from "react-router-dom";
-import { Activity, HardDrive, LayoutDashboard, RefreshCw, Server, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  HardDrive,
+  LayoutDashboard,
+  LogOut,
+  RefreshCw,
+  Server,
+  ShieldCheck,
+  Users
+} from "lucide-react";
 
-import { formatNumber } from "../utils";
+import { accountStatusLabel, formatDate, formatNumber, userRoleLabel } from "../utils";
 
 function StatChip({ label, value }) {
   return (
@@ -12,12 +21,24 @@ function StatChip({ label, value }) {
   );
 }
 
-export function Layout({ children, bots, system, onRefresh, loading, lastUpdated }) {
+export function Layout({ children, user, bots, system, onRefresh, onLogout, loading, lastUpdated }) {
   const navItems = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/bots", label: "Uslugi", icon: Server },
-    { to: "/system", label: "System", icon: ShieldCheck }
+    { to: "/bots", label: "Uslugi", icon: Server }
   ];
+
+  if (user?.is_admin) {
+    navItems.push({ to: "/admin/users", label: "Uzytkownicy", icon: Users });
+    navItems.push({ to: "/system", label: "System", icon: ShieldCheck });
+  }
+
+  const sidebarTitle = user?.is_admin ? "Panel ownera" : "Twoje konto";
+  const sidebarValue = user?.is_admin
+    ? formatNumber(system?.statuses?.online)
+    : `${accountStatusLabel(system?.account?.account_status || "ACTIVE")}`;
+  const sidebarHint = user?.is_admin
+    ? "Uslugi online i zarzadzanie kontami"
+    : `Wygasa: ${formatDate(system?.account?.expires_at)}`;
 
   return (
     <div className="app-shell">
@@ -48,16 +69,20 @@ export function Layout({ children, bots, system, onRefresh, loading, lastUpdated
         </nav>
 
         <div className="sidebar-card">
-          <p>Aktywne uslugi</p>
-          <strong>{bots.filter((bot) => bot.status === "ONLINE").length}</strong>
-          <small>Z PM2, schedulerem i monitoringiem</small>
+          <p>{sidebarTitle}</p>
+          <strong>{sidebarValue}</strong>
+          <small>{sidebarHint}</small>
+          <div className="sidebar-user-meta">
+            <span>{userRoleLabel(user?.role)}</span>
+            <span>{user?.email}</span>
+          </div>
         </div>
       </aside>
 
       <div className="main-shell">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Panel hostingowy</p>
+            <p className="eyebrow">{user?.is_admin ? "Panel ownera" : "Panel uzytkownika"}</p>
             <h1>ByteHost</h1>
             <span className="topbar-meta">
               Ostatnie odswiezenie: {lastUpdated ? lastUpdated.toLocaleTimeString("pl-PL") : "brak"}
@@ -72,6 +97,10 @@ export function Layout({ children, bots, system, onRefresh, loading, lastUpdated
               <RefreshCw size={16} className={loading ? "spin" : ""} />
               <span>Odswiez</span>
             </button>
+            <button className="ghost-button" onClick={onLogout}>
+              <LogOut size={16} />
+              <span>Wyloguj</span>
+            </button>
           </div>
         </header>
 
@@ -80,7 +109,11 @@ export function Layout({ children, bots, system, onRefresh, loading, lastUpdated
         <footer className="footer-bar">
           <div>
             <Activity size={16} />
-            <span>Realny panel PM2 dla jednego operatora</span>
+            <span>
+              {user?.is_admin
+                ? "Owner widzi caly system, uzytkownicy tylko swoje uslugi."
+                : "Widok ograniczony do wlasnych uslug i planu konta."}
+            </span>
           </div>
           <div>
             <HardDrive size={16} />

@@ -1,6 +1,7 @@
-const { getDb, mapBotRow } = require("./db");
+const { getDb, mapBotRow, mapUserRow } = require("./db");
 const { listBytehostProcesses, stopProcess } = require("./pm2");
 const { deriveBotRuntime, isExpired } = require("./runtime");
+const { isUserExpired } = require("./users");
 const { nowIso } = require("./utils");
 const { SCHEDULER_INTERVAL_MS } = require("../config");
 
@@ -9,10 +10,38 @@ const cpuViolations = new Map();
 async function runSchedulerTick() {
   const db = getDb();
   const bots = db.prepare("SELECT * FROM bots").all().map(mapBotRow);
+  const users = db.prepare("SELECT * FROM users").all().map(mapUserRow);
+  const userMap = new Map(users.map((user) => [user.id, user]));
   const processList = await listBytehostProcesses().catch(() => []);
   const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
 
   for (const bot of bots) {
+    const owner = userMap.get(bot.owner_user_id) || null;
+
+    if (owner && (!owner.is_active || isUserExpired(owner))) {
+      await stopProcess(bot.pm2_name);
+      db.prepare(
+        `
+          UPDATE bots
+          SET status = @status,
+              status_message = @status_message,
+              stability_status = @stability_status,
+              updated_at = @updated_at
+          WHERE id = @id
+        `
+      ).run({
+        id: bot.id,
+        status: isUserExpired(owner) ? "EXPIRED" : "ERROR",
+        status_message: isUserExpired(owner)
+          ? "Konto wlasciciela wygaslo i usluga zostala automatycznie zatrzymana."
+          : "Konto wlasciciela jest nieaktywne. Usluga zostala zatrzymana.",
+        stability_status: isUserExpired(owner) ? "EXPIRED" : "STOPPED",
+        updated_at: nowIso()
+      });
+      cpuViolations.delete(bot.id);
+      continue;
+    }
+
     if (isExpired(bot.expires_at)) {
       await stopProcess(bot.pm2_name);
       db.prepare(
@@ -26,7 +55,7 @@ async function runSchedulerTick() {
         `
       ).run({
         id: bot.id,
-        status_message: "Bot wygasł i został automatycznie zatrzymany.",
+        status_message: "Usluga wygasla i zostala automatycznie zatrzymana.",
         updated_at: nowIso()
       });
       cpuViolations.delete(bot.id);
@@ -50,7 +79,7 @@ async function runSchedulerTick() {
         `
       ).run({
         id: bot.id,
-        status_message: "Bot wpadł w crash loop i został zatrzymany.",
+        status_message: "Usluga wpadla w crash loop i zostala zatrzymana.",
         restart_count: runtime.restart_count,
         last_restart_at: runtime.last_restart_at,
         updated_at: nowIso()
@@ -79,7 +108,7 @@ async function runSchedulerTick() {
           `
         ).run({
           id: bot.id,
-          status_message: `Przekroczono limit CPU (${bot.cpu_limit_percent}%). Bot został zatrzymany.`,
+          status_message: `Przekroczono limit CPU (${bot.cpu_limit_percent}%). Usluga zostala zatrzymana.`,
           updated_at: nowIso()
         });
         cpuViolations.delete(bot.id);

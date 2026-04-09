@@ -5,15 +5,20 @@ const cors = require("cors");
 const morgan = require("morgan");
 
 const { CLIENT_DIST_DIR, PORT } = require("./config");
+const { attachOptionalAuth } = require("./lib/auth");
 const { initDatabase } = require("./lib/db");
 const { ensureStorageDirectories } = require("./lib/storage");
 const { startScheduler } = require("./lib/scheduler");
+const { ensureDefaultOwner } = require("./lib/users");
+const adminRoutes = require("./routes/admin");
+const authRoutes = require("./routes/auth");
 const botsRoutes = require("./routes/bots");
 const systemRoutes = require("./routes/system");
 
 async function bootstrap() {
   initDatabase();
   await ensureStorageDirectories();
+  await ensureDefaultOwner();
   startScheduler();
 
   const app = express();
@@ -23,6 +28,7 @@ async function bootstrap() {
   app.use(morgan("dev"));
   app.use(express.json({ limit: "25mb" }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(attachOptionalAuth);
   app.use("/api", (_request, response, next) => {
     response.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     response.set("Pragma", "no-cache");
@@ -34,6 +40,8 @@ async function bootstrap() {
     response.json({ ok: true });
   });
 
+  app.use("/api/auth", authRoutes);
+  app.use("/api/admin", adminRoutes);
   app.use("/api/bots", botsRoutes);
   app.use("/api/system", systemRoutes);
 

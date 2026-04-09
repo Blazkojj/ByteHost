@@ -109,3 +109,20 @@ export function serviceJoinAddress(service) {
   const port = service.public_port || 25565;
   return port === 25565 ? service.public_host : `${service.public_host}:${port}`;
 }
+
+export function accountStatusLabel(status) {
+  switch (status) {
+    case "ACTIVE":
+      return "Aktywne";
+    case "EXPIRED":
+      return "Wygasle";
+    case "INACTIVE":
+      return "Nieaktywne";
+    default:
+      return "Nieznany";
+  }
+}
+
+export function userRoleLabel(role) {
+  return role === "owner" ? "Owner" : "Uzytkownik";
+}

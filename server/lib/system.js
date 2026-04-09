@@ -4,8 +4,9 @@ const si = require("systeminformation");
 const { BOTS_DIR } = require("../config");
 const { getDb, mapBotRow, mapSystemLimitsRow } = require("./db");
 const { listBytehostProcesses } = require("./pm2");
-const { getDirectorySize } = require("./storage");
 const { deriveBotRuntime } = require("./runtime");
+const { getDirectorySize } = require("./storage");
+const { getUserAccountStatus, isAdminUser } = require("./users");
 const { nowIso, round, toMb } = require("./utils");
 
 function getSystemLimits() {
@@ -38,17 +39,58 @@ function updateSystemLimits(payload) {
   return getSystemLimits();
 }
 
-async function collectSystemStats() {
-  const db = getDb();
-  const bots = db
-    .prepare("SELECT * FROM bots ORDER BY created_at DESC")
-    .all()
-    .map(mapBotRow);
+function getScopedBots(actor) {
+  const rows = !actor || isAdminUser(actor)
+    ? getDb().prepare("SELECT * FROM bots ORDER BY created_at DESC").all()
+    : getDb()
+        .prepare("SELECT * FROM bots WHERE owner_user_id = ? ORDER BY created_at DESC")
+        .all(actor.id);
+
+  return rows.map(mapBotRow);
+}
+
+function getScopedLimits(actor) {
+  if (!actor || isAdminUser(actor)) {
+    return getSystemLimits();
+  }
+
+  return {
+    ram_limit_mb: actor?.max_ram_mb ?? null,
+    cpu_limit_percent: actor?.max_cpu_percent ?? null,
+    storage_limit_mb: actor?.max_storage_mb ?? null,
+    max_bots: actor?.max_bots ?? null
+  };
+}
+
+function buildRemaining(limits, usage) {
+  return {
+    ram_mb:
+      Number(limits.ram_limit_mb || 0) > 0
+        ? Math.max(0, round(Number(limits.ram_limit_mb) - Number(usage.ram_mb || 0)))
+        : null,
+    cpu_percent:
+      Number(limits.cpu_limit_percent || 0) > 0
+        ? Math.max(0, round(Number(limits.cpu_limit_percent) - Number(usage.cpu_percent || 0)))
+        : null,
+    storage_mb:
+      Number(limits.storage_limit_mb || 0) > 0
+        ? Math.max(0, round(Number(limits.storage_limit_mb) - Number(usage.storage_mb || 0)))
+        : null,
+    bots:
+      Number(limits.max_bots || 0) > 0
+        ? Math.max(0, Number(limits.max_bots) - Number(usage.bots || 0))
+        : null
+  };
+}
+
+async function collectSystemStats(actor) {
+  const bots = getScopedBots(actor);
   const processList = await listBytehostProcesses().catch(() => []);
   const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
 
   let runningRamMb = 0;
   let runningCpuPercent = 0;
+  let storageBytes = 0;
 
   const botStatuses = {
     total: bots.length,
@@ -61,6 +103,7 @@ async function collectSystemStats() {
 
   for (const bot of bots) {
     const runtime = deriveBotRuntime(bot, processMap.get(bot.pm2_name));
+    storageBytes += await getDirectorySize(bot.project_path);
 
     if (runtime.status === "ONLINE") {
       botStatuses.online += 1;
@@ -77,28 +120,73 @@ async function collectSystemStats() {
     }
   }
 
-  const [memory, currentLoad, storageBytes] = await Promise.all([
+  const usage = {
+    ram_mb: round(runningRamMb),
+    cpu_percent: round(runningCpuPercent),
+    storage_mb: round(toMb(storageBytes)),
+    bots: bots.length
+  };
+  const limits = getScopedLimits(actor);
+  const remaining = buildRemaining(limits, usage);
+
+  const account = actor
+    ? {
+        id: actor.id,
+        email: actor.email,
+        role: actor.role,
+        is_admin: isAdminUser(actor),
+        is_active: actor.is_active,
+        expires_at: actor.expires_at || null,
+        account_status: getUserAccountStatus(actor),
+        limits: {
+          max_bots: actor.max_bots ?? null,
+          max_ram_mb: actor.max_ram_mb ?? null,
+          max_cpu_percent: actor.max_cpu_percent ?? null,
+          max_storage_mb: actor.max_storage_mb ?? null
+        },
+        usage,
+        remaining
+      }
+    : null;
+
+  const payload = {
+    scope: isAdminUser(actor) ? "system" : "user",
+    limits,
+    usage,
+    remaining,
+    statuses: botStatuses,
+    account
+  };
+
+  if (!isAdminUser(actor)) {
+    return payload;
+  }
+
+  const [memory, currentLoad, totalStorageBytes] = await Promise.all([
     si.mem(),
     si.currentLoad(),
     getDirectorySize(BOTS_DIR)
   ]);
 
   return {
-    limits: getSystemLimits(),
+    ...payload,
     usage: {
-      ram_mb: round(runningRamMb),
-      cpu_percent: round(runningCpuPercent),
-      storage_mb: round(toMb(storageBytes)),
-      bots: bots.length
+      ...usage,
+      storage_mb: round(toMb(totalStorageBytes)),
+      bots: botStatuses.total
     },
+    remaining: buildRemaining(limits, {
+      ...usage,
+      storage_mb: round(toMb(totalStorageBytes)),
+      bots: botStatuses.total
+    }),
     host: {
       cpu_load_percent: round(currentLoad.currentLoad),
       total_ram_mb: round(toMb(memory.total)),
       used_ram_mb: round(toMb(memory.active)),
       free_ram_mb: round(toMb(memory.available)),
       uptime_seconds: Math.floor(os.uptime())
-    },
-    statuses: botStatuses
+    }
   };
 }
 

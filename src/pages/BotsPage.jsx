@@ -11,7 +11,7 @@ import {
   serviceTypeLabel
 } from "../utils";
 
-function CreateBotPanel({ open, onClose, onCreated }) {
+function CreateBotPanel({ open, system, user, onClose, onCreated }) {
   const [form, setForm] = useState({
     service_type: "discord_bot",
     name: "",
@@ -122,6 +122,15 @@ function CreateBotPanel({ open, onClose, onCreated }) {
             ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej."
             : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
         </div>
+
+        {!user?.is_admin ? (
+          <div className="info-card">
+            Twoj plan: {system?.usage?.bots || 0}/{system?.limits?.max_bots || 0} uslug, RAM{" "}
+            {system?.usage?.ram_mb || 0}/{system?.limits?.ram_limit_mb || 0} MB, CPU{" "}
+            {system?.usage?.cpu_percent || 0}/{system?.limits?.cpu_limit_percent || 0}%,
+            storage {system?.usage?.storage_mb || 0}/{system?.limits?.storage_limit_mb || 0} MB.
+          </div>
+        ) : null}
 
         <form className="form-grid" onSubmit={handleSubmit}>
           <label>
@@ -379,7 +388,7 @@ function CreateBotPanel({ open, onClose, onCreated }) {
   );
 }
 
-export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshSystem }) {
+export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRefreshSystem }) {
   const navigate = useNavigate();
   const { id } = useParams();
   const [createOpen, setCreateOpen] = useState(false);
@@ -390,6 +399,8 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
     <>
       <CreateBotPanel
         open={createOpen}
+        user={user}
+        system={system}
         onClose={() => setCreateOpen(false)}
         onCreated={(bot) => {
           setCreateOpen(false);
@@ -414,7 +425,11 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
           <div className="list-summary">
             <span>Lacznie: {formatNumber(system?.statuses?.total)}</span>
             <span>ONLINE: {formatNumber(system?.statuses?.online)}</span>
-            <span>EXPIRED: {formatNumber(system?.statuses?.expired)}</span>
+            <span>
+              {user?.is_admin
+                ? `EXPIRED: ${formatNumber(system?.statuses?.expired)}`
+                : `Pozostalo limitu: ${formatNumber(system?.remaining?.bots)}`}
+            </span>
           </div>
 
           <div className="bot-list">
@@ -461,8 +476,8 @@ export function BotsPage({ bots, system, onRefreshAll, onRefreshBots, onRefreshS
               <h3>Panel zarzadzania</h3>
               <p>
                 Po lewej stronie wybierz istniejaca usluge albo utworz nowa. ByteHost obsluguje
-                teraz boty Discord i serwery Minecraft, z auto-detekcja startu i recznymi
-                nadpisaniami.
+                boty Discord i serwery Minecraft, z auto-detekcja startu, limitami per konto
+                oraz recznymi nadpisaniami dla operatora.
               </p>
             </div>
           )}

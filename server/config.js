@@ -31,6 +31,18 @@ const DEFAULT_BOT_LIMITS = {
   max_restarts: 5
 };
 
+const DEFAULT_USER_PLAN = {
+  max_bots: Number(process.env.DEFAULT_USER_MAX_BOTS || 3),
+  max_ram_mb: Number(process.env.DEFAULT_USER_RAM_MB || 2048),
+  max_cpu_percent: Number(process.env.DEFAULT_USER_CPU_PERCENT || 100),
+  max_storage_mb: Number(process.env.DEFAULT_USER_STORAGE_MB || 2048)
+};
+
+const OWNER_EMAIL = process.env.OWNER_EMAIL || "admin@bytehost.local";
+const OWNER_PASSWORD = process.env.OWNER_PASSWORD || "change-me-now";
+const JWT_SECRET = process.env.JWT_SECRET || "bytehost-change-this-secret";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+
 module.exports = {
   ROOT_DIR,
   STORAGE_DIR,
@@ -45,5 +57,10 @@ module.exports = {
   LOG_TAIL_BYTES,
   TEXT_FILE_MAX_BYTES,
   DEFAULT_SYSTEM_LIMITS,
-  DEFAULT_BOT_LIMITS
+  DEFAULT_BOT_LIMITS,
+  DEFAULT_USER_PLAN,
+  OWNER_EMAIL,
+  OWNER_PASSWORD,
+  JWT_SECRET,
+  JWT_EXPIRES_IN
 };

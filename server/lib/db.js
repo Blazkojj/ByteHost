@@ -25,6 +25,17 @@ function mapSystemLimitsRow(row) {
   return { ...row };
 }
 
+function mapUserRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...row,
+    is_active: Boolean(row.is_active)
+  };
+}
+
 function getDb() {
   if (!database) {
     throw new Error("Baza danych nie zostala zainicjalizowana.");
@@ -59,8 +70,26 @@ function initDatabase() {
   database.pragma("foreign_keys = ON");
 
   database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user',
+      max_bots INTEGER,
+      max_ram_mb INTEGER,
+      max_cpu_percent INTEGER,
+      max_storage_mb INTEGER,
+      expires_at TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
     CREATE TABLE IF NOT EXISTS bots (
       id TEXT PRIMARY KEY,
+      owner_user_id TEXT,
       name TEXT NOT NULL,
       slug TEXT NOT NULL,
       description TEXT DEFAULT '',
@@ -88,7 +117,8 @@ function initDatabase() {
       archive_name TEXT,
       pm2_name TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(owner_user_id) REFERENCES users(id)
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_bots_pm2_name ON bots(pm2_name);
@@ -103,6 +133,14 @@ function initDatabase() {
     );
   `);
 
+  ensureColumn(database, "users", "max_bots", "INTEGER");
+  ensureColumn(database, "users", "max_ram_mb", "INTEGER");
+  ensureColumn(database, "users", "max_cpu_percent", "INTEGER");
+  ensureColumn(database, "users", "max_storage_mb", "INTEGER");
+  ensureColumn(database, "users", "expires_at", "TEXT");
+  ensureColumn(database, "users", "is_active", "INTEGER NOT NULL DEFAULT 1");
+
+  ensureColumn(database, "bots", "owner_user_id", "TEXT");
   ensureColumn(database, "bots", "service_type", "TEXT NOT NULL DEFAULT 'discord_bot'");
   ensureColumn(database, "bots", "accept_eula", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(database, "bots", "public_host", "TEXT");
@@ -139,5 +177,6 @@ module.exports = {
   getDb,
   initDatabase,
   mapBotRow,
-  mapSystemLimitsRow
+  mapSystemLimitsRow,
+  mapUserRow
 };

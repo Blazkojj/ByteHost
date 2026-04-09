@@ -32,6 +32,12 @@ const {
   uploadFiles
 } = require("./files");
 const {
+  canUserManageServices,
+  getUserById,
+  isAdminUser,
+  isUserExpired
+} = require("./users");
+const {
   createHttpError,
   coerceBoolean,
   coerceNullableNumber,
@@ -101,11 +107,22 @@ function normalizeExpiresAt(value) {
   return parsed.toISOString();
 }
 
-function listBotRows() {
-  return getDb().prepare("SELECT * FROM bots ORDER BY created_at DESC").all().map(mapBotRow);
+function listBotRows(actor = null) {
+  const query = !actor || isAdminUser(actor)
+    ? getDb().prepare("SELECT * FROM bots ORDER BY created_at DESC")
+    : getDb().prepare("SELECT * FROM bots WHERE owner_user_id = ? ORDER BY created_at DESC");
+  const rows = !actor || isAdminUser(actor) ? query.all() : query.all(actor.id);
+  return rows.map(mapBotRow);
 }
 
-function getBotRow(botId) {
+function listBotRowsByOwner(ownerUserId) {
+  return getDb()
+    .prepare("SELECT * FROM bots WHERE owner_user_id = ? ORDER BY created_at DESC")
+    .all(ownerUserId)
+    .map(mapBotRow);
+}
+
+function getBotRowById(botId) {
   const bot = mapBotRow(getDb().prepare("SELECT * FROM bots WHERE id = ?").get(botId));
 
   if (!bot) {
@@ -115,16 +132,32 @@ function getBotRow(botId) {
   return bot;
 }
 
+function assertActorCanAccessBot(actor, bot, options = {}) {
+  if (options.skipAccessCheck || !actor || isAdminUser(actor)) {
+    return;
+  }
+
+  if (bot.owner_user_id !== actor.id) {
+    throw createHttpError(404, "Usluga nie zostala znaleziona.");
+  }
+}
+
+function getBotRow(botId, actor = null, options = {}) {
+  const bot = getBotRowById(botId);
+  assertActorCanAccessBot(actor, bot, options);
+  return bot;
+}
+
 function updateBotRow(botId, changes) {
   const fields = Object.keys(changes);
   if (fields.length === 0) {
-    return getBotRow(botId);
+    return getBotRow(botId, null, { skipAccessCheck: true });
   }
 
   const payload = { ...changes, id: botId };
   const setClause = fields.map((field) => `${field} = @${field}`).join(", ");
   getDb().prepare(`UPDATE bots SET ${setClause} WHERE id = @id`).run(payload);
-  return getBotRow(botId);
+  return getBotRow(botId, null, { skipAccessCheck: true });
 }
 
 function createBotRecord(record) {
@@ -132,8 +165,8 @@ function createBotRecord(record) {
     .prepare(
       `
         INSERT INTO bots (
-          id, service_type, name, slug, description, language, detected_language, entry_file,
-          detected_entry_file, start_command, detected_start_command, install_command,
+          id, owner_user_id, service_type, name, slug, description, language, detected_language,
+          entry_file, detected_entry_file, start_command, detected_start_command, install_command,
           detected_install_command, package_manager, project_path, status, status_message,
           expires_at, auto_restart, restart_delay, max_restarts, restart_count, last_restart_at,
           stability_status, ram_limit_mb, cpu_limit_percent, accept_eula, public_host,
@@ -141,12 +174,12 @@ function createBotRecord(record) {
           created_at, updated_at
         )
         VALUES (
-          @id, @service_type, @name, @slug, @description, @language, @detected_language,
-          @entry_file, @detected_entry_file, @start_command, @detected_start_command,
-          @install_command, @detected_install_command, @package_manager, @project_path, @status,
-          @status_message, @expires_at, @auto_restart, @restart_delay, @max_restarts,
-          @restart_count, @last_restart_at, @stability_status, @ram_limit_mb, @cpu_limit_percent,
-          @accept_eula, @public_host, @public_port, @minecraft_version,
+          @id, @owner_user_id, @service_type, @name, @slug, @description, @language,
+          @detected_language, @entry_file, @detected_entry_file, @start_command,
+          @detected_start_command, @install_command, @detected_install_command, @package_manager,
+          @project_path, @status, @status_message, @expires_at, @auto_restart, @restart_delay,
+          @max_restarts, @restart_count, @last_restart_at, @stability_status, @ram_limit_mb,
+          @cpu_limit_percent, @accept_eula, @public_host, @public_port, @minecraft_version,
           @detected_minecraft_version, @archive_name, @pm2_name, @created_at, @updated_at
         )
       `
@@ -157,7 +190,92 @@ function createBotRecord(record) {
       accept_eula: record.accept_eula ? 1 : 0
     });
 
-  return getBotRow(record.id);
+  return getBotRow(record.id, null, { skipAccessCheck: true });
+}
+
+function getBotOwner(bot) {
+  if (!bot?.owner_user_id) {
+    return null;
+  }
+
+  return getUserById(bot.owner_user_id);
+}
+
+function assertOwnerCanProvisionServices(owner) {
+  if (!owner) {
+    throw createHttpError(400, "Usluga nie ma przypisanego wlasciciela.");
+  }
+
+  if (!owner.is_active) {
+    throw createHttpError(403, "To konto jest nieaktywne. Administrator musi je ponownie aktywowac.");
+  }
+
+  if (isUserExpired(owner)) {
+    throw createHttpError(403, "Konto wygaslo. Tworzenie i uruchamianie uslug jest zablokowane.");
+  }
+}
+
+async function getOwnedStorageUsageMb(ownerUserId) {
+  const ownedBots = listBotRowsByOwner(ownerUserId);
+  let totalBytes = 0;
+
+  for (const bot of ownedBots) {
+    totalBytes += await getDirectorySize(bot.project_path);
+  }
+
+  return round(toMb(totalBytes));
+}
+
+function getOwnedReservedResources(ownerUserId, options = {}) {
+  const { excludeBotId = null } = options;
+  const ownedBots = listBotRowsByOwner(ownerUserId).filter((bot) => bot.id !== excludeBotId);
+
+  return ownedBots.reduce(
+    (totals, bot) => {
+      totals.bots += 1;
+      totals.ram_mb += getReservedRam(bot);
+      totals.cpu_percent += getReservedCpu(bot);
+      return totals;
+    },
+    {
+      bots: 0,
+      ram_mb: 0,
+      cpu_percent: 0
+    }
+  );
+}
+
+function assertBotReservationWithinUserPlan(owner, options = {}) {
+  if (!owner || isAdminUser(owner)) {
+    return;
+  }
+
+  const { excludeBotId = null, nextRamLimitMb = 0, nextCpuLimitPercent = 0, addingBot = false } = options;
+  const reserved = getOwnedReservedResources(owner.id, { excludeBotId });
+  const projectedBotCount = reserved.bots + (addingBot ? 1 : 0);
+  const projectedRamMb = reserved.ram_mb + Number(nextRamLimitMb || 0);
+  const projectedCpuPercent = reserved.cpu_percent + Number(nextCpuLimitPercent || 0);
+
+  if (owner.max_bots && projectedBotCount > Number(owner.max_bots)) {
+    throw createHttpError(
+      400,
+      `Przekroczono limit liczby uslug dla konta (${projectedBotCount} / ${owner.max_bots}).`
+    );
+  }
+
+  if (owner.max_ram_mb && projectedRamMb > Number(owner.max_ram_mb)) {
+    throw createHttpError(
+      400,
+      `Przekroczono limit planu RAM dla konta (${round(projectedRamMb)} MB / ${owner.max_ram_mb} MB).`
+    );
+  }
+
+  if (owner.max_cpu_percent && projectedCpuPercent > Number(owner.max_cpu_percent)) {
+    throw createHttpError(
+      400,
+      `Przekroczono limit planu CPU dla konta (${round(projectedCpuPercent)}% / ${owner.max_cpu_percent}%).`
+    );
+  }
 }
 
 function normalizeSettingValue(value, normalizer = (entry) => entry) {
@@ -228,6 +346,20 @@ async function assertStorageWithinLimit() {
   }
 }
 
+async function assertUserStorageWithinLimit(owner) {
+  if (!owner || isAdminUser(owner) || !owner.max_storage_mb) {
+    return;
+  }
+
+  const storageUsageMb = await getOwnedStorageUsageMb(owner.id);
+  if (storageUsageMb > Number(owner.max_storage_mb)) {
+    throw createHttpError(
+      400,
+      `Przekroczono limit storage dla konta (${round(storageUsageMb)} MB / ${owner.max_storage_mb} MB).`
+    );
+  }
+}
+
 function getReservedRam(bot) {
   return Number(bot.ram_limit_mb || DEFAULT_BOT_LIMITS.ram_limit_mb);
 }
@@ -236,15 +368,17 @@ function getReservedCpu(bot) {
   return Number(bot.cpu_limit_percent || DEFAULT_BOT_LIMITS.cpu_limit_percent);
 }
 
-async function assertStartWithinLimits(bot) {
+async function assertStartWithinLimits(bot, owner) {
   const limits = getSystemLimits();
   const processList = await listBytehostProcesses().catch(() => []);
   const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
 
   let currentRamMb = 0;
   let currentCpuPercent = 0;
+  let currentOwnerRamMb = 0;
+  let currentOwnerCpuPercent = 0;
 
-  for (const currentBot of listBotRows()) {
+  for (const currentBot of listBotRows(null)) {
     if (currentBot.id === bot.id) {
       continue;
     }
@@ -256,6 +390,11 @@ async function assertStartWithinLimits(bot) {
 
     currentRamMb += runtime.ram_usage_mb;
     currentCpuPercent += runtime.cpu_usage_percent;
+
+    if (owner && currentBot.owner_user_id === owner.id) {
+      currentOwnerRamMb += runtime.ram_usage_mb;
+      currentOwnerCpuPercent += runtime.cpu_usage_percent;
+    }
   }
 
   const projectedRamMb = currentRamMb + getReservedRam(bot);
@@ -276,6 +415,26 @@ async function assertStartWithinLimits(bot) {
   }
 
   await assertStorageWithinLimit();
+  await assertUserStorageWithinLimit(owner);
+
+  if (owner && !isAdminUser(owner)) {
+    const projectedOwnerRamMb = currentOwnerRamMb + getReservedRam(bot);
+    const projectedOwnerCpuPercent = currentOwnerCpuPercent + getReservedCpu(bot);
+
+    if (owner.max_ram_mb && projectedOwnerRamMb > Number(owner.max_ram_mb)) {
+      throw createHttpError(
+        400,
+        `Start zablokowany: limit RAM konta zostalby przekroczony (${round(projectedOwnerRamMb)} MB / ${owner.max_ram_mb} MB).`
+      );
+    }
+
+    if (owner.max_cpu_percent && projectedOwnerCpuPercent > Number(owner.max_cpu_percent)) {
+      throw createHttpError(
+        400,
+        `Start zablokowany: limit CPU konta zostalby przekroczony (${round(projectedOwnerCpuPercent)}% / ${owner.max_cpu_percent}%).`
+      );
+    }
+  }
 }
 
 function resolveEffectiveEntryFile(bot) {
@@ -481,8 +640,8 @@ async function recordBotFailure(bot, message, options = {}) {
   });
 }
 
-async function getBotWithRuntime(botId) {
-  const bot = getBotRow(botId);
+async function getBotWithRuntime(botId, actor) {
+  const bot = getBotRow(botId, actor);
   const processInfo = await describeProcess(bot.pm2_name);
 
   return {
@@ -491,19 +650,21 @@ async function getBotWithRuntime(botId) {
   };
 }
 
-async function listBots() {
+async function listBots(actor) {
   const processList = await listBytehostProcesses().catch(() => []);
   const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
 
   return Promise.all(
-    listBotRows().map(async (bot) => ({
+    listBotRows(actor).map(async (bot) => ({
       ...mergeBotWithRuntime(bot, processMap.get(bot.pm2_name)),
       storage_usage_mb: round(toMb(await getDirectorySize(bot.project_path)))
     }))
   );
 }
 
-async function createBot(payload, artifactFile) {
+async function createBot(actor, payload, artifactFile) {
+  assertOwnerCanProvisionServices(actor);
+
   const limits = getSystemLimits();
   const currentBotCount = getDb().prepare("SELECT COUNT(*) AS total FROM bots").get().total;
 
@@ -513,6 +674,17 @@ async function createBot(payload, artifactFile) {
 
   const serviceType = sanitizeServiceType(payload.service_type, "discord_bot");
   const ramLimitMb = coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb);
+  const cpuLimitPercent = coerceNullableNumber(
+    payload.cpu_limit_percent,
+    DEFAULT_BOT_LIMITS.cpu_limit_percent
+  );
+
+  assertBotReservationWithinUserPlan(actor, {
+    nextRamLimitMb: ramLimitMb,
+    nextCpuLimitPercent: cpuLimitPercent,
+    addingBot: true
+  });
+
   const requestedMinecraftVersion =
     serviceType === "minecraft_server"
       ? normalizeMinecraftVersion(payload.minecraft_version, null)
@@ -558,6 +730,7 @@ async function createBot(payload, artifactFile) {
 
     createBotRecord({
       id: botId,
+      owner_user_id: actor.id,
       service_type: serviceType,
       name: derivedName,
       slug: slugify(derivedName) || botId.slice(0, 8),
@@ -582,10 +755,7 @@ async function createBot(payload, artifactFile) {
       last_restart_at: null,
       stability_status: "STOPPED",
       ram_limit_mb: ramLimitMb,
-      cpu_limit_percent: coerceNullableNumber(
-        payload.cpu_limit_percent,
-        DEFAULT_BOT_LIMITS.cpu_limit_percent
-      ),
+      cpu_limit_percent: cpuLimitPercent,
       accept_eula: serviceType === "minecraft_server" ? coerceBoolean(payload.accept_eula, false) : false,
       public_host:
         serviceType === "minecraft_server" ? coerceNullableString(payload.public_host, null) : null,
@@ -604,16 +774,17 @@ async function createBot(payload, artifactFile) {
     });
 
     await assertStorageWithinLimit();
+    await assertUserStorageWithinLimit(actor);
 
     if (artifactFile) {
       await fs.rm(artifactFile.path, { force: true });
     }
 
     if (coerceBoolean(payload.install_on_create, false) && serviceType !== "minecraft_server") {
-      await installDependencies(botId);
+      await installDependencies(botId, actor);
     }
 
-    return getBotWithRuntime(botId);
+    return getBotWithRuntime(botId, actor);
   } catch (error) {
     await removePath(botDirectory);
     if (artifactFile) {
@@ -623,8 +794,9 @@ async function createBot(payload, artifactFile) {
   }
 }
 
-async function updateBot(botId, payload) {
-  const existingBot = getBotRow(botId);
+async function updateBot(botId, actor, payload) {
+  const existingBot = getBotRow(botId, actor);
+  const owner = getBotOwner(existingBot);
   const nextExpiresAt =
     payload.expires_at !== undefined
       ? normalizeExpiresAt(payload.expires_at)
@@ -633,6 +805,10 @@ async function updateBot(botId, payload) {
     payload.ram_limit_mb !== undefined
       ? coerceNullableNumber(payload.ram_limit_mb, existingBot.ram_limit_mb)
       : existingBot.ram_limit_mb;
+  const nextCpuLimit =
+    payload.cpu_limit_percent !== undefined
+      ? coerceNullableNumber(payload.cpu_limit_percent, existingBot.cpu_limit_percent)
+      : existingBot.cpu_limit_percent;
   let nextEntryFile =
     payload.entry_file !== undefined
       ? normalizeRelativePath(coerceNullableString(payload.entry_file, "") || "")
@@ -725,10 +901,7 @@ async function updateBot(botId, payload) {
         ? coerceNullableNumber(payload.max_restarts, existingBot.max_restarts)
         : existingBot.max_restarts,
     ram_limit_mb: nextRamLimit,
-    cpu_limit_percent:
-      payload.cpu_limit_percent !== undefined
-        ? coerceNullableNumber(payload.cpu_limit_percent, existingBot.cpu_limit_percent)
-        : existingBot.cpu_limit_percent,
+    cpu_limit_percent: nextCpuLimit,
     accept_eula:
       existingBot.service_type === "minecraft_server" && payload.accept_eula !== undefined
         ? coerceBoolean(payload.accept_eula, existingBot.accept_eula)
@@ -751,6 +924,15 @@ async function updateBot(botId, payload) {
         : existingBot.detected_minecraft_version,
     updated_at: nowIso()
   };
+
+  if (payload.ram_limit_mb !== undefined || payload.cpu_limit_percent !== undefined) {
+    assertBotReservationWithinUserPlan(owner, {
+      excludeBotId: existingBot.id,
+      nextRamLimitMb: nextRamLimit,
+      nextCpuLimitPercent: nextCpuLimit,
+      addingBot: true
+    });
+  }
 
   if (isExpired(nextExpiresAt)) {
     changes.status = "EXPIRED";
@@ -781,14 +963,14 @@ async function updateBot(botId, payload) {
       payload.minecraft_version !== undefined);
 
   if (requiresRestart) {
-    await restartBot(botId);
+    await restartBot(botId, actor);
   }
 
-  return getBotWithRuntime(botId);
+  return getBotWithRuntime(botId, actor);
 }
 
-async function deleteBotById(botId) {
-  const bot = getBotRow(botId);
+async function deleteBotById(botId, actor, options = {}) {
+  const bot = getBotRow(botId, actor, options);
   await deleteProcess(bot.pm2_name);
   await removeBotLogs(bot.id);
   await removePath(bot.project_path);
@@ -796,10 +978,13 @@ async function deleteBotById(botId) {
   return { ok: true };
 }
 
-async function startBot(botId) {
-  let bot = getBotRow(botId);
+async function startBot(botId, actor) {
+  let bot = getBotRow(botId, actor);
+  const owner = getBotOwner(bot);
 
   try {
+    assertOwnerCanProvisionServices(owner);
+
     if (isExpired(bot.expires_at)) {
       throw createHttpError(400, "Usluga wygasla. Zmien expires_at, aby ja uruchomic.");
     }
@@ -888,7 +1073,7 @@ async function startBot(botId) {
       });
     }
 
-    await assertStartWithinLimits(bot);
+    await assertStartWithinLimits(bot, owner);
     await startBotProcess({
       ...bot,
       start_command: resolvedStartCommand
@@ -900,35 +1085,35 @@ async function startBot(botId) {
       updated_at: nowIso()
     });
 
-    return getBotWithRuntime(botId);
+    return getBotWithRuntime(botId, actor);
   } catch (error) {
     await recordBotFailure(bot, error.message || "Nie udalo sie uruchomic uslugi.");
     throw error;
   }
 }
 
-async function stopBot(botId) {
-  const bot = getBotRow(botId);
+async function stopBot(botId, actor) {
+  const bot = getBotRow(botId, actor);
   await stopProcess(bot.pm2_name);
   updateBotRow(botId, {
     status: "OFFLINE",
     status_message: null,
     updated_at: nowIso()
   });
-  return getBotWithRuntime(botId);
+  return getBotWithRuntime(botId, actor);
 }
 
-async function restartBot(botId) {
-  await deleteProcess(getBotRow(botId).pm2_name);
-  return startBot(botId);
+async function restartBot(botId, actor) {
+  await deleteProcess(getBotRow(botId, actor).pm2_name);
+  return startBot(botId, actor);
 }
 
-async function installDependencies(botId) {
-  const bot = getBotRow(botId);
+async function installDependencies(botId, actor) {
+  const bot = getBotRow(botId, actor);
 
   if (bot.service_type === "minecraft_server") {
     return {
-      bot: await getBotWithRuntime(botId),
+      bot: await getBotWithRuntime(botId, actor),
       install: {
         skipped: true,
         command: null,
@@ -944,7 +1129,7 @@ async function installDependencies(botId) {
 
   if (!command) {
     return {
-      bot: await getBotWithRuntime(botId),
+      bot: await getBotWithRuntime(botId, actor),
       install: {
         skipped: true,
         command: null,
@@ -963,7 +1148,7 @@ async function installDependencies(botId) {
     });
 
     return {
-      bot: await getBotWithRuntime(botId),
+      bot: await getBotWithRuntime(botId, actor),
       install: {
         skipped: false,
         command,
@@ -979,12 +1164,13 @@ async function installDependencies(botId) {
   }
 }
 
-async function updateBotArchive(botId, artifactFile, payload = {}) {
+async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
   if (!artifactFile) {
     throw createHttpError(400, "Dodaj plik JAR, ZIP albo RAR do aktualizacji uslugi.");
   }
 
-  const bot = getBotRow(botId);
+  const bot = getBotRow(botId, actor);
+  const owner = getBotOwner(bot);
   const processInfo = await describeProcess(bot.pm2_name);
   const runtime = deriveBotRuntime(bot, processInfo);
   const wasOnline = runtime.status === "ONLINE";
@@ -1086,16 +1272,17 @@ async function updateBotArchive(botId, artifactFile, payload = {}) {
     });
 
     await assertStorageWithinLimit();
+    await assertUserStorageWithinLimit(owner);
 
     if (reinstallDependenciesFlag && bot.service_type !== "minecraft_server") {
-      const installResponse = await installDependencies(botId);
+      const installResponse = await installDependencies(botId, actor);
       install = installResponse.install;
     }
 
-    let updatedBot = await getBotWithRuntime(botId);
+    let updatedBot = await getBotWithRuntime(botId, actor);
 
     if (restartAfterUpdate && !isExpired(updatedBot.expires_at)) {
-      updatedBot = await startBot(botId);
+      updatedBot = await startBot(botId, actor);
     }
 
     return {
@@ -1107,8 +1294,8 @@ async function updateBotArchive(botId, artifactFile, payload = {}) {
   }
 }
 
-async function executeBotConsoleCommand(botId, payload) {
-  const bot = getBotRow(botId);
+async function executeBotConsoleCommand(botId, actor, payload) {
+  const bot = getBotRow(botId, actor);
   const command = coerceNullableString(payload?.command, null);
 
   if (!command) {
@@ -1140,8 +1327,8 @@ async function executeBotConsoleCommand(botId, payload) {
   };
 }
 
-async function getBotLogsPayload(botId) {
-  const bot = getBotRow(botId);
+async function getBotLogsPayload(botId, actor) {
+  const bot = getBotRow(botId, actor);
   const logs = await getBotLogs(botId);
 
   if (logs.combined) {
@@ -1186,40 +1373,42 @@ async function getBotLogsPayload(botId) {
   };
 }
 
-async function getBotFiles(botId, relativePath = "") {
-  getBotRow(botId);
+async function getBotFiles(botId, actor, relativePath = "") {
+  getBotRow(botId, actor);
   return readFileEntry(botId, relativePath);
 }
 
-async function createBotFile(botId, payload) {
-  getBotRow(botId);
+async function createBotFile(botId, actor, payload) {
+  const bot = getBotRow(botId, actor);
   await createEntry(botId, payload);
   await assertStorageWithinLimit();
-  return getBotFiles(botId, payload.path);
+  await assertUserStorageWithinLimit(getBotOwner(bot));
+  return getBotFiles(botId, actor, payload.path);
 }
 
-async function updateBotFile(botId, payload) {
-  getBotRow(botId);
+async function updateBotFile(botId, actor, payload) {
+  getBotRow(botId, actor);
   return updateFileContent(botId, payload);
 }
 
-async function deleteBotFile(botId, relativePath) {
-  getBotRow(botId);
+async function deleteBotFile(botId, actor, relativePath) {
+  getBotRow(botId, actor);
   const normalizedPath = normalizeRelativePath(relativePath);
   await deleteEntry(botId, normalizedPath);
   const parentPath = path.posix.dirname(normalizedPath);
-  return getBotFiles(botId, parentPath === "." ? "" : parentPath);
+  return getBotFiles(botId, actor, parentPath === "." ? "" : parentPath);
 }
 
-async function uploadBotFiles(botId, targetPath, files) {
-  getBotRow(botId);
+async function uploadBotFiles(botId, actor, targetPath, files) {
+  const bot = getBotRow(botId, actor);
   const response = await uploadFiles(botId, targetPath, files);
   await assertStorageWithinLimit();
+  await assertUserStorageWithinLimit(getBotOwner(bot));
   return response;
 }
 
-async function updateBotEnv(botId, content) {
-  getBotRow(botId);
+async function updateBotEnv(botId, actor, content) {
+  getBotRow(botId, actor);
   const envPath = resolveBotPath(botId, ".env");
   await fs.writeFile(envPath, content || "", "utf8");
   return readFileEntry(botId, ".env");

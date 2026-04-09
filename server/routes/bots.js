@@ -3,6 +3,7 @@ const express = require("express");
 const multer = require("multer");
 
 const { MAX_UPLOAD_BYTES, TMP_DIR } = require("../config");
+const { requireAuth } = require("../lib/auth");
 const {
   listBots,
   createBot,
@@ -25,6 +26,7 @@ const {
 } = require("../lib/bots");
 
 const router = express.Router();
+router.use(requireAuth);
 
 const upload = multer({
   dest: TMP_DIR,
@@ -41,9 +43,9 @@ async function cleanupFiles(files) {
   }
 }
 
-router.get("/", async (_request, response, next) => {
+router.get("/", async (request, response, next) => {
   try {
-    response.json(await listBots());
+    response.json(await listBots(request.user));
   } catch (error) {
     next(error);
   }
@@ -51,7 +53,7 @@ router.get("/", async (_request, response, next) => {
 
 router.post("/", upload.single("archive"), async (request, response, next) => {
   try {
-    response.status(201).json(await createBot(request.body, request.file));
+    response.status(201).json(await createBot(request.user, request.body, request.file));
   } catch (error) {
     await cleanupFiles([request.file].filter(Boolean));
     next(error);
@@ -60,7 +62,7 @@ router.post("/", upload.single("archive"), async (request, response, next) => {
 
 router.post("/:id/archive", upload.single("archive"), async (request, response, next) => {
   try {
-    response.json(await updateBotArchive(request.params.id, request.file, request.body));
+    response.json(await updateBotArchive(request.params.id, request.user, request.file, request.body));
   } catch (error) {
     await cleanupFiles([request.file].filter(Boolean));
     next(error);
@@ -69,7 +71,7 @@ router.post("/:id/archive", upload.single("archive"), async (request, response, 
 
 router.get("/:id/logs", async (request, response, next) => {
   try {
-    response.json(await getBotLogsPayload(request.params.id));
+    response.json(await getBotLogsPayload(request.params.id, request.user));
   } catch (error) {
     next(error);
   }
@@ -77,7 +79,7 @@ router.get("/:id/logs", async (request, response, next) => {
 
 router.post("/:id/console", async (request, response, next) => {
   try {
-    response.json(await executeBotConsoleCommand(request.params.id, request.body));
+    response.json(await executeBotConsoleCommand(request.params.id, request.user, request.body));
   } catch (error) {
     next(error);
   }
@@ -85,7 +87,7 @@ router.post("/:id/console", async (request, response, next) => {
 
 router.get("/:id/files", async (request, response, next) => {
   try {
-    response.json(await getBotFiles(request.params.id, request.query.path || ""));
+    response.json(await getBotFiles(request.params.id, request.user, request.query.path || ""));
   } catch (error) {
     next(error);
   }
@@ -93,7 +95,7 @@ router.get("/:id/files", async (request, response, next) => {
 
 router.post("/:id/files", async (request, response, next) => {
   try {
-    response.status(201).json(await createBotFile(request.params.id, request.body));
+    response.status(201).json(await createBotFile(request.params.id, request.user, request.body));
   } catch (error) {
     next(error);
   }
@@ -101,7 +103,7 @@ router.post("/:id/files", async (request, response, next) => {
 
 router.patch("/:id/files", async (request, response, next) => {
   try {
-    response.json(await updateBotFile(request.params.id, request.body));
+    response.json(await updateBotFile(request.params.id, request.user, request.body));
   } catch (error) {
     next(error);
   }
@@ -109,7 +111,7 @@ router.patch("/:id/files", async (request, response, next) => {
 
 router.delete("/:id/files", async (request, response, next) => {
   try {
-    response.json(await deleteBotFile(request.params.id, request.query.path || ""));
+    response.json(await deleteBotFile(request.params.id, request.user, request.query.path || ""));
   } catch (error) {
     next(error);
   }
@@ -119,7 +121,14 @@ router.post("/:id/upload", upload.array("files"), async (request, response, next
   try {
     response
       .status(201)
-      .json(await uploadBotFiles(request.params.id, request.body.target_path || "", request.files || []));
+      .json(
+        await uploadBotFiles(
+          request.params.id,
+          request.user,
+          request.body.target_path || "",
+          request.files || []
+        )
+      );
   } catch (error) {
     await cleanupFiles(request.files || []);
     next(error);
@@ -128,7 +137,7 @@ router.post("/:id/upload", upload.array("files"), async (request, response, next
 
 router.patch("/:id/env", async (request, response, next) => {
   try {
-    response.json(await updateBotEnv(request.params.id, request.body.content || ""));
+    response.json(await updateBotEnv(request.params.id, request.user, request.body.content || ""));
   } catch (error) {
     next(error);
   }
@@ -136,7 +145,7 @@ router.patch("/:id/env", async (request, response, next) => {
 
 router.post("/:id/start", async (request, response, next) => {
   try {
-    response.json(await startBot(request.params.id));
+    response.json(await startBot(request.params.id, request.user));
   } catch (error) {
     next(error);
   }
@@ -144,7 +153,7 @@ router.post("/:id/start", async (request, response, next) => {
 
 router.post("/:id/stop", async (request, response, next) => {
   try {
-    response.json(await stopBot(request.params.id));
+    response.json(await stopBot(request.params.id, request.user));
   } catch (error) {
     next(error);
   }
@@ -152,7 +161,7 @@ router.post("/:id/stop", async (request, response, next) => {
 
 router.post("/:id/restart", async (request, response, next) => {
   try {
-    response.json(await restartBot(request.params.id));
+    response.json(await restartBot(request.params.id, request.user));
   } catch (error) {
     next(error);
   }
@@ -160,7 +169,7 @@ router.post("/:id/restart", async (request, response, next) => {
 
 router.post("/:id/install", async (request, response, next) => {
   try {
-    response.json(await installDependencies(request.params.id));
+    response.json(await installDependencies(request.params.id, request.user));
   } catch (error) {
     next(error);
   }
@@ -168,7 +177,7 @@ router.post("/:id/install", async (request, response, next) => {
 
 router.get("/:id", async (request, response, next) => {
   try {
-    response.json(await getBotWithRuntime(request.params.id));
+    response.json(await getBotWithRuntime(request.params.id, request.user));
   } catch (error) {
     next(error);
   }
@@ -176,7 +185,7 @@ router.get("/:id", async (request, response, next) => {
 
 router.patch("/:id", async (request, response, next) => {
   try {
-    response.json(await updateBot(request.params.id, request.body));
+    response.json(await updateBot(request.params.id, request.user, request.body));
   } catch (error) {
     next(error);
   }
@@ -184,7 +193,7 @@ router.patch("/:id", async (request, response, next) => {
 
 router.delete("/:id", async (request, response, next) => {
   try {
-    response.json(await deleteBotById(request.params.id));
+    response.json(await deleteBotById(request.params.id, request.user));
   } catch (error) {
     next(error);
   }

@@ -1,7 +1,13 @@
 import { Link } from "react-router-dom";
 import { Activity, Clock3, Cpu, HardDrive, Server, TriangleAlert } from "lucide-react";
 
-import { formatCountdown, formatDate, formatNumber, serviceTypeLabel } from "../utils";
+import {
+  accountStatusLabel,
+  formatCountdown,
+  formatDate,
+  formatNumber,
+  serviceTypeLabel
+} from "../utils";
 
 function MetricCard({ icon: Icon, label, value, hint }) {
   return (
@@ -18,46 +24,51 @@ function MetricCard({ icon: Icon, label, value, hint }) {
   );
 }
 
-export function DashboardPage({ bots, system, loading }) {
+export function DashboardPage({ user, bots, system, loading }) {
   const featuredBots = bots.slice(0, 6);
+  const account = system?.account;
+  const limits = system?.limits || {};
+  const remaining = system?.remaining || {};
 
   return (
     <div className="page-grid">
       <section className="hero-card">
         <div>
-          <p className="eyebrow">Prywatny panel hostingu</p>
-          <h2>Hostuj boty Discord i serwery Minecraft na prawdziwych procesach.</h2>
+          <p className="eyebrow">{user.is_admin ? "Owner workspace" : "Panel uzytkownika"}</p>
+          <h2>
+            {user.is_admin
+              ? "Zarzadzaj kontami, limitami i uslugami z jednego panelu."
+              : "Widzisz tylko swoje boty, zuzycie zasobow i pozostaly limit planu."}
+          </h2>
           <p className="hero-copy">
-            ByteHost zarzadza realnymi plikami, PM2, schedulerem wygasniecia, auto restartem,
-            limitami zasobow i file managerem dla jednego operatora.
+            {user.is_admin
+              ? "ByteHost laczy realne procesy PM2 z systemem kont, limitow planu, schedulerem wygasniec i administracja uzytkownikami."
+              : "Twoj panel pokazuje realne procesy PM2, file manager, logi i limity zasobow przypisane do konta przez ownera."}
           </p>
           <div className="hero-pills">
+            <span>JWT auth</span>
+            <span>Bcrypt</span>
             <span>PM2</span>
-            <span>SQLite</span>
-            <span>ZIP / RAR / JAR</span>
-            <span>Discord + Minecraft</span>
+            <span>{user.is_admin ? "Admin + user ACL" : "Prywatny workspace"}</span>
           </div>
         </div>
 
         <div className="hero-panel">
           <div className="pulse-row">
-            <span>Stan hostingu</span>
-            <strong>{loading ? "Synchronizacja..." : "Gotowy"}</strong>
+            <span>Stan konta</span>
+            <strong>{loading ? "Synchronizacja..." : accountStatusLabel(account?.account_status || "ACTIVE")}</strong>
           </div>
           <div className="resource-bar">
-            <label>CPU uslug</label>
-            <progress value={system?.usage?.cpu_percent || 0} max={system?.limits?.cpu_limit_percent || 100} />
+            <label>CPU</label>
+            <progress value={system?.usage?.cpu_percent || 0} max={limits.cpu_limit_percent || 100} />
           </div>
           <div className="resource-bar">
-            <label>RAM uslug</label>
-            <progress value={system?.usage?.ram_mb || 0} max={system?.limits?.ram_limit_mb || 100} />
+            <label>RAM</label>
+            <progress value={system?.usage?.ram_mb || 0} max={limits.ram_limit_mb || 100} />
           </div>
           <div className="resource-bar">
             <label>Storage</label>
-            <progress
-              value={system?.usage?.storage_mb || 0}
-              max={system?.limits?.storage_limit_mb || 100}
-            />
+            <progress value={system?.usage?.storage_mb || 0} max={limits.storage_limit_mb || 100} />
           </div>
         </div>
       </section>
@@ -65,27 +76,31 @@ export function DashboardPage({ bots, system, loading }) {
       <section className="stats-grid">
         <MetricCard
           icon={Server}
-          label="Wszystkie uslugi"
+          label={user.is_admin ? "Wszystkie uslugi" : "Twoje uslugi"}
           value={formatNumber(system?.statuses?.total)}
-          hint={`Limit: ${formatNumber(system?.limits?.max_bots)}`}
+          hint={`Limit: ${formatNumber(limits.max_bots)}`}
         />
         <MetricCard
           icon={Activity}
-          label="ONLINE"
-          value={formatNumber(system?.statuses?.online)}
-          hint="Procesy aktualnie uruchomione"
+          label={user.is_admin ? "ONLINE" : "Pozostalo botow"}
+          value={formatNumber(user.is_admin ? system?.statuses?.online : remaining.bots)}
+          hint={user.is_admin ? "Procesy aktualnie uruchomione" : `Wykorzystane: ${formatNumber(system?.usage?.bots)}`}
         />
         <MetricCard
           icon={Cpu}
           label="CPU"
           value={formatNumber(system?.usage?.cpu_percent, "%")}
-          hint={`Host: ${formatNumber(system?.host?.cpu_load_percent, "%")}`}
+          hint={
+            user.is_admin
+              ? `Host: ${formatNumber(system?.host?.cpu_load_percent, "%")}`
+              : `Pozostalo: ${formatNumber(remaining.cpu_percent, "%")}`
+          }
         />
         <MetricCard
           icon={HardDrive}
           label="Storage"
           value={formatNumber(system?.usage?.storage_mb, " MB")}
-          hint={`Limit: ${formatNumber(system?.limits?.storage_limit_mb, " MB")}`}
+          hint={`Pozostalo: ${formatNumber(remaining.storage_mb, " MB")}`}
         />
       </section>
 
@@ -93,7 +108,7 @@ export function DashboardPage({ bots, system, loading }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">Uslugi</p>
-            <h3>Ostatnio dodane</h3>
+            <h3>{user.is_admin ? "Ostatnio dodane" : "Twoje ostatnie uslugi"}</h3>
           </div>
           <Link className="inline-link" to="/bots">
             Otworz workspace
@@ -141,8 +156,8 @@ export function DashboardPage({ bots, system, loading }) {
       <section className="panel-card">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Stan hosta</p>
-            <h3>Monitoring serwera</h3>
+            <p className="eyebrow">{user.is_admin ? "Stan hosta" : "Plan konta"}</p>
+            <h3>{user.is_admin ? "Monitoring serwera" : "Status konta i wygasniecie"}</h3>
           </div>
         </div>
 
@@ -150,22 +165,34 @@ export function DashboardPage({ bots, system, loading }) {
           <div className="host-stat">
             <Clock3 size={18} />
             <div>
-              <span>Uptime hosta</span>
-              <strong>{formatNumber(Math.floor((system?.host?.uptime_seconds || 0) / 3600), " h")}</strong>
+              <span>{user.is_admin ? "Uptime hosta" : "Konto wygasa"}</span>
+              <strong>
+                {user.is_admin
+                  ? formatNumber(Math.floor((system?.host?.uptime_seconds || 0) / 3600), " h")
+                  : formatDate(account?.expires_at)}
+              </strong>
             </div>
           </div>
           <div className="host-stat">
             <TriangleAlert size={18} />
             <div>
-              <span>Crash loop</span>
-              <strong>{formatNumber(system?.statuses?.crash_loop)}</strong>
+              <span>{user.is_admin ? "Crash loop" : "Status konta"}</span>
+              <strong>
+                {user.is_admin
+                  ? formatNumber(system?.statuses?.crash_loop)
+                  : accountStatusLabel(account?.account_status || "ACTIVE")}
+              </strong>
             </div>
           </div>
           <div className="host-stat">
             <Activity size={18} />
             <div>
-              <span>Ostatni sync</span>
-              <strong>{formatDate(new Date())}</strong>
+              <span>{user.is_admin ? "Ostatni sync" : "Pozostaly RAM"}</span>
+              <strong>
+                {user.is_admin
+                  ? formatDate(new Date())
+                  : formatNumber(remaining.ram_mb, " MB")}
+              </strong>
             </div>
           </div>
         </div>

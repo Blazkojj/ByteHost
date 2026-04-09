@@ -1,10 +1,35 @@
+const TOKEN_STORAGE_KEY = "bytehost.jwt";
+
+function getStoredToken() {
+  return window.localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+}
+
+function setStoredToken(token) {
+  if (!token) {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+}
+
+function clearStoredToken() {
+  window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+function emitUnauthorized() {
+  window.dispatchEvent(new Event("bytehost:unauthorized"));
+}
+
 async function request(url, options = {}) {
   const isFormData = options.body instanceof FormData;
+  const token = options.skipAuth ? "" : getStoredToken();
   const response = await fetch(url, {
     ...options,
     cache: "no-store",
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {})
     }
   });
@@ -15,13 +40,32 @@ async function request(url, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    throw new Error(payload?.error || "Wystapil blad zadania.");
+    const error = new Error(payload?.error || "Wystapil blad zadania.");
+    error.statusCode = response.status;
+    error.details = payload?.details || null;
+
+    if (response.status === 401) {
+      clearStoredToken();
+      emitUnauthorized();
+    }
+
+    throw error;
   }
 
   return payload;
 }
 
 export const api = {
+  getAuthToken: getStoredToken,
+  setAuthToken: setStoredToken,
+  clearAuthToken: clearStoredToken,
+  login: (payload) =>
+    request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      skipAuth: true
+    }),
+  getMe: () => request("/api/auth/me"),
   getBots: () => request("/api/bots"),
   createBot: (formData) => request("/api/bots", { method: "POST", body: formData }),
   updateBotArchive: (id, formData) =>
@@ -57,5 +101,11 @@ export const api = {
   getSystemStats: () => request("/api/system/stats"),
   getMinecraftVersions: () => request("/api/system/minecraft-versions"),
   updateSystemLimits: (payload) =>
-    request("/api/system/limits", { method: "PATCH", body: JSON.stringify(payload) })
+    request("/api/system/limits", { method: "PATCH", body: JSON.stringify(payload) }),
+  getUsers: () => request("/api/admin/users"),
+  createUser: (payload) =>
+    request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),
+  updateUser: (id, payload) =>
+    request(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteUser: (id) => request(`/api/admin/users/${id}`, { method: "DELETE" })
 };
