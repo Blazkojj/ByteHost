@@ -65,6 +65,12 @@ export const api = {
       body: JSON.stringify(payload),
       skipAuth: true
     }),
+  register: (payload) =>
+    request("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      skipAuth: true
+    }),
   getMe: () => request("/api/auth/me"),
   getBots: () => request("/api/bots"),
   createBot: (formData) => request("/api/bots", { method: "POST", body: formData }),

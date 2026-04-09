@@ -23,7 +23,8 @@ function buildUserForm(user) {
     max_cpu_percent: user.max_cpu_percent ?? "",
     max_storage_mb: user.max_storage_mb ?? "",
     expires_at: toDatetimeLocal(user.expires_at),
-    is_active: Boolean(user.is_active)
+    is_active: Boolean(user.is_active),
+    pending_approval: Boolean(user.pending_approval)
   };
 }
 
@@ -45,6 +46,7 @@ export function AdminUsersPage() {
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const pendingUsers = users.filter((user) => user.pending_approval);
 
   async function loadUsers() {
     setLoading(true);
@@ -118,6 +120,35 @@ export function AdminUsersPage() {
       await loadUsers();
     } catch (saveError) {
       setError(saveError.message);
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  async function handleApproveUser(user) {
+    setSavingId(user.id);
+    setMessage("");
+    setError("");
+
+    try {
+      const form = userForms[user.id];
+      const payload = {
+        ...form,
+        is_active: true,
+        pending_approval: false,
+        max_ram_mb: gbInputToMb(form.max_ram_mb, form.max_ram_mb),
+        expires_at: fromDatetimeLocal(form.expires_at)
+      };
+
+      if (!form.password) {
+        delete payload.password;
+      }
+
+      await api.updateUser(user.id, payload);
+      setMessage(`Konto ${user.email} zostalo aktywowane.`);
+      await loadUsers();
+    } catch (approveError) {
+      setError(approveError.message);
     } finally {
       setSavingId("");
     }
@@ -265,6 +296,12 @@ export function AdminUsersPage() {
           <div className="empty-block">Brak kont do wyswietlenia.</div>
         ) : (
           <div className="user-admin-grid">
+            {pendingUsers.length > 0 ? (
+              <div className="info-card wide">
+                {`Konta oczekujace na aktywacje: ${pendingUsers.length}. Ustaw limity i kliknij "Aktywuj konto".`}
+              </div>
+            ) : null}
+
             {users.map((user) => {
               const form = userForms[user.id] || buildUserForm(user);
               const isOwner = user.role === "owner";
@@ -276,16 +313,21 @@ export function AdminUsersPage() {
                       <strong>{user.email}</strong>
                       <small>{`${userRoleLabel(user.role)} | ${accountStatusLabel(user.account_status)}`}</small>
                     </div>
-                    {!isOwner ? (
-                      <button
-                        className="danger-button compact"
-                        onClick={() => handleDeleteUser(user)}
-                        disabled={savingId === user.id}
-                      >
-                        <Trash2 size={14} />
-                        <span>Usun</span>
-                      </button>
-                    ) : null}
+                    <div className="workspace-actions">
+                      {user.pending_approval && !isOwner ? (
+                        <span className="status-pill warning">Oczekuje</span>
+                      ) : null}
+                      {!isOwner ? (
+                        <button
+                          className="danger-button compact"
+                          onClick={() => handleDeleteUser(user)}
+                          disabled={savingId === user.id}
+                        >
+                          <Trash2 size={14} />
+                          <span>Usun</span>
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="user-meta-grid">
@@ -420,6 +462,16 @@ export function AdminUsersPage() {
                       <Save size={14} />
                       <span>{savingId === user.id ? "Zapisywanie..." : "Zapisz konto"}</span>
                     </button>
+                    {user.pending_approval && !isOwner ? (
+                      <button
+                        className="ghost-button compact"
+                        onClick={() => handleApproveUser(user)}
+                        disabled={savingId === user.id}
+                      >
+                        <ShieldCheck size={14} />
+                        <span>{savingId === user.id ? "Aktywacja..." : "Aktywuj konto"}</span>
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               );

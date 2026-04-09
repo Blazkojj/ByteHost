@@ -160,6 +160,10 @@ export default function App() {
     setPageError("");
   }
 
+  function handleRegister(payload) {
+    return api.register(payload);
+  }
+
   function handleLogout() {
     api.clearAuthToken();
     resetSessionState();
@@ -185,9 +189,24 @@ export default function App() {
           element={
             <LoginPage
               onLogin={handleLogin}
+              onRegister={handleRegister}
               loading={authLoading}
               theme={theme}
               onToggleTheme={handleToggleTheme}
+              mode="login"
+            />
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <LoginPage
+              onLogin={handleLogin}
+              onRegister={handleRegister}
+              loading={authLoading}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              mode="register"
             />
           }
         />

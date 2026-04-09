@@ -1,38 +1,69 @@
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="ring" x1="18" y1="110" x2="112" y2="18" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1D5CFF"/>
-      <stop offset="1" stop-color="#20DAF4"/>
+    <linearGradient id="outer" x1="21" y1="104" x2="102" y2="21" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2636F3"/>
+      <stop offset="1" stop-color="#45E7F2"/>
     </linearGradient>
-    <linearGradient id="mark" x1="34" y1="96" x2="96" y2="30" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1D5CFF"/>
-      <stop offset="1" stop-color="#20DAF4"/>
+    <linearGradient id="cubeFront" x1="50" y1="93" x2="79" y2="47" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2439F2"/>
+      <stop offset="1" stop-color="#3FE6F1"/>
     </linearGradient>
+    <linearGradient id="cubeTop" x1="52" y1="40" x2="80" y2="66" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5AF0F3"/>
+      <stop offset="1" stop-color="#32CFEF"/>
+    </linearGradient>
+    <linearGradient id="cubeSide" x1="76" y1="59" x2="88" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#25D0EF"/>
+      <stop offset="1" stop-color="#2A74F2"/>
+    </linearGradient>
+    <filter id="glow" x="7" y="5" width="114" height="118" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#2F72F5" flood-opacity="0.18"/>
+    </filter>
   </defs>
 
-  <circle cx="64" cy="64" r="53" stroke="url(#ring)" stroke-width="6"/>
+  <g filter="url(#glow)">
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M64.4405 10L103.864 32.826V77.826L64.4405 100.652L25.0169 77.826V32.826L64.4405 10ZM64.4405 27.0576L89.0912 41.3271V69.3249L64.4405 83.5943L39.7897 69.3249V41.3271L64.4405 27.0576Z"
+      fill="url(#outer)"/>
 
-  <path
-    d="M49.5 28H67C84.1208 28 96 37.6316 96 53C96 61.374 92.2364 68.314 85.8284 72.7461C91.3648 76.5843 94.5 82.5629 94.5 90C94.5 106.481 81.8665 116 65.5 116H48.5V78H64.5C71.5837 78 76.5 73.7292 76.5 67.5C76.5 61.2708 71.5837 57 64.5 57H49.5V28Z"
-    fill="url(#mark)"/>
+    <path
+      d="M50.6345 39.0898L64.2698 31.126L77.7283 38.9141L64.0931 46.878L50.6345 39.0898Z"
+      fill="url(#cubeTop)"/>
+    <path
+      d="M50.6345 39.0903V66.7129L64.0931 74.5011V46.8785L50.6345 39.0903Z"
+      fill="url(#cubeFront)"/>
+    <path
+      d="M77.7283 38.9146V66.5372L64.093 74.5011V46.8785L77.7283 38.9146Z"
+      fill="url(#cubeSide)"/>
 
-  <path
-    d="M49.5 28H67C84.1208 28 96 37.6316 96 53C96 61.374 92.2364 68.314 85.8284 72.7461C91.3648 76.5843 94.5 82.5629 94.5 90C94.5 106.481 81.8665 116 65.5 116H48.5V78H64.5C71.5837 78 76.5 73.7292 76.5 67.5C76.5 61.2708 71.5837 57 64.5 57H49.5V28Z"
-    stroke="rgba(255,255,255,0.18)"
-    stroke-width="1.2"/>
+    <path
+      d="M39.5714 43.9352L64.3498 28.7446L89.1283 43.9352"
+      stroke="white"
+      stroke-width="10"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+    <path
+      d="M39.5714 43.9351V83.4222L64.3498 98.6128L89.1283 83.4222V58.8511"
+      stroke="white"
+      stroke-width="10"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+    <path
+      d="M36.75 70.5112L64.3496 52.8701L86.9445 67.4408"
+      stroke="white"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
 
-  <rect x="43" y="40" width="6" height="6" rx="1.5" fill="url(#mark)"/>
-  <rect x="36" y="50" width="8" height="8" rx="2" fill="url(#mark)"/>
-  <rect x="46" y="56" width="7" height="7" rx="1.75" fill="url(#mark)"/>
-  <rect x="38" y="68" width="8" height="8" rx="2" fill="url(#mark)"/>
-  <rect x="47" y="74" width="7" height="7" rx="1.75" fill="url(#mark)"/>
-
-  <path
-    d="M58 70C58 66.6863 60.6863 64 64 64H81C84.3137 64 87 66.6863 87 70V82C87 85.3137 84.3137 88 81 88H60L52 96V76C52 72.6863 54.6863 70 58 70Z"
-    fill="#0B1730"/>
-  <path d="M61 72H78.5C80.9853 72 83 74.0147 83 76.5C83 78.9853 80.9853 81 78.5 81H61V72Z" fill="url(#ring)"/>
-  <circle cx="60.5" cy="76.5" r="2.5" fill="url(#ring)"/>
-  <path d="M67 77H78" stroke="#0B1730" stroke-width="2.4" stroke-linecap="round"/>
-  <path d="M67 86H79" stroke="url(#ring)" stroke-width="2.4" stroke-linecap="round"/>
-  <circle cx="60.5" cy="86" r="2.5" fill="url(#ring)"/>
+    <rect x="79.6" y="27.6" width="9.2" height="9.2" rx="1.8" transform="rotate(0.5 79.6 27.6)" fill="url(#outer)"/>
+    <rect x="90.5" y="18.6" width="11.4" height="11.4" rx="2.1" transform="rotate(0.5 90.5 18.6)" fill="url(#outer)"/>
+    <rect x="96.6" y="33.1" width="12.8" height="12.8" rx="2.2" transform="rotate(0.5 96.6 33.1)" fill="url(#outer)"/>
+    <rect x="85.5" y="43.7" width="12.5" height="12.5" rx="2.2" transform="rotate(0.5 85.5 43.7)" fill="url(#outer)"/>
+    <rect x="101.7" y="49.4" width="10.2" height="10.2" rx="1.8" transform="rotate(0.5 101.7 49.4)" fill="url(#outer)"/>
+    <rect x="113.3" y="33.6" width="10.9" height="10.9" rx="1.9" transform="rotate(0.5 113.3 33.6)" fill="url(#outer)"/>
+    <rect x="108.2" y="62.8" width="8.7" height="8.7" rx="1.6" transform="rotate(0.5 108.2 62.8)" fill="url(#outer)"/>
+    <rect x="92.6" y="59.7" width="9.1" height="9.1" rx="1.7" transform="rotate(0.5 92.6 59.7)" fill="url(#outer)"/>
+  </g>
 </svg>

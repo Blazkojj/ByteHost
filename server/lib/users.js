@@ -44,6 +44,10 @@ function getUserAccountStatus(user) {
     return "UNKNOWN";
   }
 
+  if (user.pending_approval) {
+    return "PENDING_APPROVAL";
+  }
+
   if (!user.is_active) {
     return "INACTIVE";
   }
@@ -56,11 +60,11 @@ function getUserAccountStatus(user) {
 }
 
 function canUserLogin(user) {
-  return Boolean(user && user.is_active);
+  return Boolean(user && user.is_active && !user.pending_approval);
 }
 
 function canUserManageServices(user) {
-  return Boolean(user && user.is_active && !isUserExpired(user));
+  return Boolean(user && user.is_active && !user.pending_approval && !isUserExpired(user));
 }
 
 function mapUserForClient(user) {
@@ -102,7 +106,19 @@ function getUserByEmail(email) {
 
 function listUsers() {
   return getDb()
-    .prepare("SELECT * FROM users ORDER BY CASE WHEN role = 'owner' THEN 0 ELSE 1 END, created_at ASC")
+    .prepare(
+      `
+        SELECT *
+        FROM users
+        ORDER BY
+          CASE
+            WHEN role = 'owner' THEN 0
+            WHEN pending_approval = 1 THEN 1
+            ELSE 2
+          END,
+          created_at ASC
+      `
+    )
     .all()
     .map((row) => mapUserForClient(row));
 }
@@ -178,6 +194,8 @@ async function createUserAccount(payload, options = {}) {
 
   const password = normalizePassword(payload.password, { required: true });
   const role = options.role || "user";
+  const pendingApproval = role === "owner" ? false : Boolean(options.pendingApproval);
+  const defaultPlan = options.defaultPlan || DEFAULT_USER_PLAN;
   const createdAt = nowIso();
 
   const userRecord = {
@@ -187,18 +205,22 @@ async function createUserAccount(payload, options = {}) {
     role,
     max_bots: role === "owner"
       ? null
-      : normalizePlanValue(payload.max_bots, DEFAULT_USER_PLAN.max_bots),
+      : normalizePlanValue(payload.max_bots, defaultPlan.max_bots),
     max_ram_mb: role === "owner"
       ? null
-      : normalizePlanValue(payload.max_ram_mb, DEFAULT_USER_PLAN.max_ram_mb),
+      : normalizePlanValue(payload.max_ram_mb, defaultPlan.max_ram_mb),
     max_cpu_percent: role === "owner"
       ? null
-      : normalizePlanValue(payload.max_cpu_percent, DEFAULT_USER_PLAN.max_cpu_percent),
+      : normalizePlanValue(payload.max_cpu_percent, defaultPlan.max_cpu_percent),
     max_storage_mb: role === "owner"
       ? null
-      : normalizePlanValue(payload.max_storage_mb, DEFAULT_USER_PLAN.max_storage_mb),
+      : normalizePlanValue(payload.max_storage_mb, defaultPlan.max_storage_mb),
     expires_at: role === "owner" ? null : normalizeExpiresAt(payload.expires_at),
-    is_active: role === "owner" ? 1 : (coerceBoolean(payload.is_active, true) ? 1 : 0),
+    is_active:
+      role === "owner"
+        ? 1
+        : (pendingApproval ? 0 : (coerceBoolean(payload.is_active, true) ? 1 : 0)),
+    pending_approval: role === "owner" ? 0 : (pendingApproval ? 1 : 0),
     created_at: createdAt,
     updated_at: createdAt
   };
@@ -217,6 +239,7 @@ async function createUserAccount(payload, options = {}) {
           max_storage_mb,
           expires_at,
           is_active,
+          pending_approval,
           created_at,
           updated_at
         )
@@ -231,6 +254,7 @@ async function createUserAccount(payload, options = {}) {
           @max_storage_mb,
           @expires_at,
           @is_active,
+          @pending_approval,
           @created_at,
           @updated_at
         )
@@ -284,6 +308,7 @@ async function updateUserAccount(userId, payload) {
     updates.max_storage_mb = null;
     updates.expires_at = null;
     updates.is_active = 1;
+    updates.pending_approval = 0;
   } else {
     updates.max_bots =
       payload.max_bots !== undefined
@@ -309,6 +334,17 @@ async function updateUserAccount(userId, payload) {
       payload.is_active !== undefined
         ? (coerceBoolean(payload.is_active, existingUser.is_active) ? 1 : 0)
         : (existingUser.is_active ? 1 : 0);
+
+    updates.pending_approval =
+      payload.pending_approval !== undefined
+        ? (coerceBoolean(payload.pending_approval, existingUser.pending_approval) ? 1 : 0)
+        : (existingUser.pending_approval ? 1 : 0);
+
+    if (updates.pending_approval) {
+      updates.is_active = 0;
+    } else if (existingUser.pending_approval && updates.is_active) {
+      updates.pending_approval = 0;
+    }
   }
 
   getDb()
@@ -323,6 +359,7 @@ async function updateUserAccount(userId, payload) {
             max_storage_mb = @max_storage_mb,
             expires_at = @expires_at,
             is_active = @is_active,
+            pending_approval = @pending_approval,
             updated_at = @updated_at
         WHERE id = @id
       `
@@ -384,6 +421,10 @@ async function ensureDefaultOwner() {
   return owner;
 }
 
+async function registerPendingUser(payload) {
+  return createUserAccount(payload, { pendingApproval: true });
+}
+
 module.exports = {
   normalizeEmail,
   isAdminUser,
@@ -401,5 +442,6 @@ module.exports = {
   createUserAccount,
   updateUserAccount,
   deleteUserAccount,
-  ensureDefaultOwner
+  ensureDefaultOwner,
+  registerPendingUser
 };

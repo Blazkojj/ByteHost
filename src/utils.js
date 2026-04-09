@@ -116,6 +116,8 @@ export function accountStatusLabel(status) {
   switch (status) {
     case "ACTIVE":
       return "Aktywne";
+    case "PENDING_APPROVAL":
+      return "Czeka na aktywacje";
     case "EXPIRED":
       return "Wygasle";
     case "INACTIVE":

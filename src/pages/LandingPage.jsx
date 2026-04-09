@@ -5,9 +5,12 @@ import {
   Bot,
   ChevronDown,
   Clock3,
+  Database,
   FolderTree,
   Gamepad2,
-  HardDrive,
+  Globe,
+  LockKeyhole,
+  Network,
   PanelTop,
   ShieldCheck,
   Sparkles,
@@ -18,97 +21,100 @@ import {
 import logoUrl from "../assets/bytehost-logo.svg";
 import { ThemeToggle } from "../components/ThemeToggle";
 
+const featurePills = ["PM2", "ZIP / RAR / JAR", "JWT + bcrypt", "Dark / light", "Discord + Minecraft"];
+
+const proofCards = [
+  {
+    title: "Prywatny panel",
+    text: "Bez publicznej rejestracji, z ownerem, planami i kontrola dostepu do uslug."
+  },
+  {
+    title: "Realne procesy",
+    text: "Boty i serwery sa uruchamiane przez PM2, a nie udawane w samym interfejsie."
+  },
+  {
+    title: "Nowoczesny workflow",
+    text: "Upload, logi, pliki, env, restart, limity i scheduler sa spiete w jednym miejscu."
+  }
+];
+
 const offerCards = [
   {
     icon: Bot,
-    title: "Discord bot hosting",
-    text: "Wrzucasz ZIP lub RAR, ByteHost wykrywa jezyk, plik startowy, komende i odpala proces przez PM2."
+    title: "Hosting botow Discord",
+    text: "ZIP lub RAR, auto-detekcja jezyka, pliku startowego i komendy plus pelna obsluga logow i plikow."
   },
   {
     icon: Gamepad2,
-    title: "Minecraft Java",
-    text: "Tworzysz serwer bez pliku albo z wlasnym JAR-em, ustawiasz wersje, EULA i dalej zarzadzasz wszystkim z panelu."
+    title: "Serwery Minecraft",
+    text: "Tworzenie bez pliku albo z wlasnym JAR, wybor wersji, EULA, limity i gotowosc do publicznego routingu."
   },
   {
     icon: Users,
-    title: "Owner i uzytkownicy",
-    text: "Tworzysz konta bez rejestracji publicznej, ustawiasz limity planu, wygasanie i dostep tylko do swoich uslug."
+    title: "Konta i limity",
+    text: "Owner tworzy konta, ustawia plan, RAM, CPU, storage, expires_at i widzi caly system z jednego panelu."
   }
 ];
 
-const featureCards = [
-  {
-    icon: FolderTree,
-    title: "Prawdziwy file manager",
-    text: "Edycja plikow, .env, upload, foldery, kasowanie i podglad projektu bez wychodzenia z panelu."
-  },
-  {
-    icon: TerminalSquare,
-    title: "Logi i konsola",
-    text: "Masz logi procesu, diagnostyke bledow startu, komende startowa i szybki podglad stanu uslugi."
-  },
-  {
-    icon: ShieldCheck,
-    title: "Limity i kontrola",
-    text: "Boty, RAM, CPU i storage sa ograniczane planem lub ustawieniami ownera, wiec nic nie wyjdzie poza pulpit."
-  },
-  {
-    icon: Clock3,
-    title: "Auto restart i expire",
-    text: "PM2 pilnuje restartow, scheduler sprawdza wygasniecia, a panel oznacza crash loop i zablokowane uslugi."
-  }
+const stackCards = [
+  { icon: PanelTop, label: "Express panel" },
+  { icon: Database, label: "SQLite storage" },
+  { icon: TerminalSquare, label: "PM2 runtime" },
+  { icon: Network, label: "API + JWT" },
+  { icon: Globe, label: "Cloudflare ready" },
+  { icon: LockKeyhole, label: "Owner access" }
 ];
 
-const workflowSteps = [
+const stepCards = [
   {
     step: "01",
-    title: "Zaloguj sie do panelu",
-    text: "Owner tworzy konto, a Ty dostajesz gotowe dane do logowania bez publicznej rejestracji."
+    title: "Logujesz sie do panelu",
+    text: "Konto tworzy owner. Uzytkownik dostaje gotowy dostep bez rejestracji publicznej."
   },
   {
     step: "02",
-    title: "Dodaj projekt lub serwer",
-    text: "Bot Discord, Minecraft lub prywatna usluga trafia do panelu z poprawnie wykrytym typem i limitem."
+    title: "Dodajesz projekt",
+    text: "Discord bot albo Minecraft trafia do panelu razem z limitami i ustawieniami planu."
   },
   {
     step: "03",
-    title: "Skonfiguruj srodowisko",
-    text: "Ustawiasz .env, wersje, RAM, expire date, auto restart i wszystko, czego wymaga projekt."
+    title: "Konfigurujesz srodowisko",
+    text: "Ustawiasz .env, start command, wersje, RAM, CPU, expire i auto restart."
   },
   {
     step: "04",
-    title: "Uruchom i monitoruj",
-    text: "Start, stop, restart, reinstall, logi, file manager i publiczny routing do panelu sa pod reka."
+    title: "Monitorujesz usluge",
+    text: "Masz logi, file manager, diagnostyke, restart count, status i kontrola nad procesem."
   }
 ];
 
 const faqItems = [
   {
-    question: "Czy ByteHost jest prawdziwym hostingiem, a nie mockupem?",
+    question: "Czy ByteHost to prawdziwy panel hostingowy?",
     answer:
-      "Tak. Panel operuje na realnych plikach, uruchamia procesy przez PM2, zapisuje logi i pilnuje limitow oraz wygasniec."
+      "Tak. Panel korzysta z realnych plikow, PM2, schedulerow, limitow i logow. To nie jest sam frontend bez backendu."
   },
   {
-    question: "Czy moge hostowac Discord bota i Minecraft z jednego miejsca?",
+    question: "Czy moge hostowac boty Discord i Minecraft z jednego miejsca?",
     answer:
-      "Tak. ByteHost laczy oba scenariusze w jednym panelu, ale zachowuje osobne wykrywanie projektu, komendy startu i konfiguracje."
+      "Tak. ByteHost laczy oba typy uslug w jednym panelu i rozdziela ich konfiguracje, komendy startu oraz limity."
   },
   {
     question: "Czy uzytkownik widzi tylko swoje uslugi?",
     answer:
-      "Tak. Konto user ma dostep tylko do przypisanych uslug, swoich limitow i wlasnych danych. Owner widzi caly system."
+      "Tak. Zwykly user widzi tylko swoje uslugi, limity i dane konta. Owner ma dostep do calego systemu."
   },
   {
-    question: "Czy moge uruchomic panel w jasnym i ciemnym motywie?",
+    question: "Czy panel ma ciemny motyw?",
     answer:
-      "Tak. Strona startowa, logowanie i panel maja przelacznik motywu, a wybrany wyglad zapisuje sie lokalnie w przegladarce."
+      "Tak. Strona glowna, logowanie i panel maja przelacznik jasnego i ciemnego motywu z zapisem lokalnym."
   }
 ];
 
-function FaqItem({ item, open, onClick }) {
+function FaqItem({ item, open, onToggle }) {
   return (
-    <article className={`landing-faq-item ${open ? "open" : ""}`}>
-      <button className="landing-faq-trigger" type="button" onClick={onClick}>
+    <article className={`marketing-faq-item ${open ? "open" : ""}`}>
+      <button className="marketing-faq-trigger" type="button" onClick={onToggle}>
         <span>{item.question}</span>
         <ChevronDown size={18} />
       </button>
@@ -121,134 +127,139 @@ export function LandingPage({ theme, onToggleTheme }) {
   const [openFaq, setOpenFaq] = useState(0);
 
   return (
-    <div className="landing-shell">
-      <header className="landing-header">
-        <Link className="brand" to="/">
+    <div className="marketing-shell">
+      <header className="marketing-header">
+        <Link className="brand marketing-brand" to="/">
           <img className="brand-logo" src={logoUrl} alt="ByteHost" />
           <div className="brand-copy">
             <strong>ByteHost</strong>
+            <span>Hosting panel for bots and game servers</span>
           </div>
         </Link>
 
-        <nav className="landing-nav">
+        <nav className="marketing-nav">
           <a href="#offer">Oferta</a>
-          <a href="#panel">Panel</a>
-          <a href="#workflow">Jak dziala</a>
+          <a href="#stack">Technologie</a>
+          <a href="#workflow">Jak to dziala</a>
           <a href="#faq">FAQ</a>
         </nav>
 
-        <div className="landing-header-actions">
+        <div className="marketing-header-actions">
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <Link className="ghost-button" to="/register">
+            Zaloz konto
+          </Link>
           <Link className="ghost-button" to="/login">
-            Zaloguj
+            Logowanie
           </Link>
         </div>
       </header>
 
-      <main className="landing-main">
-        <section className="landing-hero">
-          <div className="landing-hero-copy">
-            <p className="landing-kicker">
+      <main className="marketing-main">
+        <section className="marketing-hero">
+          <div className="marketing-hero-copy">
+            <p className="marketing-kicker">
               <Sparkles size={16} />
-              Prywatny hosting botow Discord i serwerow Minecraft
+              ByteHost / hosting panel in your own color style
             </p>
-            <h1>ByteHost daje Ci panel hostingu, ktory wyglada nowoczesnie i robi realna robote.</h1>
-            <p className="landing-hero-text">
-              Zamiast surowego panelu technicznego dostajesz szybki dashboard do uruchamiania botow,
-              serwerow Minecraft, planow uzytkownikow, limitow i logow. Wszystko w Twojej
-              kolorystyce i pod pelna kontrola ownera.
+            <h1>Nowoczesny panel do hostowania botow Discord i serwerow Minecraft.</h1>
+            <p className="marketing-hero-text">
+              ByteHost wyglada jak dopracowana strona hostingu, ale za tym interfejsem stoi realny
+              backend: PM2, limity, logi, scheduler wygasniec, zarzadzanie userami i file manager.
             </p>
 
-            <div className="landing-hero-actions">
+            <div className="marketing-hero-actions">
+              <Link className="ghost-button" to="/register">
+                Zaloz konto
+              </Link>
               <Link className="primary-button" to="/login">
                 <span>Wejdz do panelu</span>
                 <ArrowRight size={16} />
               </Link>
               <a className="ghost-button" href="#offer">
-                Zobacz oferte
+                Zobacz mozliwosci
               </a>
             </div>
 
-            <div className="landing-highlights">
-              <span>PM2 + live logi</span>
-              <span>ZIP / RAR / JAR</span>
-              <span>Plany i limity</span>
-              <span>Light / dark mode</span>
+            <div className="marketing-pill-row">
+              {featurePills.map((pill) => (
+                <span key={pill}>{pill}</span>
+              ))}
             </div>
           </div>
 
-          <div className="landing-hero-stage" id="panel">
-            <div className="landing-window">
-              <div className="landing-window-bar">
+          <div className="marketing-hero-mockup">
+            <div className="marketing-window">
+              <div className="marketing-window-bar">
                 <span />
                 <span />
                 <span />
               </div>
 
-              <div className="landing-window-body">
-                <div className="landing-window-sidebar">
-                  <div className="landing-side-badge active">
+              <div className="marketing-window-body">
+                <aside className="marketing-window-sidebar">
+                  <div className="marketing-side-link active">
                     <PanelTop size={16} />
                     <span>Dashboard</span>
                   </div>
-                  <div className="landing-side-badge">
+                  <div className="marketing-side-link">
                     <Bot size={16} />
-                    <span>Discord bots</span>
+                    <span>Discord</span>
                   </div>
-                  <div className="landing-side-badge">
+                  <div className="marketing-side-link">
                     <Gamepad2 size={16} />
                     <span>Minecraft</span>
                   </div>
-                  <div className="landing-side-badge">
+                  <div className="marketing-side-link">
                     <Users size={16} />
                     <span>Uzytkownicy</span>
                   </div>
-                </div>
+                </aside>
 
-                <div className="landing-window-content">
-                  <div className="landing-window-overview">
-                    <article className="landing-mini-card">
+                <div className="marketing-window-content">
+                  <div className="marketing-mini-grid">
+                    <article className="marketing-mini-card">
                       <small>Aktywne uslugi</small>
                       <strong>12</strong>
                     </article>
-                    <article className="landing-mini-card">
-                      <small>Zuzycie RAM</small>
+                    <article className="marketing-mini-card">
+                      <small>RAM in use</small>
                       <strong>5.5 GB</strong>
                     </article>
-                    <article className="landing-mini-card accent">
-                      <small>Status hosta</small>
+                    <article className="marketing-mini-card accent">
+                      <small>Status</small>
                       <strong>ONLINE</strong>
                     </article>
                   </div>
 
-                  <div className="landing-service-list">
-                    <div className="landing-service-row">
+                  <div className="marketing-service-list">
+                    <div className="marketing-service-row">
                       <div>
-                        <strong>nightcore-discord-bot</strong>
+                        <strong>music-discord-bot</strong>
                         <span>Node.js / PM2 / autorestart</span>
                       </div>
                       <b className="status-pill success">online</b>
                     </div>
-                    <div className="landing-service-row">
+                    <div className="marketing-service-row">
                       <div>
                         <strong>survival-1.21.5</strong>
-                        <span>Minecraft Java / publiczny routing</span>
+                        <span>Minecraft Java / version selected</span>
                       </div>
                       <b className="status-pill warning">starting</b>
                     </div>
-                    <div className="landing-service-row">
+                    <div className="marketing-service-row">
                       <div>
-                        <strong>python-ticket-bot</strong>
-                        <span>Python / env ready / logs live</span>
+                        <strong>tickets-python-bot</strong>
+                        <span>Python / env ready / live logs</span>
                       </div>
                       <b className="status-pill muted">idle</b>
                     </div>
                   </div>
 
-                  <div className="landing-terminal-preview">
-                    <span>[pm2] starting app: survival-1.21.5</span>
-                    <span>[bytehost] minecraft version resolved: 1.21.5</span>
-                    <span>[logs] live diagnostics and restart guard active</span>
+                  <div className="marketing-terminal">
+                    <span>[pm2] app started: music-discord-bot</span>
+                    <span>[bytehost] detected main file: index.js</span>
+                    <span>[scheduler] account limit check completed</span>
                   </div>
                 </div>
               </div>
@@ -256,40 +267,31 @@ export function LandingPage({ theme, onToggleTheme }) {
           </div>
         </section>
 
-        <section className="landing-band" id="offer">
-          {offerCards.map((card) => {
-            const Icon = card.icon;
-            return (
-              <article key={card.title} className="landing-band-card">
-                <div className="landing-band-icon">
-                  <Icon size={18} />
-                </div>
-                <div>
-                  <h3>{card.title}</h3>
-                  <p>{card.text}</p>
-                </div>
-              </article>
-            );
-          })}
+        <section className="marketing-proof">
+          {proofCards.map((card) => (
+            <article key={card.title} className="marketing-proof-card">
+              <h3>{card.title}</h3>
+              <p>{card.text}</p>
+            </article>
+          ))}
         </section>
 
-        <section className="landing-section landing-split">
-          <div className="landing-section-heading">
-            <p className="eyebrow">Panel i automatyzacja</p>
-            <h2>Wyglada jak nowoczesny hosting, ale nadal jest praktyczny przy codziennej pracy.</h2>
+        <section className="marketing-section" id="offer">
+          <div className="marketing-section-heading centered">
+            <p className="eyebrow">Nasza oferta</p>
+            <h2>Wszystko, czego potrzebujesz do prywatnego hostingu, w jednym panelu.</h2>
             <p>
-              Zamiast kopiowac klasyczna strone hostingu 1:1, ByteHost pokazuje realne funkcje:
-              auto-detekcje projektu, limity kont, logi, file manager i zarzadzanie wieloma
-              uslugami z jednego miejsca.
+              Strona glowna ma wyglad klasycznej nowoczesnej marki hostingowej, ale srodek zostaje
+              podporzadkowany ByteHost i realnym funkcjom aplikacji.
             </p>
           </div>
 
-          <div className="landing-feature-grid">
-            {featureCards.map((card) => {
+          <div className="marketing-card-grid three">
+            {offerCards.map((card) => {
               const Icon = card.icon;
               return (
-                <article key={card.title} className="landing-feature-card">
-                  <div className="landing-feature-icon">
+                <article key={card.title} className="marketing-feature-card">
+                  <div className="marketing-feature-icon">
                     <Icon size={18} />
                   </div>
                   <h3>{card.title}</h3>
@@ -300,17 +302,34 @@ export function LandingPage({ theme, onToggleTheme }) {
           </div>
         </section>
 
-        <section className="landing-section" id="workflow">
-          <div className="section-header landing-section-headline">
-            <div>
-              <p className="eyebrow">Jak to dziala</p>
-              <h2>Od logowania do odpalonej uslugi bez chaosu w panelu.</h2>
-            </div>
+        <section className="marketing-section" id="stack">
+          <div className="marketing-section-heading centered">
+            <p className="eyebrow">Technologie i fundament</p>
+            <h2>ByteHost stoi na realnym stacku, a nie tylko na ladnym widoku.</h2>
           </div>
 
-          <div className="landing-step-grid">
-            {workflowSteps.map((step) => (
-              <article key={step.step} className="landing-step-card">
+          <div className="marketing-stack-grid">
+            {stackCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <article key={card.label} className="marketing-stack-card">
+                  <Icon size={18} />
+                  <span>{card.label}</span>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="marketing-section" id="workflow">
+          <div className="marketing-section-heading centered">
+            <p className="eyebrow">Jak to dziala</p>
+            <h2>Od pierwszego logowania do dzialajacej uslugi w czterech krokach.</h2>
+          </div>
+
+          <div className="marketing-card-grid four">
+            {stepCards.map((step) => (
+              <article key={step.step} className="marketing-step-card">
                 <span>{step.step}</span>
                 <h3>{step.title}</h3>
                 <p>{step.text}</p>
@@ -319,54 +338,73 @@ export function LandingPage({ theme, onToggleTheme }) {
           </div>
         </section>
 
-        <section className="landing-section">
-          <div className="landing-cta-card">
+        <section className="marketing-section">
+          <div className="marketing-cta">
             <div>
               <p className="eyebrow">ByteHost workflow</p>
-              <h2>Wrzucasz projekt, ustawiasz limity i odpalasz wszystko z jednego miejsca.</h2>
+              <h2>Wrzucasz projekt, ustawiasz limity i uruchamiasz wszystko z jednego miejsca.</h2>
               <p>
-                Strona startowa prowadzi do panelu, a panel dalej robi juz cala robote:
-                zarzadzanie userami, limity, expire, Minecraft, Discord i monitoring.
+                ByteHost daje Ci homepage w stylu nowoczesnego hostingu, ale dalej prowadzi do
+                panelu, ktory zarzadza procesami, uzytkownikami, storage i konfiguracja.
               </p>
             </div>
 
-            <div className="landing-cta-points">
+            <div className="marketing-cta-points">
               <span>
-                <HardDrive size={16} />
-                Limity RAM, CPU i storage
+                <FolderTree size={16} />
+                File manager i .env editor
               </span>
               <span>
-                <Bot size={16} />
-                Discord bot upload i analiza
+                <TerminalSquare size={16} />
+                Logi, statusy i konsola
               </span>
               <span>
-                <Gamepad2 size={16} />
-                Minecraft z wyborem wersji
+                <ShieldCheck size={16} />
+                Limity planu i kontrola dostepu
+              </span>
+              <span>
+                <Clock3 size={16} />
+                Expire i restart scheduler
               </span>
             </div>
           </div>
         </section>
 
-        <section className="landing-section" id="faq">
-          <div className="section-header landing-section-headline">
-            <div>
-              <p className="eyebrow">FAQ</p>
-              <h2>Najwazniejsze odpowiedzi przed wejsciem do panelu.</h2>
-            </div>
+        <section className="marketing-section" id="faq">
+          <div className="marketing-section-heading centered">
+            <p className="eyebrow">FAQ</p>
+            <h2>Najwazniejsze odpowiedzi przed zalogowaniem.</h2>
           </div>
 
-          <div className="landing-faq-list">
+          <div className="marketing-faq-list">
             {faqItems.map((item, index) => (
               <FaqItem
                 key={item.question}
                 item={item}
                 open={openFaq === index}
-                onClick={() => setOpenFaq((current) => (current === index ? -1 : index))}
+                onToggle={() => setOpenFaq((current) => (current === index ? -1 : index))}
               />
             ))}
           </div>
         </section>
       </main>
+
+      <footer className="marketing-footer">
+        <div className="marketing-footer-brand">
+          <img className="brand-logo" src={logoUrl} alt="ByteHost" />
+          <div>
+            <strong>ByteHost</strong>
+            <span>Prywatny hosting botow i serwerow z jednym panelem administracyjnym.</span>
+          </div>
+        </div>
+
+        <div className="marketing-footer-links">
+          <a href="#offer">Oferta</a>
+          <a href="#workflow">Jak to dziala</a>
+          <a href="#faq">FAQ</a>
+          <Link to="/login">Logowanie</Link>
+        </div>
+      </footer>
     </div>
   );
 }

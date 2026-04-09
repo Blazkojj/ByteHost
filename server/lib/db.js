@@ -32,7 +32,8 @@ function mapUserRow(row) {
 
   return {
     ...row,
-    is_active: Boolean(row.is_active)
+    is_active: Boolean(row.is_active),
+    pending_approval: Boolean(row.pending_approval)
   };
 }
 
@@ -81,6 +82,7 @@ function initDatabase() {
       max_storage_mb INTEGER,
       expires_at TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
+      pending_approval INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -139,6 +141,7 @@ function initDatabase() {
   ensureColumn(database, "users", "max_storage_mb", "INTEGER");
   ensureColumn(database, "users", "expires_at", "TEXT");
   ensureColumn(database, "users", "is_active", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn(database, "users", "pending_approval", "INTEGER NOT NULL DEFAULT 0");
 
   ensureColumn(database, "bots", "owner_user_id", "TEXT");
   ensureColumn(database, "bots", "service_type", "TEXT NOT NULL DEFAULT 'discord_bot'");
