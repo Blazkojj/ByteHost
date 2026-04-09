@@ -14,6 +14,10 @@ function mapBotRow(row) {
     ...row,
     auto_restart: Boolean(row.auto_restart),
     accept_eula: Boolean(row.accept_eula),
+    minecraft_max_players:
+      row.minecraft_max_players === null || row.minecraft_max_players === undefined
+        ? null
+        : Number(row.minecraft_max_players),
     fivem_onesync_enabled: row.fivem_onesync_enabled === null || row.fivem_onesync_enabled === undefined
       ? true
       : Boolean(row.fivem_onesync_enabled)
@@ -119,6 +123,7 @@ function initDatabase() {
       stability_status TEXT DEFAULT 'STOPPED',
       ram_limit_mb INTEGER,
       cpu_limit_percent INTEGER,
+      minecraft_max_players INTEGER,
       archive_name TEXT,
       pm2_name TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -153,6 +158,7 @@ function initDatabase() {
   ensureColumn(database, "bots", "public_port", "INTEGER");
   ensureColumn(database, "bots", "minecraft_version", "TEXT");
   ensureColumn(database, "bots", "detected_minecraft_version", "TEXT");
+  ensureColumn(database, "bots", "minecraft_max_players", "INTEGER");
   ensureColumn(database, "bots", "fivem_artifact_build", "TEXT");
   ensureColumn(database, "bots", "fivem_license_key", "TEXT");
   ensureColumn(database, "bots", "fivem_max_clients", "INTEGER");

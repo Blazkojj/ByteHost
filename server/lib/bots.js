@@ -144,9 +144,34 @@ function sanitizeFiveMMaxClients(value, fallback = 48) {
   return maxClients;
 }
 
+function sanitizeMinecraftMaxPlayers(value, fallback = 20) {
+  const parsed = coerceNullableNumber(value, fallback);
+  const maxPlayers = Math.trunc(Number(parsed || fallback));
+
+  if (maxPlayers < 1 || maxPlayers > 1000) {
+    throw createHttpError(400, "Liczba slotow Minecraft musi byc z zakresu 1-1000.");
+  }
+
+  return maxPlayers;
+}
+
 function isGameService(serviceType) {
   return serviceType === "minecraft_server" || serviceType === "fivem_server";
 }
+
+const DISCORD_NATIVE_LOG_CANDIDATES = [
+  "logs/latest.log",
+  "logs/latest.txt",
+  "logs/bot.log",
+  "logs/app.log",
+  "logs/output.log",
+  "logs/combined.log",
+  "latest.log",
+  "bot.log",
+  "app.log",
+  "output.log",
+  "combined.log"
+];
 
 function getDefaultServicePort(serviceType) {
   if (serviceType === "minecraft_server") {
@@ -281,9 +306,10 @@ function createBotRecord(record) {
           detected_install_command, package_manager, project_path, status, status_message,
           expires_at, auto_restart, restart_delay, max_restarts, restart_count, last_restart_at,
           stability_status, ram_limit_mb, cpu_limit_percent, accept_eula, public_host,
-          public_port, minecraft_version, detected_minecraft_version, fivem_artifact_build,
-          fivem_license_key, fivem_max_clients, fivem_project_name, fivem_tags, fivem_locale,
-          fivem_onesync_enabled, archive_name, pm2_name, created_at, updated_at
+          public_port, minecraft_version, detected_minecraft_version, minecraft_max_players,
+          fivem_artifact_build, fivem_license_key, fivem_max_clients, fivem_project_name,
+          fivem_tags, fivem_locale, fivem_onesync_enabled, archive_name, pm2_name, created_at,
+          updated_at
         )
         VALUES (
           @id, @owner_user_id, @service_type, @name, @slug, @description, @language,
@@ -292,9 +318,10 @@ function createBotRecord(record) {
           @project_path, @status, @status_message, @expires_at, @auto_restart, @restart_delay,
           @max_restarts, @restart_count, @last_restart_at, @stability_status, @ram_limit_mb,
           @cpu_limit_percent, @accept_eula, @public_host, @public_port, @minecraft_version,
-          @detected_minecraft_version, @fivem_artifact_build, @fivem_license_key,
-          @fivem_max_clients, @fivem_project_name, @fivem_tags, @fivem_locale,
-          @fivem_onesync_enabled, @archive_name, @pm2_name, @created_at, @updated_at
+          @detected_minecraft_version, @minecraft_max_players, @fivem_artifact_build,
+          @fivem_license_key, @fivem_max_clients, @fivem_project_name, @fivem_tags,
+          @fivem_locale, @fivem_onesync_enabled, @archive_name, @pm2_name, @created_at,
+          @updated_at
         )
       `
     )
@@ -471,9 +498,58 @@ async function fileExists(targetPath) {
   }
 }
 
-function getNativeServiceLogPath(bot) {
+async function getDiscordNativeLogPath(projectPath) {
+  for (const candidate of DISCORD_NATIVE_LOG_CANDIDATES) {
+    const candidatePath = path.join(projectPath, candidate);
+    if (await fileExists(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  const directoriesToInspect = [
+    projectPath,
+    path.join(projectPath, "logs")
+  ];
+  const collectedFiles = [];
+
+  for (const directoryPath of directoriesToInspect) {
+    try {
+      const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) {
+          continue;
+        }
+
+        const lowerName = entry.name.toLowerCase();
+        if (!lowerName.endsWith(".log") && !lowerName.endsWith(".txt")) {
+          continue;
+        }
+
+        const fullPath = path.join(directoryPath, entry.name);
+        const stats = await fs.stat(fullPath);
+        collectedFiles.push({
+          path: fullPath,
+          modifiedAt: stats.mtimeMs
+        });
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  collectedFiles.sort((left, right) => right.modifiedAt - left.modifiedAt);
+  return collectedFiles[0]?.path || null;
+}
+
+async function getNativeServiceLogPath(bot) {
   if (bot.service_type === "minecraft_server") {
     return path.join(bot.project_path, "logs", "latest.log");
+  }
+
+  if (bot.service_type === "discord_bot") {
+    return getDiscordNativeLogPath(bot.project_path);
   }
 
   return null;
@@ -828,12 +904,13 @@ async function writeMinecraftServerProperties(projectPath, options = {}) {
   const serverPropertiesPath = path.join(projectPath, "server.properties");
   const motd = coerceNullableString(options.name, "ByteHost Minecraft Server");
   const serverPort = sanitizePublicPort(options.public_port, MINECRAFT_DEFAULT_PORT);
+  const maxPlayers = sanitizeMinecraftMaxPlayers(options.minecraft_max_players, 20);
   let nextContent = (await readUtf8IfExists(serverPropertiesPath)) || "";
 
   nextContent = upsertPropertiesLine(nextContent, "enable-query", "false");
   nextContent = upsertPropertiesLine(nextContent, "enable-rcon", "false");
   nextContent = upsertPropertiesLine(nextContent, "gamemode", "survival");
-  nextContent = upsertPropertiesLine(nextContent, "max-players", "20");
+  nextContent = upsertPropertiesLine(nextContent, "max-players", String(maxPlayers));
   nextContent = upsertPropertiesLine(nextContent, "motd", motd);
   nextContent = upsertPropertiesLine(nextContent, "online-mode", "true");
   nextContent = upsertPropertiesLine(nextContent, "server-ip", "");
@@ -845,7 +922,7 @@ async function writeMinecraftServerProperties(projectPath, options = {}) {
 }
 
 async function bootstrapMinecraftWorkspace(projectPath, options = {}) {
-  const eulaAccepted = Boolean(options.acceptEula);
+  const eulaAccepted = options.acceptEula === undefined ? true : Boolean(options.acceptEula);
   const eulaPath = path.join(projectPath, "eula.txt");
   const readmePath = path.join(projectPath, "README_BYTEHOST_MINECRAFT.txt");
 
@@ -1239,6 +1316,10 @@ async function createBot(actor, payload, artifactFile) {
     serviceType === "minecraft_server"
       ? normalizeMinecraftVersion(payload.minecraft_version, null)
       : null;
+  const requestedMinecraftMaxPlayers =
+    serviceType === "minecraft_server"
+      ? sanitizeMinecraftMaxPlayers(payload.minecraft_max_players, 20)
+      : null;
   const requestedFiveMMaxClients =
     serviceType === "fivem_server"
       ? sanitizeFiveMMaxClients(payload.fivem_max_clients, 48)
@@ -1317,9 +1398,10 @@ async function createBot(actor, payload, artifactFile) {
       });
     } else if (serviceType === "minecraft_server") {
       await bootstrapMinecraftWorkspace(botDirectory, {
-        acceptEula: coerceBoolean(payload.accept_eula, false),
+        acceptEula: true,
         name: payload.name,
-        public_port: resolvedPublicPort
+        public_port: resolvedPublicPort,
+        minecraft_max_players: requestedMinecraftMaxPlayers
       });
       const download = await downloadOfficialMinecraftServer(botDirectory, requestedMinecraftVersion);
       resolvedMinecraftVersion = download.minecraft_version;
@@ -1378,7 +1460,7 @@ async function createBot(actor, payload, artifactFile) {
       stability_status: "STOPPED",
       ram_limit_mb: ramLimitMb,
       cpu_limit_percent: cpuLimitPercent,
-      accept_eula: serviceType === "minecraft_server" ? coerceBoolean(payload.accept_eula, false) : false,
+      accept_eula: serviceType === "minecraft_server" ? true : false,
       public_host:
         serviceType === "minecraft_server"
           ? resolvedPublicHost || null
@@ -1397,6 +1479,8 @@ async function createBot(actor, payload, artifactFile) {
           : null,
       detected_minecraft_version:
         serviceType === "minecraft_server" ? resolvedMinecraftVersion : null,
+      minecraft_max_players:
+        serviceType === "minecraft_server" ? requestedMinecraftMaxPlayers : null,
       fivem_artifact_build: serviceType === "fivem_server" ? resolvedFiveMArtifactBuild : null,
       fivem_license_key: serviceType === "fivem_server" ? requestedFiveMLicenseKey : null,
       fivem_max_clients: serviceType === "fivem_server" ? requestedFiveMMaxClients : null,
@@ -1454,6 +1538,12 @@ async function updateBot(botId, actor, payload) {
       ? payload.minecraft_version !== undefined
         ? normalizeMinecraftVersion(payload.minecraft_version, null)
         : normalizeMinecraftVersion(existingBot.minecraft_version, null)
+      : null;
+  const nextMinecraftMaxPlayers =
+    existingBot.service_type === "minecraft_server"
+      ? payload.minecraft_max_players !== undefined
+        ? sanitizeMinecraftMaxPlayers(payload.minecraft_max_players, existingBot.minecraft_max_players || 20)
+        : sanitizeMinecraftMaxPlayers(existingBot.minecraft_max_players, 20)
       : null;
   const nextFiveMProjectName =
     existingBot.service_type === "fivem_server"
@@ -1629,10 +1719,7 @@ async function updateBot(botId, actor, payload) {
         : existingBot.max_restarts,
     ram_limit_mb: nextRamLimit,
     cpu_limit_percent: nextCpuLimit,
-    accept_eula:
-      existingBot.service_type === "minecraft_server" && payload.accept_eula !== undefined
-        ? coerceBoolean(payload.accept_eula, existingBot.accept_eula)
-        : existingBot.accept_eula,
+    accept_eula: existingBot.service_type === "minecraft_server" ? true : existingBot.accept_eula,
     public_host: nextPublicHost,
     public_port: nextPublicPort,
     minecraft_version:
@@ -1643,6 +1730,10 @@ async function updateBot(botId, actor, payload) {
       existingBot.service_type === "minecraft_server"
         ? nextDetectedMinecraftVersion
         : existingBot.detected_minecraft_version,
+    minecraft_max_players:
+      existingBot.service_type === "minecraft_server"
+        ? nextMinecraftMaxPlayers
+        : existingBot.minecraft_max_players,
     fivem_artifact_build:
       existingBot.service_type === "fivem_server"
         ? nextFiveMArtifactBuild
@@ -1708,6 +1799,7 @@ async function updateBot(botId, actor, payload) {
       payload.max_restarts !== undefined ||
       payload.ram_limit_mb !== undefined ||
       payload.minecraft_version !== undefined ||
+      payload.minecraft_max_players !== undefined ||
       payload.public_port !== undefined ||
       payload.public_host !== undefined ||
       payload.fivem_license_key !== undefined ||
@@ -1764,11 +1856,11 @@ async function startBot(botId, actor) {
       }
 
       const accepted = bot.accept_eula || (await isMinecraftEulaAccepted(bot.project_path));
-      if (!accepted) {
-        throw createHttpError(
-          400,
-          "Aby uruchomic serwer Minecraft, zaznacz akceptacje EULA albo ustaw eula=true w eula.txt."
-        );
+      if (!accepted || !bot.accept_eula) {
+        bot = updateBotRow(botId, {
+          accept_eula: true,
+          updated_at: nowIso()
+        });
       }
 
       await ensureMinecraftEula(bot.project_path);
@@ -2277,7 +2369,7 @@ async function executeBotConsoleCommand(botId, actor, payload) {
 async function getBotLogsPayload(botId, actor) {
   const bot = getBotRow(botId, actor);
   const logs = await getBotLogs(botId);
-  const nativeServiceLogPath = getNativeServiceLogPath(bot);
+  const nativeServiceLogPath = await getNativeServiceLogPath(bot);
   const nativeServiceLog = nativeServiceLogPath ? await readLogTail(nativeServiceLogPath) : "";
   const controlLines = extractBytehostControlLines(logs.out);
 

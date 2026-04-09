@@ -51,6 +51,7 @@ function buildSettingsState(service) {
     description: service.description || "",
     language: service.language || "",
     minecraft_version: service.minecraft_version || "",
+    minecraft_max_players: service.minecraft_max_players ?? 20,
     fivem_license_key: service.fivem_license_key || "",
     fivem_max_clients: service.fivem_max_clients ?? 48,
     fivem_project_name: service.fivem_project_name || service.name || "",
@@ -756,22 +757,20 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             }
           />
           <SummaryTile
-            label={isMinecraft ? "EULA" : isFiveM ? "Sloty" : "RAM"}
+            label={isMinecraft || isFiveM ? "Sloty" : "RAM"}
             value={
               isMinecraft
-                ? bot.accept_eula
-                  ? "Zaakceptowana"
-                  : "Wymagana"
+                ? formatNumber(bot.minecraft_max_players || 20)
                 : isFiveM
                   ? formatNumber(bot.fivem_max_clients || 48)
                   : formatMemoryFromMb(bot.ram_usage_mb)
             }
             hint={
               isMinecraft
-                ? "Panel moze ustawic eula=true przed startem"
+                ? "EULA akceptowana automatycznie przez ByteHost"
                 : isFiveM
                   ? "Limit graczy ustawiany w sv_maxclients"
-                : `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
+                  : `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
             }
           />
           <SummaryTile
@@ -909,28 +908,46 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               </select>
             </label>
             {isMinecraft ? (
-              <label>
-                Wersja Minecraft
-                <input
-                  list="workspace-minecraft-version-list"
-                  placeholder={latestMinecraftRelease || "np. 1.21.5"}
-                  value={settings.minecraft_version}
-                  onChange={(event) =>
-                    setSettings((current) => ({ ...current, minecraft_version: event.target.value }))
-                  }
-                />
-                <datalist id="workspace-minecraft-version-list">
-                  {minecraftVersions.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      {version.id}
-                    </option>
-                  ))}
-                </datalist>
-                <small>
-                  Po zapisaniu ByteHost pobierze oficjalny server.jar dla tej wersji. Puste pole
-                  oznacza, ze pozostawiasz wlasny JAR albo aktualnie pobrana wersje.
-                </small>
-              </label>
+              <>
+                <label>
+                  Wersja Minecraft
+                  <input
+                    list="workspace-minecraft-version-list"
+                    placeholder={latestMinecraftRelease || "np. 1.21.5"}
+                    value={settings.minecraft_version}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, minecraft_version: event.target.value }))
+                    }
+                  />
+                  <datalist id="workspace-minecraft-version-list">
+                    {minecraftVersions.map((version) => (
+                      <option key={version.id} value={version.id}>
+                        {version.id}
+                      </option>
+                    ))}
+                  </datalist>
+                  <small>
+                    Po zapisaniu ByteHost pobierze oficjalny server.jar dla tej wersji. Puste pole
+                    oznacza, ze pozostawiasz wlasny JAR albo aktualnie pobrana wersje.
+                  </small>
+                </label>
+                <label>
+                  Sloty graczy
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={settings.minecraft_max_players}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        minecraft_max_players: event.target.value
+                      }))
+                    }
+                  />
+                  <small>Maksymalna liczba graczy online na serwerze Minecraft.</small>
+                </label>
+              </>
             ) : null}
             <label>
               Plik startowy
@@ -1022,16 +1039,9 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                       : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
                   </small>
                 </label>
-                <label className="checkbox-field wide">
-                  <input
-                    type="checkbox"
-                    checked={settings.accept_eula}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, accept_eula: event.target.checked }))
-                    }
-                  />
-                  <span>Akceptuje Minecraft EULA i pozwalam panelowi ustawic eula=true</span>
-                </label>
+                <div className="info-card wide">
+                  ByteHost akceptuje Minecraft EULA automatycznie przy starcie serwera.
+                </div>
               </>
             ) : null}
             {isFiveM ? (

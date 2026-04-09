@@ -22,6 +22,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     description: "",
     language: "",
     minecraft_version: "",
+    minecraft_max_players: 20,
     fivem_license_key: "",
     fivem_max_clients: 48,
     fivem_project_name: "",
@@ -36,7 +37,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     ram_limit_mb: "0.5",
     cpu_limit_percent: 35,
     install_on_create: false,
-    accept_eula: false,
+    accept_eula: true,
     public_host: "",
     public_port: 25565
   });
@@ -139,7 +140,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
 
         <div className="info-card">
           {isMinecraft
-            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej. Publiczny host moze ustawic sie automatycznie na Twoje IP."
+            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej. Publiczny host moze ustawic sie automatycznie na Twoje IP, a EULA jest akceptowana automatycznie."
             : isFiveM
               ? "ByteHost sam pobiera oficjalny artefakt FXServer oraz bazowe cfx-server-data. ZIP albo RAR jest opcjonalny i sluzy do nalozenia gotowego pakietu resources/modow/pluginow na swiezy serwer."
             : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
@@ -171,15 +172,16 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               onChange={(event) =>
                 setForm((current) =>
                   event.target.value === "minecraft_server"
-                    ? {
-                        ...current,
-                        service_type: event.target.value,
-                        language: "Java",
-                        entry_file: current.entry_file || "server.jar",
-                        minecraft_version: current.minecraft_version || "",
-                        install_on_create: false,
-                        public_port: current.public_port || 25565
-                      }
+                      ? {
+                          ...current,
+                          service_type: event.target.value,
+                          language: "Java",
+                          entry_file: current.entry_file || "server.jar",
+                          minecraft_version: current.minecraft_version || "",
+                          minecraft_max_players: current.minecraft_max_players || 20,
+                          install_on_create: false,
+                          public_port: current.public_port || 25565
+                        }
                     : event.target.value === "fivem_server"
                       ? {
                           ...current,
@@ -187,6 +189,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                           language: "FiveM",
                           entry_file: current.entry_file || "run.sh",
                           minecraft_version: "",
+                          minecraft_max_players: 20,
                           install_on_create: false,
                           public_port: current.public_port || 30120
                         }
@@ -198,6 +201,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                             ? ""
                             : current.language,
                         minecraft_version: "",
+                        minecraft_max_players: 20,
                         entry_file: current.entry_file === "server.jar" ? "" : current.entry_file
                       }
                 )
@@ -263,28 +267,46 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             </select>
           </label>
           {isMinecraft ? (
-            <label>
-              Wersja Minecraft
-              <input
-                list="minecraft-version-list"
-                placeholder={latestMinecraftRelease || "np. 1.21.5"}
-                value={form.minecraft_version}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, minecraft_version: event.target.value }))
-                }
-              />
-              <datalist id="minecraft-version-list">
-                {minecraftVersions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {version.id}
-                  </option>
-                ))}
-              </datalist>
-              <small>
-                Puste pole oznacza automatyczne pobranie najnowszej oficjalnej wersji
-                {latestMinecraftRelease ? ` (${latestMinecraftRelease})` : ""}.
-              </small>
-            </label>
+            <>
+              <label>
+                Wersja Minecraft
+                <input
+                  list="minecraft-version-list"
+                  placeholder={latestMinecraftRelease || "np. 1.21.5"}
+                  value={form.minecraft_version}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, minecraft_version: event.target.value }))
+                  }
+                />
+                <datalist id="minecraft-version-list">
+                  {minecraftVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {version.id}
+                    </option>
+                  ))}
+                </datalist>
+                <small>
+                  Puste pole oznacza automatyczne pobranie najnowszej oficjalnej wersji
+                  {latestMinecraftRelease ? ` (${latestMinecraftRelease})` : ""}.
+                </small>
+              </label>
+              <label>
+                Sloty graczy
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={form.minecraft_max_players}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      minecraft_max_players: event.target.value
+                    }))
+                  }
+                />
+                <small>Maksymalna liczba graczy online na serwerze.</small>
+              </label>
+            </>
           ) : null}
           <label>
             Plik startowy
@@ -381,16 +403,9 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                     : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
                 </small>
               </label>
-              <label className="checkbox-field wide">
-                <input
-                  type="checkbox"
-                  checked={form.accept_eula}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, accept_eula: event.target.checked }))
-                  }
-                />
-                <span>Akceptuje Minecraft EULA i pozwalam panelowi ustawic eula=true</span>
-              </label>
+              <div className="info-card wide">
+                ByteHost akceptuje Minecraft EULA automatycznie przy tworzeniu i starcie serwera.
+              </div>
             </>
           ) : null}
 
