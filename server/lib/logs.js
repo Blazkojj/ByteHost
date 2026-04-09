@@ -120,6 +120,7 @@ async function removeBotLogs(botId) {
 
 module.exports = {
   getBotLogPaths,
+  readLogTail,
   getBotLogs,
   appendBotLog,
   removeBotLogs

@@ -28,7 +28,7 @@ const {
   repairFiveMWorkspace,
   writeFiveMServerConfig
 } = require("./fivem");
-const { getBotLogs, appendBotLog, removeBotLogs } = require("./logs");
+const { getBotLogs, appendBotLog, removeBotLogs, readLogTail } = require("./logs");
 const { downloadMinecraftServerJar } = require("./minecraft");
 const { mergeBotWithRuntime, deriveBotRuntime } = require("./runtime");
 const {
@@ -469,6 +469,25 @@ async function fileExists(targetPath) {
   } catch (_error) {
     return false;
   }
+}
+
+function getNativeServiceLogPath(bot) {
+  if (bot.service_type === "minecraft_server") {
+    return path.join(bot.project_path, "logs", "latest.log");
+  }
+
+  return null;
+}
+
+function extractBytehostControlLines(content) {
+  if (!content) {
+    return "";
+  }
+
+  return content
+    .split(/\r?\n/)
+    .filter((line) => /^\[(console|bytehost)\]/.test(line.trim()))
+    .join("\n");
 }
 
 async function isManagedConsoleInputReady(projectPath) {
@@ -2258,6 +2277,28 @@ async function executeBotConsoleCommand(botId, actor, payload) {
 async function getBotLogsPayload(botId, actor) {
   const bot = getBotRow(botId, actor);
   const logs = await getBotLogs(botId);
+  const nativeServiceLogPath = getNativeServiceLogPath(bot);
+  const nativeServiceLog = nativeServiceLogPath ? await readLogTail(nativeServiceLogPath) : "";
+  const controlLines = extractBytehostControlLines(logs.out);
+
+  if (nativeServiceLog.trim()) {
+    const combined = [
+      controlLines.trim(),
+      nativeServiceLog.trimEnd(),
+      logs.error.trim()
+        ? `[bytehost stderr]\n${logs.error.trimEnd()}`
+        : ""
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    return {
+      ...logs,
+      native: nativeServiceLog,
+      combined,
+      status_message: bot.status_message || null
+    };
+  }
 
   if (logs.combined) {
     return {
