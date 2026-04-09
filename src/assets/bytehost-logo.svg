@@ -1,69 +1,62 @@
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="outer" x1="21" y1="104" x2="102" y2="21" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2636F3"/>
-      <stop offset="1" stop-color="#45E7F2"/>
+    <linearGradient id="ring" x1="20" y1="106" x2="104" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2436F3"/>
+      <stop offset="1" stop-color="#46E6F2"/>
     </linearGradient>
-    <linearGradient id="cubeFront" x1="50" y1="93" x2="79" y2="47" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2439F2"/>
-      <stop offset="1" stop-color="#3FE6F1"/>
+    <linearGradient id="cubeFront" x1="50" y1="90" x2="77" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2436F3"/>
+      <stop offset="1" stop-color="#34DDF0"/>
     </linearGradient>
-    <linearGradient id="cubeTop" x1="52" y1="40" x2="80" y2="66" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#5AF0F3"/>
-      <stop offset="1" stop-color="#32CFEF"/>
+    <linearGradient id="cubeTop" x1="50" y1="37" x2="79" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5FF1F4"/>
+      <stop offset="1" stop-color="#34DDF0"/>
     </linearGradient>
-    <linearGradient id="cubeSide" x1="76" y1="59" x2="88" y2="90" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#25D0EF"/>
-      <stop offset="1" stop-color="#2A74F2"/>
+    <linearGradient id="cubeSide" x1="72" y1="53" x2="88" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#34DDF0"/>
+      <stop offset="1" stop-color="#2A79F4"/>
     </linearGradient>
-    <filter id="glow" x="7" y="5" width="114" height="118" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#2F72F5" flood-opacity="0.18"/>
+    <filter id="softGlow" x="10" y="8" width="110" height="112" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#2D73F4" flood-opacity="0.18"/>
     </filter>
   </defs>
 
-  <g filter="url(#glow)">
+  <g filter="url(#softGlow)">
     <path
       fill-rule="evenodd"
       clip-rule="evenodd"
-      d="M64.4405 10L103.864 32.826V77.826L64.4405 100.652L25.0169 77.826V32.826L64.4405 10ZM64.4405 27.0576L89.0912 41.3271V69.3249L64.4405 83.5943L39.7897 69.3249V41.3271L64.4405 27.0576Z"
-      fill="url(#outer)"/>
+      d="M64 12L103.837 35V81L64 104L24.1628 81V35L64 12ZM64 26.9998L90.8473 42.5V73.5L64 89.0002L37.1527 73.5V42.5L64 26.9998Z"
+      fill="url(#ring)"/>
+
+    <path d="M50.4 40.2L64.2 32.2L78 40.2L64.2 48.2L50.4 40.2Z" fill="url(#cubeTop)"/>
+    <path d="M50.4 40.2V67.6L64.2 75.6V48.2L50.4 40.2Z" fill="url(#cubeFront)"/>
+    <path d="M78 40.2V67.6L64.2 75.6V48.2L78 40.2Z" fill="url(#cubeSide)"/>
 
     <path
-      d="M50.6345 39.0898L64.2698 31.126L77.7283 38.9141L64.0931 46.878L50.6345 39.0898Z"
-      fill="url(#cubeTop)"/>
-    <path
-      d="M50.6345 39.0903V66.7129L64.0931 74.5011V46.8785L50.6345 39.0903Z"
-      fill="url(#cubeFront)"/>
-    <path
-      d="M77.7283 38.9146V66.5372L64.093 74.5011V46.8785L77.7283 38.9146Z"
-      fill="url(#cubeSide)"/>
-
-    <path
-      d="M39.5714 43.9352L64.3498 28.7446L89.1283 43.9352"
-      stroke="white"
-      stroke-width="10"
-      stroke-linecap="round"
+      d="M45 44.5L64.3 33.2L83.6 44.5V66.4L64.3 77.7L45 66.4V44.5Z"
+      stroke="url(#ring)"
+      stroke-width="3.8"
       stroke-linejoin="round"/>
     <path
-      d="M39.5714 43.9351V83.4222L64.3498 98.6128L89.1283 83.4222V58.8511"
-      stroke="white"
-      stroke-width="10"
-      stroke-linecap="round"
-      stroke-linejoin="round"/>
-    <path
-      d="M36.75 70.5112L64.3496 52.8701L86.9445 67.4408"
-      stroke="white"
-      stroke-width="8.5"
+      d="M45.8 67.2L64.2 55.9L82.8 67"
+      stroke="url(#ring)"
+      stroke-width="3.8"
       stroke-linecap="round"
       stroke-linejoin="round"/>
 
-    <rect x="79.6" y="27.6" width="9.2" height="9.2" rx="1.8" transform="rotate(0.5 79.6 27.6)" fill="url(#outer)"/>
-    <rect x="90.5" y="18.6" width="11.4" height="11.4" rx="2.1" transform="rotate(0.5 90.5 18.6)" fill="url(#outer)"/>
-    <rect x="96.6" y="33.1" width="12.8" height="12.8" rx="2.2" transform="rotate(0.5 96.6 33.1)" fill="url(#outer)"/>
-    <rect x="85.5" y="43.7" width="12.5" height="12.5" rx="2.2" transform="rotate(0.5 85.5 43.7)" fill="url(#outer)"/>
-    <rect x="101.7" y="49.4" width="10.2" height="10.2" rx="1.8" transform="rotate(0.5 101.7 49.4)" fill="url(#outer)"/>
-    <rect x="113.3" y="33.6" width="10.9" height="10.9" rx="1.9" transform="rotate(0.5 113.3 33.6)" fill="url(#outer)"/>
-    <rect x="108.2" y="62.8" width="8.7" height="8.7" rx="1.6" transform="rotate(0.5 108.2 62.8)" fill="url(#outer)"/>
-    <rect x="92.6" y="59.7" width="9.1" height="9.1" rx="1.7" transform="rotate(0.5 92.6 59.7)" fill="url(#outer)"/>
+    <path
+      d="M63.6 20.8L90.6 37"
+      stroke="rgba(255,255,255,0.18)"
+      stroke-width="2"
+      stroke-linecap="round"/>
+
+    <rect x="79" y="26" width="9" height="9" rx="2" fill="url(#ring)"/>
+    <rect x="90" y="17" width="11" height="11" rx="2.2" fill="url(#ring)"/>
+    <rect x="97" y="31" width="12.5" height="12.5" rx="2.3" fill="url(#ring)"/>
+    <rect x="86.5" y="42.5" width="12" height="12" rx="2.2" fill="url(#ring)"/>
+    <rect x="101.5" y="49" width="10" height="10" rx="2" fill="url(#ring)"/>
+    <rect x="112.5" y="33.5" width="10.5" height="10.5" rx="2" fill="url(#ring)"/>
+    <rect x="107" y="62.5" width="8.5" height="8.5" rx="1.8" fill="url(#ring)"/>
+    <rect x="92.5" y="59.5" width="9" height="9" rx="1.9" fill="url(#ring)"/>
   </g>
 </svg>
