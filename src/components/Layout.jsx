@@ -35,7 +35,7 @@ export function Layout({
   onToggleTheme
 }) {
   const navItems = [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/bots", label: "Uslugi", icon: Server }
   ];
 
@@ -55,7 +55,7 @@ export function Layout({
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Link className="brand" to="/">
+        <Link className="brand" to="/dashboard">
           <img className="brand-logo" src={logoUrl} alt="ByteHost" />
           <div className="brand-copy">
             <strong>ByteHost</strong>
@@ -69,7 +69,7 @@ export function Layout({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === "/"}
+                end={item.to === "/dashboard"}
                 className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
               >
                 <Icon size={18} />

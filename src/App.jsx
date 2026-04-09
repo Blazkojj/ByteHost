@@ -173,20 +173,45 @@ export default function App() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
 
+  function renderProtectedPage(element) {
+    if (!user) {
+      return <Navigate to="/login" replace />;
+    }
+
+    return (
+      <Layout
+        user={user}
+        bots={bots}
+        system={system}
+        onRefresh={refreshAll}
+        onLogout={handleLogout}
+        loading={loading}
+        lastUpdated={lastUpdated}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+      >
+        {pageError ? <div className="banner error">{pageError}</div> : null}
+        {element}
+      </Layout>
+    );
+  }
+
   if (authLoading) {
     return <LoadingScreen />;
   }
 
-  if (!user) {
-    return (
-      <Routes>
-        <Route
-          path="/"
-          element={<LandingPage theme={theme} onToggleTheme={handleToggleTheme} />}
-        />
-        <Route
-          path="/login"
-          element={
+  return (
+    <Routes>
+      <Route
+        path="/"
+        element={<LandingPage theme={theme} onToggleTheme={handleToggleTheme} />}
+      />
+      <Route
+        path="/login"
+        element={
+          user ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
             <LoginPage
               onLogin={handleLogin}
               onRegister={handleRegister}
@@ -195,11 +220,15 @@ export default function App() {
               onToggleTheme={handleToggleTheme}
               mode="login"
             />
-          }
-        />
-        <Route
-          path="/register"
-          element={
+          )
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          user ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
             <LoginPage
               onLogin={handleLogin}
               onRegister={handleRegister}
@@ -208,79 +237,73 @@ export default function App() {
               onToggleTheme={handleToggleTheme}
               mode="register"
             />
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    );
-  }
-
-  return (
-    <Layout
-      user={user}
-      bots={bots}
-      system={system}
-      onRefresh={refreshAll}
-      onLogout={handleLogout}
-      loading={loading}
-      lastUpdated={lastUpdated}
-      theme={theme}
-      onToggleTheme={handleToggleTheme}
-    >
-      {pageError ? <div className="banner error">{pageError}</div> : null}
-
-      <Routes>
-        <Route
-          path="/"
-          element={<DashboardPage user={user} bots={bots} system={system} loading={loading} />}
-        />
-        <Route
-          path="/bots"
-          element={
-            <BotsPage
-              user={user}
-              bots={bots}
-              system={system}
-              onRefreshAll={refreshAll}
-              onRefreshBots={refreshBots}
-              onRefreshSystem={refreshSystem}
-            />
-          }
-        />
-        <Route
-          path="/bots/:id"
-          element={
-            <BotsPage
-              user={user}
-              bots={bots}
-              system={system}
-              onRefreshAll={refreshAll}
-              onRefreshBots={refreshBots}
-              onRefreshSystem={refreshSystem}
-            />
-          }
-        />
-        <Route
-          path="/system"
-          element={
-            user.is_admin ? (
+          )
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={renderProtectedPage(
+          <DashboardPage user={user} bots={bots} system={system} loading={loading} />
+        )}
+      />
+      <Route
+        path="/bots"
+        element={renderProtectedPage(
+          <BotsPage
+            user={user}
+            bots={bots}
+            system={system}
+            onRefreshAll={refreshAll}
+            onRefreshBots={refreshBots}
+            onRefreshSystem={refreshSystem}
+          />
+        )}
+      />
+      <Route
+        path="/bots/:id"
+        element={renderProtectedPage(
+          <BotsPage
+            user={user}
+            bots={bots}
+            system={system}
+            onRefreshAll={refreshAll}
+            onRefreshBots={refreshBots}
+            onRefreshSystem={refreshSystem}
+          />
+        )}
+      />
+      <Route
+        path="/system"
+        element={
+          !user ? (
+            <Navigate to="/login" replace />
+          ) : user.is_admin ? (
+            renderProtectedPage(
               <SystemPage
                 user={user}
                 system={system}
                 onRefresh={refreshAll}
                 onRefreshSystem={refreshSystem}
               />
-            ) : (
-              <Navigate to="/" replace />
             )
-          }
-        />
-        <Route
-          path="/admin/users"
-          element={user.is_admin ? <AdminUsersPage /> : <Navigate to="/" replace />}
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Layout>
+          ) : (
+            <Navigate to="/dashboard" replace />
+          )
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          !user ? (
+            <Navigate to="/login" replace />
+          ) : user.is_admin ? (
+            renderProtectedPage(<AdminUsersPage />)
+          ) : (
+            <Navigate to="/dashboard" replace />
+          )
+        }
+      />
+      <Route path="*" element={<Navigate to={user ? "/dashboard" : "/"} replace />} />
+    </Routes>
   );
 }
