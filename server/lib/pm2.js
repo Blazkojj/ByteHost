@@ -1,9 +1,13 @@
+const fs = require("fs/promises");
+const path = require("path");
 const pm2 = require("pm2");
 
-const { getShellInvocation } = require("./commands");
+const { getShellInvocation, runShellCommand } = require("./commands");
 const { getBotLogPaths } = require("./logs");
 
 let connectionPromise;
+const MANAGED_SERVER_SERVICE_TYPES = new Set(["minecraft_server", "fivem_server"]);
+const MANAGED_CONSOLE_WRITE_TIMEOUT_MS = 3000;
 
 function ensurePm2Connection() {
   if (!connectionPromise) {
@@ -47,6 +51,50 @@ function isMissingProcessError(error) {
   return message.includes("process or namespace not found") || message.includes("not found");
 }
 
+function hasManagedServerConsole(botOrServiceType) {
+  const serviceType =
+    typeof botOrServiceType === "string" ? botOrServiceType : botOrServiceType?.service_type;
+  return MANAGED_SERVER_SERVICE_TYPES.has(serviceType);
+}
+
+function getManagedConsoleInputPath(projectPath) {
+  return path.join(projectPath, ".bytehost", "console.stdin");
+}
+
+async function prepareManagedConsoleInput(projectPath) {
+  const consoleInputPath = getManagedConsoleInputPath(projectPath);
+  await fs.mkdir(path.dirname(consoleInputPath), { recursive: true });
+  await fs.rm(consoleInputPath, { force: true });
+  return consoleInputPath;
+}
+
+function getManagedServerShellInvocation(bot, consoleInputPath) {
+  if (process.platform === "win32") {
+    return {
+      ...getShellInvocation(bot.start_command),
+      env: {}
+    };
+  }
+
+  return {
+    command: "/bin/bash",
+    args: [
+      "-lc",
+      [
+        'mkdir -p "$(dirname "$BYTEHOST_CONSOLE_INPUT")"',
+        'rm -f "$BYTEHOST_CONSOLE_INPUT"',
+        'mkfifo "$BYTEHOST_CONSOLE_INPUT"',
+        'exec 3<>"$BYTEHOST_CONSOLE_INPUT"',
+        'exec /bin/bash -lc "$BYTEHOST_START_COMMAND" <&3'
+      ].join("; ")
+    ],
+    env: {
+      BYTEHOST_START_COMMAND: bot.start_command,
+      BYTEHOST_CONSOLE_INPUT: consoleInputPath
+    }
+  };
+}
+
 async function listBytehostProcesses() {
   const list = await invoke("list");
   return (list || []).filter((processInfo) => processInfo.name?.startsWith("bytehost-"));
@@ -86,10 +134,13 @@ async function stopProcess(processName) {
 }
 
 async function startBotProcess(bot) {
-  const shell = getShellInvocation(bot.start_command);
   const logPaths = getBotLogPaths(bot.id);
 
   await deleteProcess(bot.pm2_name);
+
+  const shell = hasManagedServerConsole(bot)
+    ? getManagedServerShellInvocation(bot, await prepareManagedConsoleInput(bot.project_path))
+    : getShellInvocation(bot.start_command);
 
   return invoke("start", {
     name: bot.pm2_name,
@@ -107,7 +158,30 @@ async function startBotProcess(bot) {
     min_uptime: 5000,
     max_memory_restart: bot.ram_limit_mb ? `${bot.ram_limit_mb}M` : undefined,
     env: {
-      BYTEHOST_BOT_ID: bot.id
+      BYTEHOST_BOT_ID: bot.id,
+      ...(shell.env || {})
+    }
+  });
+}
+
+async function sendManagedConsoleCommand(projectPath, command) {
+  if (!command) {
+    return;
+  }
+
+  const consoleInputPath = getManagedConsoleInputPath(projectPath);
+
+  if (process.platform === "win32") {
+    throw new Error("Prawdziwa konsola serwera jest obslugiwana tylko na Linuxie.");
+  }
+
+  await runShellCommand('printf "%s\\n" "$BYTEHOST_CONSOLE_COMMAND" > "$BYTEHOST_CONSOLE_INPUT"', {
+    cwd: projectPath,
+    timeoutMs: MANAGED_CONSOLE_WRITE_TIMEOUT_MS,
+    maxOutput: 2000,
+    env: {
+      BYTEHOST_CONSOLE_COMMAND: command,
+      BYTEHOST_CONSOLE_INPUT: consoleInputPath
     }
   });
 }
@@ -118,5 +192,8 @@ module.exports = {
   describeProcess,
   deleteProcess,
   stopProcess,
-  startBotProcess
+  startBotProcess,
+  hasManagedServerConsole,
+  getManagedConsoleInputPath,
+  sendManagedConsoleCommand
 };

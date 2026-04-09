@@ -43,7 +43,9 @@ const {
   describeProcess,
   deleteProcess,
   stopProcess,
-  startBotProcess
+  startBotProcess,
+  hasManagedServerConsole,
+  sendManagedConsoleCommand
 } = require("./pm2");
 const { getSystemLimits } = require("./system");
 const {
@@ -84,6 +86,12 @@ function sanitizeServiceType(value, fallback = "discord_bot") {
   }
 
   return ALLOWED_SERVICE_TYPES.has(value) ? value : fallback;
+}
+
+function normalizeConsoleCommand(value) {
+  return String(value || "")
+    .replace(/\r?\n+/g, " ")
+    .trim();
 }
 
 function sanitizeLanguage(value, fallback, serviceType = "discord_bot") {
@@ -165,16 +173,19 @@ function listReservedPublicPorts(options = {}) {
 function allocateServicePort(serviceType, preferredPort = null, options = {}) {
   const reservedPorts = listReservedPublicPorts(options);
   const sanitizedPreferredPort = sanitizePublicPort(preferredPort, null);
+  const fallbackToFreePort = options.fallbackToFreePort !== false;
 
   if (sanitizedPreferredPort) {
-    if (reservedPorts.has(sanitizedPreferredPort)) {
+    if (!reservedPorts.has(sanitizedPreferredPort)) {
+      return sanitizedPreferredPort;
+    }
+
+    if (!fallbackToFreePort) {
       throw createHttpError(
         400,
         `Port ${sanitizedPreferredPort} jest juz zajety przez inna usluge.`
       );
     }
-
-    return sanitizedPreferredPort;
   }
 
   if (serviceType === "minecraft_server") {
@@ -1197,9 +1208,17 @@ async function createBot(actor, payload, artifactFile) {
     serviceType === "fivem_server" ? normalizeFiveMText(payload.fivem_locale, "pl-PL") : null;
   const requestedFiveMOneSync =
     serviceType === "fivem_server" ? coerceBoolean(payload.fivem_onesync_enabled, true) : null;
+  const canOverridePublicPort = isAdminUser(actor);
   const resolvedPublicPort =
     isGameService(serviceType)
-      ? allocateServicePort(serviceType, payload.public_port, { excludeBotId: null })
+      ? allocateServicePort(
+          serviceType,
+          canOverridePublicPort ? payload.public_port : null,
+          {
+            excludeBotId: null,
+            fallbackToFreePort: true
+          }
+        )
       : null;
   const resolvedPublicHost =
     isGameService(serviceType) ? await resolveGamePublicHost(payload.public_host) : null;
@@ -1425,6 +1444,7 @@ async function updateBot(botId, actor, payload) {
         ? coerceBoolean(payload.fivem_onesync_enabled, existingBot.fivem_onesync_enabled)
         : coerceBoolean(existingBot.fivem_onesync_enabled, true)
       : null;
+  const canOverridePublicPort = isAdminUser(actor);
   const nextPublicHost =
     existingBot.service_type === "fivem_server"
       ? payload.public_host !== undefined
@@ -1437,21 +1457,34 @@ async function updateBot(botId, actor, payload) {
         : existingBot.public_host;
   const nextPublicPort =
     existingBot.service_type === "fivem_server"
-      ? payload.public_port !== undefined
-        ? allocateServicePort(existingBot.service_type, payload.public_port, {
-            excludeBotId: existingBot.id
-          })
-        : existingBot.public_port || allocateServicePort(existingBot.service_type, null, {
-            excludeBotId: existingBot.id
-          })
-      : existingBot.service_type === "minecraft_server"
         ? payload.public_port !== undefined
-          ? allocateServicePort(existingBot.service_type, payload.public_port, {
-              excludeBotId: existingBot.id
-            })
+          ? allocateServicePort(
+              existingBot.service_type,
+              canOverridePublicPort ? payload.public_port : existingBot.public_port,
+              {
+                excludeBotId: existingBot.id,
+                fallbackToFreePort: true
+              }
+            )
           : existingBot.public_port ||
             allocateServicePort(existingBot.service_type, null, {
-              excludeBotId: existingBot.id
+              excludeBotId: existingBot.id,
+              fallbackToFreePort: true
+            })
+      : existingBot.service_type === "minecraft_server"
+        ? payload.public_port !== undefined
+          ? allocateServicePort(
+              existingBot.service_type,
+              canOverridePublicPort ? payload.public_port : existingBot.public_port,
+              {
+                excludeBotId: existingBot.id,
+                fallbackToFreePort: true
+              }
+            )
+          : existingBot.public_port ||
+            allocateServicePort(existingBot.service_type, null, {
+              excludeBotId: existingBot.id,
+              fallbackToFreePort: true
             })
         : existingBot.public_port;
 
@@ -2111,7 +2144,8 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
 
 async function executeBotConsoleCommand(botId, actor, payload) {
   const bot = getBotRow(botId, actor);
-  const command = coerceNullableString(payload?.command, null);
+  const mode = coerceNullableString(payload?.mode, null);
+  const command = normalizeConsoleCommand(coerceNullableString(payload?.command, ""));
 
   if (!command) {
     throw createHttpError(400, "Podaj polecenie do wykonania.");
@@ -2122,6 +2156,36 @@ async function executeBotConsoleCommand(botId, actor, payload) {
       400,
       `Polecenie jest za dlugie (maks. ${MAX_CONSOLE_COMMAND_LENGTH} znakow).`
     );
+  }
+
+  if (hasManagedServerConsole(bot) && mode !== "shell") {
+    const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
+    const runtime = deriveBotRuntime(bot, processInfo);
+
+    if (runtime.status !== "ONLINE") {
+      throw createHttpError(
+        400,
+        "Prawdziwa konsola serwera dziala tylko wtedy, gdy usluga jest uruchomiona."
+      );
+    }
+
+    try {
+      await sendManagedConsoleCommand(bot.project_path, command);
+      await appendBotLog(bot.id, "out", `[console] > ${command}\n`);
+    } catch (error) {
+      throw createHttpError(
+        400,
+        `Nie udalo sie wyslac polecenia do dzialajacego serwera: ${error.message}`
+      );
+    }
+
+    return {
+      mode: "server",
+      cwd: bot.project_path,
+      command,
+      sent: true,
+      sent_at: nowIso()
+    };
   }
 
   const timeoutMs = coerceNullableNumber(payload?.timeout_ms, DEFAULT_CONSOLE_TIMEOUT_MS);

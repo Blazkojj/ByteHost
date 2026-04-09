@@ -71,10 +71,11 @@ function buildSettingsState(service) {
   };
 }
 
-export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSystem }) {
+export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefreshSystem }) {
   const navigate = useNavigate();
   const uploadInputRef = useRef(null);
   const archiveUpdateInputRef = useRef(null);
+  const liveTerminalRef = useRef(null);
 
   const [bot, setBot] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
@@ -93,6 +94,13 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   const [installResult, setInstallResult] = useState(null);
   const [minecraftVersions, setMinecraftVersions] = useState([]);
   const [latestMinecraftRelease, setLatestMinecraftRelease] = useState("");
+  const [uploadTargetPath, setUploadTargetPath] = useState("");
+
+  const serviceType = bot?.service_type || "";
+  const isMinecraft = serviceType === "minecraft_server";
+  const isFiveM = serviceType === "fivem_server";
+  const isGameService = isMinecraft || isFiveM;
+  const canManagePublicPort = Boolean(user?.is_admin);
 
   useEffect(() => {
     async function loadBot() {
@@ -115,7 +123,10 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   }, [botId]);
 
   useEffect(() => {
-    if (activeTab !== "logs") {
+    const shouldStreamLogs =
+      activeTab === "logs" || (activeTab === "console" && isGameService);
+
+    if (!shouldStreamLogs) {
       return undefined;
     }
 
@@ -141,7 +152,15 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [activeTab, botId]);
+  }, [activeTab, botId, isGameService]);
+
+  useEffect(() => {
+    if (!liveTerminalRef.current) {
+      return;
+    }
+
+    liveTerminalRef.current.scrollTop = liveTerminalRef.current.scrollHeight;
+  }, [activeTab, logs.combined]);
 
   useEffect(() => {
     if (activeTab === "files") {
@@ -310,6 +329,54 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     }
   }
 
+  function getCurrentDirectoryPath() {
+    if (!filesData) {
+      return "";
+    }
+
+    if (filesData.kind === "directory") {
+      return filesData.path || "";
+    }
+
+    return filesData.path?.split("/").slice(0, -1).join("/") || "";
+  }
+
+  async function ensureDirectory(relativePath) {
+    if (!relativePath) {
+      return;
+    }
+
+    await api.createFile(botId, {
+      type: "folder",
+      path: relativePath
+    });
+  }
+
+  async function openManagedDirectory(relativePath) {
+    try {
+      await ensureDirectory(relativePath);
+      await openPath(relativePath);
+    } catch (directoryError) {
+      setError(directoryError.message);
+    }
+  }
+
+  async function triggerUploadTo(relativePath = "") {
+    try {
+      if (relativePath) {
+        await ensureDirectory(relativePath);
+      }
+
+      setUploadTargetPath(relativePath);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = "";
+        uploadInputRef.current.click();
+      }
+    } catch (uploadError) {
+      setError(uploadError.message);
+    }
+  }
+
   async function saveCurrentFile() {
     if (!filesData || filesData.kind !== "file") {
       return;
@@ -332,10 +399,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   }
 
   async function createEntry(type) {
-    const currentPath =
-      filesData?.kind === "directory"
-        ? filesData.path
-        : filesData?.path?.split("/").slice(0, -1).join("/") || "";
+    const currentPath = getCurrentDirectoryPath();
     const name = window.prompt(type === "folder" ? "Nazwa folderu" : "Nazwa pliku");
 
     if (!name) {
@@ -377,10 +441,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       return;
     }
 
-    const targetPath =
-      filesData?.kind === "directory"
-        ? filesData.path
-        : filesData?.path?.split("/").slice(0, -1).join("/") || "";
+    const targetPath = uploadTargetPath || getCurrentDirectoryPath();
     const formData = new FormData();
 
     formData.append("target_path", targetPath);
@@ -394,6 +455,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
       setError(uploadError.message);
     } finally {
       event.target.value = "";
+      setUploadTargetPath("");
     }
   }
 
@@ -418,11 +480,17 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
 
     try {
       const result = await api.runConsoleCommand(botId, {
+        mode: isGameService ? "server" : "shell",
         command: consoleCommand
       });
 
       setConsoleResult(result);
-      setMessage("Polecenie zostalo wykonane.");
+      setConsoleCommand("");
+      setMessage(
+        isGameService
+          ? "Polecenie zostalo wyslane do dzialajacego serwera."
+          : "Polecenie zostalo wykonane."
+      );
     } catch (consoleError) {
       setError(consoleError.message);
     } finally {
@@ -437,7 +505,13 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     }
 
     try {
-      await navigator.clipboard.writeText(joinAddress);
+      const rawHost = String(bot.public_host || "");
+      const host =
+        rawHost.includes(":") && !rawHost.startsWith("[") ? `[${rawHost}]` : rawHost;
+      const defaultPort = bot.service_type === "minecraft_server" ? 25565 : 30120;
+      const copyAddress = `${host}:${bot.public_port || defaultPort}`;
+
+      await navigator.clipboard.writeText(copyAddress);
       setMessage("Adres serwera zostal skopiowany.");
       setError("");
     } catch (_error) {
@@ -560,9 +634,6 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     return <div className="panel-card">Ladowanie workspace...</div>;
   }
 
-  const isMinecraft = bot.service_type === "minecraft_server";
-  const isFiveM = bot.service_type === "fivem_server";
-  const isGameService = isMinecraft || isFiveM;
   const joinAddress = serviceJoinAddress(bot);
   const tabs = [
     { id: "overview", label: "Przeglad" },
@@ -940,10 +1011,16 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                   <input
                     type="number"
                     value={settings.public_port}
+                    disabled={!canManagePublicPort}
                     onChange={(event) =>
                       setSettings((current) => ({ ...current, public_port: event.target.value }))
                     }
                   />
+                  <small>
+                    {canManagePublicPort
+                      ? "Jesli wybrany port jest zajety, ByteHost automatycznie przydzieli wolny."
+                      : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
+                  </small>
                 </label>
                 <label className="checkbox-field wide">
                   <input
@@ -1038,11 +1115,16 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                   <input
                     type="number"
                     value={settings.public_port}
+                    disabled={!canManagePublicPort}
                     onChange={(event) =>
                       setSettings((current) => ({ ...current, public_port: event.target.value }))
                     }
                   />
-                  <small>Ten sam port musi byc przekierowany w routerze dla TCP i UDP.</small>
+                  <small>
+                    {canManagePublicPort
+                      ? "Ten sam port musi byc przekierowany w routerze dla TCP i UDP. Jesli bedzie zajety, ByteHost znajdzie wolny."
+                      : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
+                  </small>
                 </label>
                 <label className="checkbox-field wide">
                   <input
@@ -1084,61 +1166,108 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
               <Terminal size={16} />
               <span>Live logs</span>
             </div>
-            <pre>{logs.combined || "Brak logow do wyswietlenia."}</pre>
+            <pre ref={liveTerminalRef}>{logs.combined || "Brak logow do wyswietlenia."}</pre>
           </div>
         ) : null}
 
         {activeTab === "console" ? (
-          <div className="console-stack">
-            <form className="console-form" onSubmit={runConsoleCommand}>
-              <label className="wide">
-                Konsola robocza uslugi
-                <input
-                  value={consoleCommand}
-                  onChange={(event) => setConsoleCommand(event.target.value)}
-                  placeholder={
-                    isMinecraft
-                      ? 'np. java -version, ls -la, cat server.properties'
-                      : isFiveM
-                        ? 'np. ls -la, cat server.cfg, ls resources'
-                      : 'np. npm run lint, ls -la, python3 -V'
-                  }
-                />
-              </label>
-              <div className="form-actions wide">
-                <button className="primary-button" type="submit" disabled={actionState === "console"}>
+          isGameService ? (
+            <div className="console-stack">
+              <form className="console-form" onSubmit={runConsoleCommand}>
+                <label className="wide">
+                  Prawdziwa konsola serwera
+                  <input
+                    value={consoleCommand}
+                    onChange={(event) => setConsoleCommand(event.target.value)}
+                    placeholder={
+                      isMinecraft
+                        ? "np. list, say Witaj, whitelist add Nick, stop"
+                        : "np. say Witaj, refresh, ensure moj-zasob, stop"
+                    }
+                  />
+                </label>
+                <div className="form-actions wide">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={actionState === "console"}
+                  >
+                    <Terminal size={16} />
+                    <span>Wyslij do serwera</span>
+                  </button>
+                </div>
+              </form>
+
+              <div className="info-card">
+                Ta konsola wysyla komendy bezposrednio do dzialajacego serwera. Live output
+                ponizej pokazuje stdout i stderr procesu, wiec zobaczysz dolaczenia graczy,
+                bledy, komendy i odpowiedzi serwera tak jak w hostingu gier.
+              </div>
+
+              {consoleResult?.mode === "server" ? (
+                <div className="info-card">
+                  Ostatnio wyslano: <strong>{consoleResult.command}</strong>
+                </div>
+              ) : null}
+
+              <div className="terminal-card">
+                <div className="terminal-header">
                   <Terminal size={16} />
-                  <span>Wykonaj polecenie</span>
-                </button>
+                  <span>Live console</span>
+                </div>
+                <pre ref={liveTerminalRef}>{logs.combined || "Brak logow do wyswietlenia."}</pre>
               </div>
-            </form>
-
-            <div className="info-card">
-              Konsola wykonuje polecenia w katalogu projektu uslugi. To nie jest stdin procesu PM2,
-              tylko robocza konsola serwisowa do testow, npm, pip, javac i komend systemowych.
             </div>
+          ) : (
+            <div className="console-stack">
+              <form className="console-form" onSubmit={runConsoleCommand}>
+                <label className="wide">
+                  Konsola robocza uslugi
+                  <input
+                    value={consoleCommand}
+                    onChange={(event) => setConsoleCommand(event.target.value)}
+                    placeholder={"np. npm run lint, ls -la, python3 -V"}
+                  />
+                </label>
+                <div className="form-actions wide">
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={actionState === "console"}
+                  >
+                    <Terminal size={16} />
+                    <span>Wykonaj polecenie</span>
+                  </button>
+                </div>
+              </form>
 
-            <div className="terminal-card">
-              <div className="terminal-header">
-                <Terminal size={16} />
-                <span>Output</span>
+              <div className="info-card">
+                Konsola wykonuje polecenia w katalogu projektu uslugi. To nie jest stdin procesu
+                PM2, tylko robocza konsola serwisowa do testow, npm, pip i komend systemowych.
               </div>
-              <pre>
-                {consoleResult
-                  ? [
-                      `$ ${consoleResult.command}`,
-                      `cwd: ${consoleResult.cwd}`,
-                      `exit code: ${consoleResult.code}`,
-                      "",
-                      consoleResult.stdout || "",
-                      consoleResult.stderr ? `\n[stderr]\n${consoleResult.stderr}` : ""
-                    ]
-                      .filter(Boolean)
-                      .join("\n")
-                  : "Brak wykonanych polecen."}
-              </pre>
+
+              <div className="terminal-card">
+                <div className="terminal-header">
+                  <Terminal size={16} />
+                  <span>Output</span>
+                </div>
+                <pre>
+                  {consoleResult
+                    ? [
+                        `$ ${consoleResult.command}`,
+                        `cwd: ${consoleResult.cwd}`,
+                        `exit code: ${consoleResult.code}`,
+                        "",
+                        consoleResult.stdout || "",
+                        consoleResult.stderr ? `\n[stderr]\n${consoleResult.stderr}` : ""
+                      ]
+                        .filter(Boolean)
+                        .join("\n")
+                    : "Brak wykonanych polecen."}
+                </pre>
+              </div>
             </div>
-          </div>
+          )
         ) : null}
 
         {activeTab === "backups" ? (
@@ -1256,11 +1385,102 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                 <FolderOpen size={16} />
                 <span>Nowy folder</span>
               </button>
-              <button className="ghost-button compact" onClick={() => uploadInputRef.current?.click()}>
+              <button className="ghost-button compact" onClick={() => triggerUploadTo("")}>
                 <Upload size={16} />
                 <span>Upload</span>
               </button>
             </div>
+
+            {isMinecraft ? (
+              <>
+                <div className="file-actions">
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => openManagedDirectory("plugins")}
+                  >
+                    <FolderOpen size={16} />
+                    <span>Pluginy</span>
+                  </button>
+                  <button className="ghost-button compact" onClick={() => openManagedDirectory("mods")}>
+                    <FolderOpen size={16} />
+                    <span>Mody</span>
+                  </button>
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => openManagedDirectory("resourcepacks")}
+                  >
+                    <FolderOpen size={16} />
+                    <span>Resource packi</span>
+                  </button>
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => openPath("server.properties")}
+                  >
+                    <Save size={16} />
+                    <span>server.properties</span>
+                  </button>
+                </div>
+
+                <div className="file-actions">
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => triggerUploadTo("plugins")}
+                  >
+                    <Upload size={16} />
+                    <span>Wrzuc plugin</span>
+                  </button>
+                  <button className="ghost-button compact" onClick={() => triggerUploadTo("mods")}>
+                    <Upload size={16} />
+                    <span>Wrzuc mod</span>
+                  </button>
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => triggerUploadTo("resourcepacks")}
+                  >
+                    <Upload size={16} />
+                    <span>Wrzuc resource pack</span>
+                  </button>
+                </div>
+
+                <div className="info-card">
+                  Pluginy trafiaja do <strong>plugins/</strong>, mody do <strong>mods/</strong>, a
+                  paczki zasobow do <strong>resourcepacks/</strong>. Jesli chcesz wymusic paczke
+                  klientom, ustaw jeszcze odpowiednie pola resource-pack w{" "}
+                  <strong>server.properties</strong>.
+                </div>
+              </>
+            ) : null}
+
+            {isFiveM ? (
+              <>
+                <div className="file-actions">
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => openManagedDirectory("resources")}
+                  >
+                    <FolderOpen size={16} />
+                    <span>Resources</span>
+                  </button>
+                  <button className="ghost-button compact" onClick={() => openPath("server.cfg")}>
+                    <Save size={16} />
+                    <span>server.cfg</span>
+                  </button>
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => triggerUploadTo("resources/[bytehost]")}
+                  >
+                    <Upload size={16} />
+                    <span>Wrzuc resource</span>
+                  </button>
+                </div>
+
+                <div className="info-card">
+                  Zasoby FiveM wrzucaj do <strong>resources/</strong>. ByteHost nie usuwa Twoich
+                  dodatkow przy zwyklej pracy panelu, a serwer mozna potem dolaczyc do{" "}
+                  <strong>ensure</strong> w <strong>server.cfg</strong>.
+                </div>
+              </>
+            ) : null}
 
             {filesData?.kind === "directory" ? (
               <div className="directory-grid">

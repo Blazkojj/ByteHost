@@ -148,8 +148,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         {isGameService ? (
           <div className="info-card">
             {isMinecraft
-              ? "Panel moze sam ustawic adres publiczny jako `publiczne_IP[:port]`. Jesli port Minecraft nie jest domyslny, przekieruj ten sam port na routerze do VM z ByteHost."
-              : "Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Zeby gracze faktycznie weszli na serwer, ten sam port musi byc przekierowany na routerze do VM z ByteHost."}
+              ? "Panel moze sam ustawic adres publiczny jako `publiczne_IP[:port]`. Jesli port Minecraft jest zajety, ByteHost sam dobierze wolny. Owner moze go zmienic recznie, a zwykly uzytkownik dostaje port automatycznie."
+              : "Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Jesli port FiveM jest zajety, ByteHost sam dobierze wolny. Owner moze go zmienic recznie, a zwykly uzytkownik dostaje port automatycznie."}
           </div>
         ) : null}
 
@@ -370,10 +370,16 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 <input
                   type="number"
                   value={form.public_port}
+                  disabled={!user?.is_admin}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, public_port: event.target.value }))
                   }
                 />
+                <small>
+                  {user?.is_admin
+                    ? "Jesli wybrany port jest zajety, ByteHost automatycznie znajdzie wolny."
+                    : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
+                </small>
               </label>
               <label className="checkbox-field wide">
                 <input
@@ -457,11 +463,16 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 <input
                   type="number"
                   value={form.public_port}
+                  disabled={!user?.is_admin}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, public_port: event.target.value }))
                   }
                 />
-                <small>Jesli zostawisz domyslny, ByteHost uzyje standardowego portu FiveM.</small>
+                <small>
+                  {user?.is_admin
+                    ? "Jesli wybrany port jest zajety, ByteHost automatycznie znajdzie wolny."
+                    : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
+                </small>
               </label>
               <label className="checkbox-field wide">
                 <input
@@ -626,6 +637,7 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
           {selectedBot ? (
             <BotWorkspace
               botId={selectedBot.id}
+              user={user}
               onRefreshAll={onRefreshAll}
               onRefreshBots={onRefreshBots}
               onRefreshSystem={onRefreshSystem}
