@@ -5,6 +5,7 @@
   --bg: #f4f7fb;
   --bg-top: #f8fbff;
   --bg-glow: rgba(36, 99, 235, 0.12);
+  --bg-image: url("./assets/light-theme-bg.png");
   --bg-accent: #edf4ff;
   --panel: #ffffff;
   --panel-elevated: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
@@ -47,6 +48,7 @@
   --bg: #08111f;
   --bg-top: #0d1728;
   --bg-glow: rgba(32, 140, 244, 0.22);
+  --bg-image: none;
   --bg-accent: #10233e;
   --panel: #0f1a2b;
   --panel-elevated: linear-gradient(180deg, #122137 0%, #0d1828 100%);
@@ -99,8 +101,13 @@ body {
   font-family: "Manrope", sans-serif;
   color: var(--text);
   background:
+    var(--bg-image),
     radial-gradient(circle at top left, var(--bg-glow), transparent 26%),
     linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 100%);
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: center top, top left, center;
+  background-size: cover, auto, cover;
+  background-attachment: fixed, scroll, scroll;
   transition: background 0.22s ease, color 0.22s ease;
 }
 
@@ -194,11 +201,17 @@ strong,
 }
 
 .brand-logo {
-  width: 52px;
-  height: 52px;
+  width: 58px;
+  height: 58px;
   object-fit: contain;
   flex-shrink: 0;
+  display: block;
   filter: drop-shadow(0 12px 22px rgba(36, 99, 235, 0.18));
+}
+
+.marketing-brand .brand-logo,
+.login-brand .brand-logo {
+  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.28), transparent 70%);
 }
 
 .brand-copy {
@@ -1851,8 +1864,231 @@ textarea:disabled {
   justify-content: flex-end;
 }
 
+.marketing-hero-clean {
+  align-items: center;
+}
+
+.marketing-hero-visual {
+  position: relative;
+  min-height: 520px;
+  padding: 28px;
+  overflow: hidden;
+  border-radius: 34px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at top, rgba(69, 231, 242, 0.12), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(38, 54, 243, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(242, 247, 255, 0.94));
+  box-shadow: var(--shadow);
+}
+
+:root[data-theme="dark"] .marketing-hero-visual {
+  background:
+    radial-gradient(circle at top, rgba(69, 231, 242, 0.12), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(38, 54, 243, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(10, 18, 32, 0.9), rgba(11, 21, 36, 0.96));
+}
+
+.marketing-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(4px);
+  animation: floatOrb 10s ease-in-out infinite;
+}
+
+.marketing-orb.orb-one {
+  width: 220px;
+  height: 220px;
+  top: 36px;
+  left: 40px;
+  background: radial-gradient(circle, rgba(69, 231, 242, 0.18), transparent 68%);
+}
+
+.marketing-orb.orb-two {
+  width: 280px;
+  height: 280px;
+  right: 20px;
+  bottom: 18px;
+  background: radial-gradient(circle, rgba(38, 54, 243, 0.16), transparent 70%);
+  animation-delay: -3s;
+}
+
+.marketing-hero-logo {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: min(74%, 430px);
+  margin: 34px auto 0;
+  animation: floatLogo 8s ease-in-out infinite;
+  filter: drop-shadow(0 28px 44px rgba(38, 54, 243, 0.2));
+}
+
+.marketing-floating-card {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 18px 32px rgba(23, 38, 58, 0.08);
+  backdrop-filter: blur(14px);
+  animation: fadeUp 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+:root[data-theme="dark"] .marketing-floating-card {
+  background: rgba(12, 23, 40, 0.82);
+}
+
+.marketing-floating-card svg {
+  color: var(--accent);
+}
+
+.marketing-floating-card strong,
+.marketing-floating-card span {
+  display: block;
+}
+
+.marketing-floating-card span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.floating-left {
+  left: 28px;
+  bottom: 36px;
+  animation-delay: 0.25s;
+}
+
+.floating-right {
+  top: 70px;
+  right: 28px;
+  animation-delay: 0.45s;
+}
+
+.compact-grid {
+  gap: 18px;
+}
+
+.marketing-feature-card,
+.marketing-step-card,
+.marketing-faq-item,
+.marketing-band-card {
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.marketing-feature-card:hover,
+.marketing-step-card:hover,
+.marketing-faq-item:hover,
+.marketing-band-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-strong);
+  box-shadow: 0 24px 42px rgba(23, 38, 58, 0.1);
+}
+
+.marketing-band-section {
+  margin-top: 4px;
+}
+
+.marketing-band-card {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 22px;
+  padding: 28px 30px;
+  border-radius: 30px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at right top, rgba(69, 231, 242, 0.12), transparent 26%),
+    radial-gradient(circle at left bottom, rgba(38, 54, 243, 0.08), transparent 30%),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.marketing-band-card h2 {
+  margin: 10px 0 0;
+  font-family: "Sora", sans-serif;
+  font-size: clamp(28px, 3.8vw, 42px);
+  line-height: 1.04;
+}
+
+.marketing-band-points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.marketing-band-points span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text-soft);
+}
+
+.reveal-up {
+  opacity: 0;
+  animation: fadeUp 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.delay-1 {
+  animation-delay: 0.08s;
+}
+
+.delay-2 {
+  animation-delay: 0.18s;
+}
+
+.delay-3 {
+  animation-delay: 0.28s;
+}
+
+.delay-4 {
+  animation-delay: 0.38s;
+}
+
+.delay-5 {
+  animation-delay: 0.48s;
+}
+
 .spin {
   animation: spin 1s linear infinite;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatLogo {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes floatOrb {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(10px, -14px, 0) scale(1.04);
+  }
 }
 
 @keyframes spin {
@@ -1879,7 +2115,8 @@ textarea:disabled {
   .marketing-card-grid.three,
   .marketing-card-grid.four,
   .marketing-stack-grid,
-  .marketing-cta {
+  .marketing-cta,
+  .marketing-band-card {
     grid-template-columns: 1fr;
   }
 
@@ -1914,6 +2151,10 @@ textarea:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .marketing-band-points {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -2010,6 +2251,7 @@ textarea:disabled {
 
   .marketing-hero-copy,
   .marketing-hero-mockup,
+  .marketing-hero-visual,
   .marketing-proof-card,
   .marketing-feature-card,
   .marketing-step-card,
@@ -2025,6 +2267,11 @@ textarea:disabled {
     font-size: 40px;
   }
 
+  .marketing-hero-logo {
+    width: min(80%, 320px);
+    margin-top: 50px;
+  }
+
   .marketing-window-sidebar {
     grid-template-columns: 1fr;
   }
@@ -2036,5 +2283,23 @@ textarea:disabled {
   .marketing-service-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .marketing-floating-card {
+    position: static;
+    margin-top: 16px;
+  }
+
+  .marketing-band-points {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-up,
+  .marketing-hero-logo,
+  .marketing-orb,
+  .spin {
+    animation: none !important;
   }
 }

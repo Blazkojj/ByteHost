@@ -9,7 +9,7 @@ import {
   Users
 } from "lucide-react";
 
-import logoUrl from "../assets/bytehost-logo.svg";
+import logoUrl from "../assets/bytehost.png";
 import { ThemeToggle } from "./ThemeToggle";
 import { accountStatusLabel, formatDate, formatMemoryFromMb, formatNumber, userRoleLabel } from "../utils";
 

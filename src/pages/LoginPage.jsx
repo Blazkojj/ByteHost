@@ -2,7 +2,7 @@ import { useState } from "react";
 import { LockKeyhole, LogIn, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import logoUrl from "../assets/bytehost-logo.svg";
+import logoUrl from "../assets/bytehost.png";
 import { ThemeToggle } from "../components/ThemeToggle";
 
 export function LoginPage({ onLogin, onRegister, loading, theme, onToggleTheme, mode = "login" }) {
