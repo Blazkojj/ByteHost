@@ -45,6 +45,7 @@ const {
   stopProcess,
   startBotProcess,
   hasManagedServerConsole,
+  getManagedConsoleInputPath,
   sendManagedConsoleCommand
 } = require("./pm2");
 const { getSystemLimits } = require("./system");
@@ -468,6 +469,33 @@ async function fileExists(targetPath) {
   } catch (_error) {
     return false;
   }
+}
+
+async function isManagedConsoleInputReady(projectPath) {
+  try {
+    const stats = await fs.stat(getManagedConsoleInputPath(projectPath));
+    return typeof stats.isFIFO === "function" ? stats.isFIFO() || stats.isFile() : true;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function waitForManagedConsoleInput(projectPath, timeoutMs = 5000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await isManagedConsoleInputReady(projectPath)) {
+      return true;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  return false;
 }
 
 async function readJsonIfExists(targetPath) {
@@ -2143,7 +2171,7 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
 }
 
 async function executeBotConsoleCommand(botId, actor, payload) {
-  const bot = getBotRow(botId, actor);
+  let bot = getBotRow(botId, actor);
   const mode = coerceNullableString(payload?.mode, null);
   const command = normalizeConsoleCommand(coerceNullableString(payload?.command, ""));
 
@@ -2166,6 +2194,27 @@ async function executeBotConsoleCommand(botId, actor, payload) {
       throw createHttpError(
         400,
         "Prawdziwa konsola serwera dziala tylko wtedy, gdy usluga jest uruchomiona."
+      );
+    }
+
+    let consoleReady = await isManagedConsoleInputReady(bot.project_path);
+
+    if (!consoleReady) {
+      await appendBotLog(
+        bot.id,
+        "out",
+        "[bytehost] Konsola serwera byla jeszcze nieaktywna. ByteHost restartuje proces, aby podlaczyc prawdziwe stdin.\n"
+      );
+
+      await startBot(bot.id, actor);
+      bot = getBotRow(botId, actor);
+      consoleReady = await waitForManagedConsoleInput(bot.project_path);
+    }
+
+    if (!consoleReady) {
+      throw createHttpError(
+        400,
+        "Nie udalo sie przygotowac prawdziwej konsoli serwera. Sprobuj ponownie za kilka sekund albo zrestartuj usluge recznie."
       );
     }
 
