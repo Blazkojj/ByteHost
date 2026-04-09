@@ -7,6 +7,7 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 const STORAGE_DIR = path.resolve(ROOT_DIR, process.env.STORAGE_DIR || "storage");
 const DB_PATH = path.resolve(ROOT_DIR, process.env.DB_PATH || "storage/bytehost.db");
 const BOTS_DIR = path.join(STORAGE_DIR, "bots");
+const BACKUPS_DIR = path.join(STORAGE_DIR, "backups");
 const TMP_DIR = path.join(STORAGE_DIR, "tmp");
 const LOGS_DIR = path.join(STORAGE_DIR, "logs");
 const CLIENT_DIST_DIR = path.join(ROOT_DIR, "dist");
@@ -48,6 +49,7 @@ module.exports = {
   STORAGE_DIR,
   DB_PATH,
   BOTS_DIR,
+  BACKUPS_DIR,
   TMP_DIR,
   LOGS_DIR,
   CLIENT_DIST_DIR,

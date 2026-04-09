@@ -76,6 +76,16 @@ export const api = {
   createBot: (formData) => request("/api/bots", { method: "POST", body: formData }),
   updateBotArchive: (id, formData) =>
     request(`/api/bots/${id}/archive`, { method: "POST", body: formData }),
+  getBotBackups: (id) => request(`/api/bots/${id}/backups`),
+  createBotBackup: (id, payload) =>
+    request(`/api/bots/${id}/backups`, { method: "POST", body: JSON.stringify(payload) }),
+  restoreBotBackup: (id, backupId, payload = {}) =>
+    request(`/api/bots/${id}/backups/${backupId}/restore`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  deleteBotBackup: (id, backupId) =>
+    request(`/api/bots/${id}/backups/${backupId}`, { method: "DELETE" }),
   getBot: (id) => request(`/api/bots/${id}`),
   updateBot: (id, payload) =>
     request(`/api/bots/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),

@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import {
+  formatDate,
   formatDuration,
   formatMemoryFromMb,
   formatMemoryLimit,
@@ -69,6 +70,8 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   const [activeTab, setActiveTab] = useState("overview");
   const [settings, setSettings] = useState(null);
   const [logs, setLogs] = useState({ combined: "" });
+  const [backups, setBackups] = useState([]);
+  const [backupName, setBackupName] = useState("");
   const [filesData, setFilesData] = useState(null);
   const [editorContent, setEditorContent] = useState("");
   const [envContent, setEnvContent] = useState("");
@@ -137,6 +140,33 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
   }, [activeTab, botId]);
 
   useEffect(() => {
+    if (activeTab !== "backups") {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadBackups() {
+      try {
+        const nextBackups = await api.getBotBackups(botId);
+        if (!cancelled) {
+          setBackups(nextBackups);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError.message);
+        }
+      }
+    }
+
+    loadBackups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, botId]);
+
+  useEffect(() => {
     if (activeTab !== "env") {
       return;
     }
@@ -186,6 +216,12 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     setSettings(buildSettingsState(nextBot));
     await onRefreshBots();
     await onRefreshSystem();
+  }
+
+  async function refreshBackups() {
+    const nextBackups = await api.getBotBackups(botId);
+    setBackups(nextBackups);
+    return nextBackups;
   }
 
   async function runAction(type) {
@@ -439,6 +475,75 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     }
   }
 
+  async function handleCreateBackup(event) {
+    event.preventDefault();
+    setActionState("create-backup");
+    setMessage("");
+    setError("");
+
+    try {
+      const result = await api.createBotBackup(botId, {
+        name: backupName
+      });
+      setBackups(result.backups || []);
+      setBackupName("");
+      setMessage("Backup zostal utworzony.");
+      await onRefreshSystem();
+    } catch (backupError) {
+      setError(backupError.message);
+    } finally {
+      setActionState("");
+    }
+  }
+
+  async function handleRestoreBackup(backup) {
+    if (!window.confirm(`Przywroc backup "${backup.name}"?`)) {
+      return;
+    }
+
+    setActionState(`restore-backup:${backup.id}`);
+    setMessage("");
+    setError("");
+
+    try {
+      const result = await api.restoreBotBackup(botId, backup.id, {});
+      setBot(result.bot);
+      setSettings(buildSettingsState(result.bot));
+      setBackups(result.backups || []);
+      setFilesData(null);
+      setLogs({ combined: "" });
+      setConsoleResult(null);
+      setInstallResult(null);
+      await onRefreshAll();
+      setMessage(`Backup "${backup.name}" zostal przywrocony.`);
+    } catch (restoreError) {
+      setError(restoreError.message);
+    } finally {
+      setActionState("");
+    }
+  }
+
+  async function handleDeleteBackup(backup) {
+    if (!window.confirm(`Usunac backup "${backup.name}"?`)) {
+      return;
+    }
+
+    setActionState(`delete-backup:${backup.id}`);
+    setMessage("");
+    setError("");
+
+    try {
+      const result = await api.deleteBotBackup(botId, backup.id);
+      setBackups(result.backups || []);
+      setMessage("Backup zostal usuniety.");
+      await onRefreshSystem();
+    } catch (deleteError) {
+      setError(deleteError.message);
+    } finally {
+      setActionState("");
+    }
+  }
+
   if (!bot || !settings) {
     return <div className="panel-card">Ladowanie workspace...</div>;
   }
@@ -448,6 +553,7 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
     { id: "overview", label: "Przeglad" },
     { id: "logs", label: "Logi" },
     { id: "console", label: "Konsola" },
+    { id: "backups", label: "Backupy" },
     { id: "files", label: "Pliki" },
     { id: "env", label: ".env" }
   ];
@@ -868,6 +974,98 @@ export function BotWorkspace({ botId, onRefreshAll, onRefreshBots, onRefreshSyst
                       .join("\n")
                   : "Brak wykonanych polecen."}
               </pre>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "backups" ? (
+          <div className="workspace-stack">
+            <form className="form-grid" onSubmit={handleCreateBackup}>
+              <div className="info-card wide">
+                Backup tworzy realny snapshot katalogu uslugi w `storage/backups`. Backupy licza
+                sie do storage i mozesz je potem przywrocic albo usunac z panelu.
+              </div>
+              <label className="wide">
+                Nazwa backupu
+                <input
+                  value={backupName}
+                  placeholder="np. przed aktualizacja"
+                  onChange={(event) => setBackupName(event.target.value)}
+                />
+              </label>
+              <div className="form-actions wide">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={refreshBackups}
+                  disabled={Boolean(actionState)}
+                >
+                  <RefreshCw size={16} />
+                  <span>Odswiez liste</span>
+                </button>
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={actionState === "create-backup"}
+                >
+                  <Save size={16} />
+                  <span>Utworz backup</span>
+                </button>
+              </div>
+            </form>
+
+            <div className="table-shell">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Nazwa</th>
+                    <th>Utworzono</th>
+                    <th>Rozmiar</th>
+                    <th>Status z chwili backupu</th>
+                    <th>Akcje</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backups.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="empty-state">
+                        Brak backupow dla tej uslugi.
+                      </td>
+                    </tr>
+                  ) : (
+                    backups.map((backup) => (
+                      <tr key={backup.id}>
+                        <td>{backup.name}</td>
+                        <td>{formatDate(backup.created_at)}</td>
+                        <td>{formatMemoryFromMb(backup.size_mb)}</td>
+                        <td>{backup.source_status || "OFFLINE"}</td>
+                        <td>
+                          <div className="workspace-actions">
+                            <button
+                              className="ghost-button compact"
+                              type="button"
+                              onClick={() => handleRestoreBackup(backup)}
+                              disabled={actionState === `restore-backup:${backup.id}`}
+                            >
+                              <RotateCcw size={14} />
+                              <span>Przywroc</span>
+                            </button>
+                            <button
+                              className="danger-button compact"
+                              type="button"
+                              onClick={() => handleDeleteBackup(backup)}
+                              disabled={actionState === `delete-backup:${backup.id}`}
+                            >
+                              <Trash2 size={14} />
+                              <span>Usun</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         ) : null}

@@ -10,6 +10,10 @@ const {
   getBotWithRuntime,
   updateBot,
   deleteBotById,
+  listBotBackups,
+  createBotBackup,
+  restoreBotBackup,
+  deleteBotBackup,
   startBot,
   stopBot,
   restartBot,
@@ -65,6 +69,47 @@ router.post("/:id/archive", upload.single("archive"), async (request, response, 
     response.json(await updateBotArchive(request.params.id, request.user, request.file, request.body));
   } catch (error) {
     await cleanupFiles([request.file].filter(Boolean));
+    next(error);
+  }
+});
+
+router.get("/:id/backups", async (request, response, next) => {
+  try {
+    response.json(await listBotBackups(request.params.id, request.user));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/backups", async (request, response, next) => {
+  try {
+    response.status(201).json(await createBotBackup(request.params.id, request.user, request.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/backups/:backupId/restore", async (request, response, next) => {
+  try {
+    response.json(
+      await restoreBotBackup(
+        request.params.id,
+        request.user,
+        request.params.backupId,
+        request.body
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/:id/backups/:backupId", async (request, response, next) => {
+  try {
+    response.json(
+      await deleteBotBackup(request.params.id, request.user, request.params.backupId)
+    );
+  } catch (error) {
     next(error);
   }
 });

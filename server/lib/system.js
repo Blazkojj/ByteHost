@@ -1,7 +1,8 @@
+const path = require("path");
 const os = require("os");
 const si = require("systeminformation");
 
-const { BOTS_DIR } = require("../config");
+const { BOTS_DIR, BACKUPS_DIR } = require("../config");
 const { getDb, mapBotRow, mapSystemLimitsRow } = require("./db");
 const { listBytehostProcesses } = require("./pm2");
 const { deriveBotRuntime } = require("./runtime");
@@ -104,6 +105,7 @@ async function collectSystemStats(actor) {
   for (const bot of bots) {
     const runtime = deriveBotRuntime(bot, processMap.get(bot.pm2_name));
     storageBytes += await getDirectorySize(bot.project_path);
+    storageBytes += await getDirectorySize(path.join(BACKUPS_DIR, bot.id));
 
     if (runtime.status === "ONLINE") {
       botStatuses.online += 1;
@@ -166,7 +168,9 @@ async function collectSystemStats(actor) {
   const [memory, currentLoad, totalStorageBytes] = await Promise.all([
     si.mem(),
     si.currentLoad(),
-    getDirectorySize(BOTS_DIR)
+    Promise.all([getDirectorySize(BOTS_DIR), getDirectorySize(BACKUPS_DIR)]).then(
+      ([botsStorageBytes, backupsStorageBytes]) => botsStorageBytes + backupsStorageBytes
+    )
   ]);
 
   return {

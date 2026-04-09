@@ -1,7 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-const { DEFAULT_BOT_LIMITS, BOTS_DIR, TMP_DIR } = require("../config");
+const { DEFAULT_BOT_LIMITS, BOTS_DIR, BACKUPS_DIR, TMP_DIR } = require("../config");
 const { getDb, mapBotRow } = require("./db");
 const { detectUploadedArtifactKind, importProjectArtifact } = require("./archive");
 const { analyzeProject, buildMinecraftStartCommand } = require("./analyzer");
@@ -188,6 +188,28 @@ function getBotOwner(bot) {
   return getUserById(bot.owner_user_id);
 }
 
+function getBotBackupsDirectory(botId) {
+  return path.join(BACKUPS_DIR, String(botId));
+}
+
+function getBotBackupDirectory(botId, backupId) {
+  return path.join(getBotBackupsDirectory(botId), String(backupId));
+}
+
+function getBotBackupFilesDirectory(botId, backupId) {
+  return path.join(getBotBackupDirectory(botId, backupId), "files");
+}
+
+function getBotBackupMetaPath(botId, backupId) {
+  return path.join(getBotBackupDirectory(botId, backupId), "meta.json");
+}
+
+async function ensureBotBackupsDirectory(botId) {
+  const backupsDirectory = getBotBackupsDirectory(botId);
+  await fs.mkdir(backupsDirectory, { recursive: true });
+  return backupsDirectory;
+}
+
 function assertOwnerCanProvisionServices(owner) {
   if (!owner) {
     throw createHttpError(400, "Usluga nie ma przypisanego wlasciciela.");
@@ -222,6 +244,7 @@ async function getOwnedStorageUsageMb(ownerUserId) {
 
   for (const bot of ownedBots) {
     totalBytes += await getDirectorySize(bot.project_path);
+    totalBytes += await getDirectorySize(getBotBackupsDirectory(bot.id));
   }
 
   return round(toMb(totalBytes));
@@ -320,6 +343,19 @@ async function fileExists(targetPath) {
   }
 }
 
+async function readJsonIfExists(targetPath) {
+  const content = await readUtf8IfExists(targetPath);
+  if (!content) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(content);
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function clearDirectoryContents(directoryPath) {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
 
@@ -339,9 +375,26 @@ async function moveDirectoryContents(sourceDirectory, destinationDirectory) {
   }
 }
 
+async function copyDirectoryContents(sourceDirectory, destinationDirectory) {
+  const entries = await fs.readdir(sourceDirectory, { withFileTypes: true });
+
+  for (const entry of entries) {
+    await fs.cp(
+      path.join(sourceDirectory, entry.name),
+      path.join(destinationDirectory, entry.name),
+      {
+        recursive: true,
+        force: true
+      }
+    );
+  }
+}
+
 async function assertStorageWithinLimit() {
   const limits = getSystemLimits();
-  const storageUsageMb = toMb(await getDirectorySize(BOTS_DIR));
+  const storageUsageMb = toMb(
+    (await getDirectorySize(BOTS_DIR)) + (await getDirectorySize(BACKUPS_DIR))
+  );
 
   if (limits.storage_limit_mb && storageUsageMb > limits.storage_limit_mb) {
     throw createHttpError(
@@ -632,6 +685,226 @@ async function replaceMinecraftServerJar(bot, artifactFile) {
   await importProjectArtifact(artifactFile.path, bot.project_path, {
     originalName: artifactFile.originalname
   });
+}
+
+function buildBackupName(bot, requestedName) {
+  const manualName = coerceNullableString(requestedName, null);
+  if (manualName) {
+    return manualName.slice(0, 120);
+  }
+
+  const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(/:/g, "-");
+  return `${bot.name} ${timestamp}`;
+}
+
+async function readBotBackupRecord(botId, backupId) {
+  const backupDirectory = getBotBackupDirectory(botId, backupId);
+  const backupExists = await fileExists(backupDirectory);
+
+  if (!backupExists) {
+    throw createHttpError(404, "Backup nie zostal znaleziony.");
+  }
+
+  const metadata = await readJsonIfExists(getBotBackupMetaPath(botId, backupId));
+  const filesDirectory = getBotBackupFilesDirectory(botId, backupId);
+  const stats = await fs.stat(backupDirectory);
+  const sizeMb = round(toMb(await getDirectorySize(filesDirectory)));
+
+  return {
+    id: String(backupId),
+    name: metadata?.name || String(backupId),
+    description: metadata?.description || "",
+    created_at: metadata?.created_at || stats.birthtime.toISOString(),
+    source_status: metadata?.source_status || "OFFLINE",
+    size_mb: sizeMb,
+    service_type: metadata?.service_type || null,
+    files_path: filesDirectory
+  };
+}
+
+function toClientBackupRecord(backup) {
+  const { files_path, ...clientBackup } = backup;
+  return clientBackup;
+}
+
+async function listBotBackups(botId, actor) {
+  getBotRow(botId, actor);
+
+  const backupsDirectory = await ensureBotBackupsDirectory(botId);
+  const entries = await fs.readdir(backupsDirectory, { withFileTypes: true });
+  const backups = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    try {
+      backups.push(await readBotBackupRecord(botId, entry.name));
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  backups.sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+  return backups.map(toClientBackupRecord);
+}
+
+async function createBotBackup(botId, actor, payload = {}) {
+  const bot = getBotRow(botId, actor);
+  const owner = getBotOwner(bot);
+  const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
+  const runtime = deriveBotRuntime(bot, processInfo);
+  const backupId = randomId();
+  const backupDirectory = getBotBackupDirectory(botId, backupId);
+  const filesDirectory = getBotBackupFilesDirectory(botId, backupId);
+  const createdAt = nowIso();
+
+  await ensureBotBackupsDirectory(botId);
+  await fs.mkdir(filesDirectory, { recursive: true });
+
+  try {
+    await copyDirectoryContents(bot.project_path, filesDirectory);
+    const sizeMb = round(toMb(await getDirectorySize(filesDirectory)));
+    const metadata = {
+      id: backupId,
+      name: buildBackupName(bot, payload.name),
+      description: coerceNullableString(payload.description, "") || "",
+      created_at: createdAt,
+      source_status: runtime.status,
+      service_type: bot.service_type,
+      size_mb: sizeMb
+    };
+
+    await fs.writeFile(
+      getBotBackupMetaPath(botId, backupId),
+      JSON.stringify(metadata, null, 2),
+      "utf8"
+    );
+
+    await assertStorageWithinLimit();
+    await assertUserStorageWithinLimit(owner);
+
+    return {
+      backup: toClientBackupRecord({
+        ...metadata,
+        files_path: filesDirectory
+      }),
+      backups: await listBotBackups(botId, actor)
+    };
+  } catch (error) {
+    await fs.rm(backupDirectory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function restoreBotBackup(botId, actor, backupId, payload = {}) {
+  const bot = getBotRow(botId, actor);
+  const owner = getBotOwner(bot);
+  const backup = await readBotBackupRecord(botId, backupId);
+  const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
+  const runtime = deriveBotRuntime(bot, processInfo);
+  const restartAfterRestore =
+    payload.restart_after_restore !== undefined
+      ? coerceBoolean(payload.restart_after_restore, runtime.status === "ONLINE")
+      : runtime.status === "ONLINE";
+
+  await stopProcess(bot.pm2_name);
+  await clearDirectoryContents(bot.project_path);
+  await copyDirectoryContents(backup.files_path, bot.project_path);
+
+  const analysis = await analyzeServiceProject(bot.project_path, bot.service_type, bot.ram_limit_mb);
+  const nextLanguage =
+    bot.service_type === "minecraft_server"
+      ? "Java"
+      : resolveUpdatedSetting(
+          bot.language,
+          bot.detected_language,
+          analysis.detected_language,
+          (value) => sanitizeLanguage(value, "", bot.service_type)
+        );
+  const nextEntryFile = resolveUpdatedSetting(
+    bot.entry_file,
+    bot.detected_entry_file,
+    analysis.detected_entry_file,
+    (value) => normalizeRelativePath(value || "")
+  );
+  const previousAutoStart =
+    bot.service_type === "minecraft_server"
+      ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+      : bot.detected_start_command;
+  const nextAutoStart =
+    bot.service_type === "minecraft_server"
+      ? buildMinecraftStartCommand(nextEntryFile || analysis.detected_entry_file, bot.ram_limit_mb)
+      : analysis.detected_start_command;
+  const nextStartCommand =
+    bot.service_type === "minecraft_server"
+      ? resolveUpdatedSetting(
+          bot.start_command,
+          previousAutoStart,
+          nextAutoStart,
+          (value) => String(value || "").trim()
+        )
+      : resolveUpdatedSetting(
+          bot.start_command,
+          bot.detected_start_command,
+          analysis.detected_start_command,
+          (value) => String(value || "").trim()
+        );
+
+  updateBotRow(botId, {
+    language: sanitizeLanguage(nextLanguage, analysis.detected_language || "Node.js", bot.service_type),
+    detected_language: analysis.detected_language,
+    entry_file: normalizeRelativePath(nextEntryFile || ""),
+    detected_entry_file: analysis.detected_entry_file,
+    start_command: coerceNullableString(nextStartCommand, nextAutoStart),
+    detected_start_command: nextAutoStart,
+    install_command: analysis.install_command,
+    detected_install_command: analysis.install_command,
+    package_manager: analysis.package_manager,
+    minecraft_version: bot.service_type === "minecraft_server" ? null : bot.minecraft_version,
+    detected_minecraft_version:
+      bot.service_type === "minecraft_server" ? null : bot.detected_minecraft_version,
+    status: "OFFLINE",
+    status_message: null,
+    expires_at: null,
+    updated_at: nowIso()
+  });
+
+  await assertStorageWithinLimit();
+  await assertUserStorageWithinLimit(owner);
+
+  let updatedBot = await getBotWithRuntime(botId, actor);
+
+  if (restartAfterRestore) {
+    updatedBot = await startBot(botId, actor);
+  }
+
+  return {
+    bot: updatedBot,
+    backup: toClientBackupRecord({
+      id: backup.id,
+      name: backup.name,
+      description: backup.description,
+      created_at: backup.created_at,
+      source_status: backup.source_status,
+      size_mb: backup.size_mb,
+      service_type: backup.service_type,
+      files_path: backup.files_path
+    }),
+    backups: await listBotBackups(botId, actor)
+  };
+}
+
+async function deleteBotBackup(botId, actor, backupId) {
+  getBotRow(botId, actor);
+  await readBotBackupRecord(botId, backupId);
+  await fs.rm(getBotBackupDirectory(botId, backupId), { recursive: true, force: true });
+
+  return {
+    ok: true,
+    backups: await listBotBackups(botId, actor)
+  };
 }
 
 async function recordBotFailure(bot, message, options = {}) {
@@ -974,6 +1247,7 @@ async function deleteBotById(botId, actor, options = {}) {
   const bot = getBotRow(botId, actor, options);
   await deleteProcess(bot.pm2_name);
   await removeBotLogs(bot.id);
+  await removePath(getBotBackupsDirectory(bot.id));
   await removePath(bot.project_path);
   getDb().prepare("DELETE FROM bots WHERE id = ?").run(botId);
   return { ok: true };
@@ -1418,6 +1692,10 @@ module.exports = {
   getBotWithRuntime,
   updateBot,
   deleteBotById,
+  listBotBackups,
+  createBotBackup,
+  restoreBotBackup,
+  deleteBotBackup,
   startBot,
   stopBot,
   restartBot,

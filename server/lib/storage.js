@@ -1,12 +1,13 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-const { BOTS_DIR, TMP_DIR, LOGS_DIR } = require("../config");
+const { BOTS_DIR, BACKUPS_DIR, TMP_DIR, LOGS_DIR } = require("../config");
 const { createHttpError, normalizeRelativePath } = require("./utils");
 
 async function ensureStorageDirectories() {
   await Promise.all([
     fs.mkdir(BOTS_DIR, { recursive: true }),
+    fs.mkdir(BACKUPS_DIR, { recursive: true }),
     fs.mkdir(TMP_DIR, { recursive: true }),
     fs.mkdir(LOGS_DIR, { recursive: true })
   ]);
