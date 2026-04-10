@@ -16,6 +16,8 @@ import {
 import logoUrl from "../assets/bytehost.png";
 import { ThemeToggle } from "../components/ThemeToggle";
 
+const PANEL_URL = "https://game.bytehost.online";
+
 const offerCards = [
   {
     icon: Bot,
@@ -107,9 +109,9 @@ export function LandingPage({ theme, onToggleTheme }) {
           <Link className="ghost-button" to="/register">
             Zaloz konto
           </Link>
-          <Link className="ghost-button" to="/login">
+          <a className="ghost-button" href={PANEL_URL}>
             Logowanie
-          </Link>
+          </a>
         </div>
       </header>
 
@@ -128,10 +130,10 @@ export function LandingPage({ theme, onToggleTheme }) {
             </p>
 
             <div className="marketing-hero-actions">
-              <Link className="primary-button" to="/login">
+              <a className="primary-button" href={PANEL_URL}>
                 <span>Wejdz do panelu</span>
                 <ArrowRight size={16} />
-              </Link>
+              </a>
               <Link className="ghost-button" to="/register">
                 Zaloz konto
               </Link>
@@ -268,7 +270,7 @@ export function LandingPage({ theme, onToggleTheme }) {
           <a href="#offer">Oferta</a>
           <a href="#workflow">Jak to dziala</a>
           <a href="#faq">FAQ</a>
-          <Link to="/login">Logowanie</Link>
+          <a href={PANEL_URL}>Logowanie</a>
         </div>
       </footer>
     </div>
