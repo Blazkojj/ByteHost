@@ -20,6 +20,9 @@ const {
   installDependencies,
   updateBotArchive,
   executeBotConsoleCommand,
+  searchMinecraftAddons,
+  listMinecraftAddonVersions,
+  installMinecraftAddon,
   getBotLogsPayload,
   getBotFiles,
   createBotFile,
@@ -125,6 +128,37 @@ router.get("/:id/logs", async (request, response, next) => {
 router.post("/:id/console", async (request, response, next) => {
   try {
     response.json(await executeBotConsoleCommand(request.params.id, request.user, request.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id/minecraft-addons", async (request, response, next) => {
+  try {
+    response.json(await searchMinecraftAddons(request.params.id, request.user, request.query));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id/minecraft-addons/:projectId/versions", async (request, response, next) => {
+  try {
+    response.json(
+      await listMinecraftAddonVersions(
+        request.params.id,
+        request.user,
+        request.params.projectId,
+        request.query
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/minecraft-addons/install", async (request, response, next) => {
+  try {
+    response.json(await installMinecraftAddon(request.params.id, request.user, request.body));
   } catch (error) {
     next(error);
   }

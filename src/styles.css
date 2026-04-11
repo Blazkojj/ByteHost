@@ -2040,6 +2040,395 @@ textarea:disabled {
   color: var(--text-soft);
 }
 
+/* Hosting panel refresh inspired by the provided game-panel screenshots. */
+:root[data-theme="dark"] {
+  --bg: #08080d;
+  --bg-top: #0a0a10;
+  --panel: #121218;
+  --panel-elevated: linear-gradient(180deg, #15151d 0%, #101016 100%);
+  --panel-soft: #17171f;
+  --panel-strong: #1a1a24;
+  --sidebar: #0b0b11;
+  --topbar: rgba(10, 10, 16, 0.92);
+  --border: #22232d;
+  --border-strong: #343747;
+  --text: #f2f4fb;
+  --text-soft: #c4c7d4;
+  --muted: #8a8f9f;
+  --accent: #3b82f6;
+  --accent-strong: #77b7ff;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --input-bg: #15151d;
+  --input-disabled-bg: #111118;
+  --button-ghost-bg: #191a24;
+  --button-ghost-border: #353748;
+  --list-item-bg: #17171f;
+  --info-bg: #151721;
+  --info-border: #282d3e;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 72% -12%, rgba(37, 99, 235, 0.14), transparent 28%),
+    radial-gradient(circle at 10% 18%, rgba(45, 212, 191, 0.08), transparent 26%),
+    linear-gradient(180deg, #09090f 0%, #050508 100%);
+}
+
+:root[data-theme="dark"] .app-shell {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+:root[data-theme="dark"] .sidebar {
+  gap: 18px;
+  padding: 20px 14px;
+  background: linear-gradient(180deg, #0d0e14 0%, #08090e 100%);
+}
+
+:root[data-theme="dark"] .panel-brand {
+  padding: 8px 10px 14px;
+}
+
+:root[data-theme="dark"] .panel-brand .brand-logo {
+  width: 52px;
+  height: 52px;
+}
+
+:root[data-theme="dark"] .panel-brand .brand-copy strong {
+  font-size: 21px;
+}
+
+:root[data-theme="dark"] .nav-stack {
+  gap: 8px;
+}
+
+:root[data-theme="dark"] .nav-link {
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+:root[data-theme="dark"] .nav-link:hover,
+:root[data-theme="dark"] .nav-link.active {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="dark"] .sidebar-card {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .topbar {
+  min-height: 74px;
+  padding: 18px 28px;
+}
+
+:root[data-theme="dark"] .content-shell {
+  padding: 28px 32px 44px;
+}
+
+:root[data-theme="dark"] .panel-card,
+:root[data-theme="dark"] .summary-tile,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .host-stat,
+:root[data-theme="dark"] .modal-card {
+  border-color: rgba(255, 255, 255, 0.055);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .panel-card {
+  border-radius: 16px;
+  background: rgba(18, 18, 25, 0.94);
+}
+
+:root[data-theme="dark"] .section-header {
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+:root[data-theme="dark"] .summary-tile {
+  min-height: 92px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: #15151d;
+}
+
+:root[data-theme="dark"] .summary-tile strong {
+  font-size: 17px;
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  border-radius: 8px;
+  background: #14141b;
+  border-color: #2e303b;
+}
+
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] select:focus,
+:root[data-theme="dark"] textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+:root[data-theme="dark"] .ghost-button,
+:root[data-theme="dark"] .primary-button,
+:root[data-theme="dark"] .danger-button,
+:root[data-theme="dark"] .tab-button,
+:root[data-theme="dark"] .icon-button {
+  border-radius: 8px;
+}
+
+:root[data-theme="dark"] .primary-button {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .danger-button {
+  background: rgba(185, 28, 28, 0.18);
+  border-color: rgba(248, 113, 113, 0.42);
+  color: #fecaca;
+}
+
+:root[data-theme="dark"] .tab-row {
+  gap: 8px;
+  justify-content: flex-start;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 10px;
+}
+
+:root[data-theme="dark"] .tab-button {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .tab-button.active {
+  color: #ffffff;
+  background: rgba(37, 99, 235, 0.22);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+:root[data-theme="dark"] .terminal-card {
+  border-radius: 14px;
+  background: #090a0f;
+  border-color: rgba(255, 255, 255, 0.055);
+}
+
+:root[data-theme="dark"] .terminal-card pre {
+  min-height: 360px;
+  background: #090a0f;
+  color: #e5e7eb;
+}
+
+:root[data-theme="dark"] .terminal-header {
+  background: #101117;
+}
+
+:root[data-theme="dark"] .file-row {
+  border-radius: 10px;
+  background: #181820;
+}
+
+.installer-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.installer-toolbar,
+.installer-controls,
+.installer-footer,
+.installer-pagination,
+.installer-row,
+.installer-modal-head {
+  display: flex;
+  align-items: center;
+}
+
+.installer-toolbar,
+.installer-footer {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.installer-toolbar h3 {
+  margin: 4px 0 6px;
+}
+
+.installer-toolbar small,
+.installer-footer {
+  color: var(--muted);
+}
+
+.installer-controls {
+  gap: 12px;
+}
+
+.installer-search {
+  flex: 1;
+  min-width: 260px;
+  position: relative;
+}
+
+.installer-search svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.installer-search input {
+  padding-left: 40px;
+}
+
+.installer-controls select {
+  width: min(220px, 100%);
+}
+
+.installer-version-toggle {
+  width: fit-content;
+  padding-top: 0;
+}
+
+.installer-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border);
+}
+
+.installer-row {
+  width: 100%;
+  min-height: 64px;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--list-item-bg);
+  color: inherit;
+  text-align: left;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.installer-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.42);
+  background: var(--panel-strong);
+}
+
+.installer-icon,
+.installer-modal-icon {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(59, 130, 246, 0.14));
+  color: var(--text);
+  font-weight: 800;
+}
+
+.installer-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+}
+
+.installer-modal-icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+}
+
+.installer-icon img,
+.installer-modal-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.installer-row-copy {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.installer-row-copy strong,
+.installer-row-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installer-row-copy small,
+.installer-row-meta {
+  color: var(--muted);
+}
+
+.installer-row-meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.installer-pagination {
+  gap: 8px;
+}
+
+.installer-modal-backdrop {
+  backdrop-filter: blur(6px);
+}
+
+.installer-modal {
+  position: relative;
+  width: min(740px, 100%);
+  display: grid;
+  gap: 22px;
+  border-radius: 12px;
+}
+
+.installer-modal-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+}
+
+.installer-modal-head {
+  gap: 20px;
+  padding-right: 44px;
+}
+
+.installer-modal-head h3 {
+  margin: 4px 0 10px;
+  font-size: 26px;
+}
+
+.installer-modal-head p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.installer-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  color: var(--text-soft);
+}
+
+.installer-meta-grid strong {
+  font-family: "Manrope", sans-serif;
+  color: var(--muted);
+}
+
 .reveal-up {
   opacity: 0;
   animation: fadeUp 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;

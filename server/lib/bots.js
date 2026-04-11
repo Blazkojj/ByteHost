@@ -1,5 +1,6 @@
 const fs = require("fs/promises");
 const path = require("path");
+const extractZip = require("extract-zip");
 
 const {
   DEFAULT_BOT_LIMITS,
@@ -30,6 +31,16 @@ const {
 } = require("./fivem");
 const { getBotLogs, appendBotLog, removeBotLogs, readLogTail } = require("./logs");
 const { downloadMinecraftServerJar } = require("./minecraft");
+const {
+  downloadModrinthFile,
+  getInstallProfile,
+  getInstallProfileKey,
+  getModrinthVersion,
+  getPrimaryFile,
+  getTargetDirectory,
+  listModrinthProjectVersions,
+  searchModrinthProjects
+} = require("./modrinth");
 const { mergeBotWithRuntime, deriveBotRuntime } = require("./runtime");
 const {
   ensureBotDirectory,
@@ -2434,6 +2445,250 @@ async function getBotLogsPayload(botId, actor) {
   };
 }
 
+function assertMinecraftAddonBot(bot) {
+  if (bot.service_type !== "minecraft_server") {
+    throw createHttpError(400, "Instalator dodatkow jest dostepny tylko dla serwerow Minecraft.");
+  }
+}
+
+function resolveMinecraftAddonGameVersion(bot, source = {}) {
+  if (coerceBoolean(source.all_versions, false)) {
+    return null;
+  }
+
+  return coerceNullableString(
+    source.game_version,
+    bot.minecraft_version || bot.detected_minecraft_version || null
+  );
+}
+
+function sanitizeDownloadedFileName(value) {
+  const baseName = path.posix
+    .basename(String(value || "").replace(/\\/g, "/"))
+    .replace(/[<>:"|?*\u0000-\u001f]/g, "-")
+    .trim();
+
+  if (!baseName || baseName === "." || baseName === "..") {
+    throw createHttpError(400, "Modrinth zwrocil nieprawidlowa nazwe pliku.");
+  }
+
+  return baseName;
+}
+
+async function copyModpackOverrideDirectory(bot, sourceDirectory, relativePrefix = "") {
+  let entries = [];
+
+  try {
+    entries = await fs.readdir(sourceDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return [];
+    }
+
+    throw error;
+  }
+
+  const copied = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(sourceDirectory, entry.name);
+    const relativePath = normalizeRelativePath(path.posix.join(relativePrefix, entry.name));
+
+    if (!relativePath) {
+      continue;
+    }
+
+    if (entry.isDirectory()) {
+      copied.push(...(await copyModpackOverrideDirectory(bot, entryPath, relativePath)));
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    const targetPath = resolveBotPath(bot.id, relativePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(entryPath, targetPath);
+    copied.push(relativePath);
+  }
+
+  return copied;
+}
+
+async function installModrinthModpack(bot, buffer, fileName) {
+  const tempDirectory = path.join(TMP_DIR, `modrinth-pack-${bot.id}-${Date.now()}`);
+  const archivePath = path.join(tempDirectory, fileName);
+  const installedFiles = [];
+
+  try {
+    await fs.mkdir(tempDirectory, { recursive: true });
+    await fs.writeFile(archivePath, buffer);
+    await extractZip(archivePath, { dir: tempDirectory });
+
+    const indexPath = path.join(tempDirectory, "modrinth.index.json");
+    const index = JSON.parse(await fs.readFile(indexPath, "utf8"));
+    const packFiles = Array.isArray(index.files) ? index.files : [];
+
+    installedFiles.push(
+      ...(await copyModpackOverrideDirectory(bot, path.join(tempDirectory, "overrides"))),
+      ...(await copyModpackOverrideDirectory(bot, path.join(tempDirectory, "server-overrides")))
+    );
+
+    for (const packFile of packFiles) {
+      if (packFile?.env?.server === "unsupported") {
+        continue;
+      }
+
+      const relativePath = normalizeRelativePath(packFile.path || "");
+      const downloadUrl = packFile.downloads?.[0];
+
+      if (!relativePath || !downloadUrl) {
+        continue;
+      }
+
+      const targetPath = resolveBotPath(bot.id, relativePath);
+      const tempPath = `${targetPath}.download-${Date.now()}`;
+      const fileBuffer = await downloadModrinthFile({
+        url: downloadUrl,
+        filename: path.posix.basename(relativePath),
+        hashes: packFile.hashes || {}
+      });
+
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.writeFile(tempPath, fileBuffer);
+      await fs.rename(tempPath, targetPath);
+      installedFiles.push(relativePath);
+    }
+
+    return {
+      name: fileName,
+      path: "/",
+      size: buffer.length,
+      installed_files: installedFiles.length
+    };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw createHttpError(400, "Nie udalo sie odczytac modrinth.index.json z paczki .mrpack.");
+    }
+
+    throw error;
+  } finally {
+    await fs.rm(tempDirectory, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function searchMinecraftAddons(botId, actor, query = {}) {
+  const bot = getBotRow(botId, actor);
+  assertMinecraftAddonBot(bot);
+
+  return searchModrinthProjects({
+    type: query.type,
+    query: query.query,
+    sort: query.sort,
+    page: query.page,
+    limit: query.limit || 10,
+    gameVersion: resolveMinecraftAddonGameVersion(bot, query)
+  });
+}
+
+async function listMinecraftAddonVersions(botId, actor, projectId, query = {}) {
+  const bot = getBotRow(botId, actor);
+  assertMinecraftAddonBot(bot);
+
+  return listModrinthProjectVersions(projectId, {
+    type: query.type,
+    loader: query.loader,
+    gameVersion: resolveMinecraftAddonGameVersion(bot, query)
+  });
+}
+
+async function installMinecraftAddon(botId, actor, payload = {}) {
+  const bot = getBotRow(botId, actor);
+  const owner = getBotOwner(bot);
+  assertMinecraftAddonBot(bot);
+
+  const type = getInstallProfileKey(payload.type);
+  const profile = getInstallProfile(type);
+  let version = null;
+
+  if (payload.version_id) {
+    version = await getModrinthVersion(payload.version_id);
+  } else if (payload.project_id) {
+    const versionsPayload = await listModrinthProjectVersions(payload.project_id, {
+      loader: payload.loader,
+      gameVersion: resolveMinecraftAddonGameVersion(bot, payload)
+    });
+    version = versionsPayload.versions[0]
+      ? await getModrinthVersion(versionsPayload.versions[0].id)
+      : null;
+  }
+
+  if (!version) {
+    throw createHttpError(400, "Wybierz projekt albo konkretna wersje dodatku.");
+  }
+
+  const primaryFile = getPrimaryFile(version);
+  if (!primaryFile?.url) {
+    throw createHttpError(400, "Wybrana wersja nie ma pliku do pobrania.");
+  }
+
+  const fileName = sanitizeDownloadedFileName(primaryFile.filename);
+  const targetDirectory = getTargetDirectory(type);
+  const targetRelativePath = normalizeRelativePath(path.posix.join(targetDirectory, fileName));
+  const targetPath = resolveBotPath(bot.id, targetRelativePath);
+  const tempPath = `${targetPath}.download-${Date.now()}`;
+  const buffer = await downloadModrinthFile(primaryFile);
+  let installedFile = null;
+
+  if (type === "modpack" && fileName.toLowerCase().endsWith(".mrpack")) {
+    installedFile = await installModrinthModpack(bot, buffer, fileName);
+  } else {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(tempPath, buffer);
+    await fs.rename(tempPath, targetPath);
+    installedFile = {
+      name: fileName,
+      path: targetRelativePath,
+      size: primaryFile.size || buffer.length,
+      installed_files: 1
+    };
+  }
+
+  await assertStorageWithinLimit();
+  await assertUserStorageWithinLimit(owner);
+
+  const warning =
+    type === "modpack" && fileName.toLowerCase().endsWith(".mrpack")
+      ? "Modpack .mrpack zostal rozpakowany do katalogu serwera. Upewnij sie, ze sam serwer ma zgodny loader i wersje Minecraft."
+      : type === "modpack"
+        ? "Modpack zostal pobrany do folderu modpacks/. Jesli to niestandardowy format, moze wymagac recznego uruchomienia."
+      : type === "mod"
+        ? "Mod zostal dodany do mods/. Upewnij sie, ze serwer dziala na zgodnym loaderze, np. Fabric, Forge, NeoForge albo Quilt."
+      : type === "plugin"
+        ? "Plugin zostal dodany do plugins/. Upewnij sie, ze serwer dziala na Paper/Spigot/Purpur albo innym zgodnym silniku."
+      : type === "datapack"
+        ? "Datapack zostal dodany do world/datapacks/. Po instalacji zwykle trzeba przeladowac swiat albo zrestartowac serwer."
+      : null;
+
+  return {
+    ok: true,
+    type,
+    label: profile.label,
+    version: {
+      id: version.id,
+      name: version.name,
+      version_number: version.version_number,
+      game_versions: version.game_versions || [],
+      loaders: version.loaders || []
+    },
+    file: installedFile,
+    target_directory: targetDirectory,
+    warning,
+    bot: await getBotWithRuntime(botId, actor)
+  };
+}
+
 async function getBotFiles(botId, actor, relativePath = "") {
   getBotRow(botId, actor);
   return readFileEntry(botId, relativePath);
@@ -2491,6 +2746,9 @@ module.exports = {
   installDependencies,
   updateBotArchive,
   executeBotConsoleCommand,
+  searchMinecraftAddons,
+  listMinecraftAddonVersions,
+  installMinecraftAddon,
   getBotLogsPayload,
   getBotFiles,
   createBotFile,

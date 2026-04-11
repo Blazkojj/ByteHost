@@ -15,6 +15,7 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { MinecraftInstaller } from "./MinecraftInstaller";
 import {
   formatDate,
   formatDuration,
@@ -168,6 +169,12 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       openPath("");
     }
   }, [activeTab, botId]);
+
+  useEffect(() => {
+    if (activeTab === "installer" && bot && !isMinecraft) {
+      setActiveTab("overview");
+    }
+  }, [activeTab, bot, isMinecraft]);
 
   useEffect(() => {
     if (activeTab !== "backups") {
@@ -640,6 +647,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     { id: "overview", label: "Przeglad" },
     { id: "logs", label: "Logi" },
     { id: "console", label: "Konsola" },
+    ...(isMinecraft ? [{ id: "installer", label: "Instalator" }] : []),
     { id: "backups", label: "Backupy" },
     { id: "files", label: "Pliki" },
     { id: "env", label: ".env" }
@@ -1278,6 +1286,20 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               </div>
             </div>
           )
+        ) : null}
+
+        {activeTab === "installer" && isMinecraft ? (
+          <MinecraftInstaller
+            botId={botId}
+            bot={bot}
+            onInstalled={async (result) => {
+              if (result?.bot) {
+                setBot(result.bot);
+                setSettings(buildSettingsState(result.bot));
+              }
+              await onRefreshAll();
+            }}
+          />
         ) : null}
 
         {activeTab === "backups" ? (

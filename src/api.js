@@ -96,6 +96,31 @@ export const api = {
   installBot: (id) => request(`/api/bots/${id}/install`, { method: "POST" }),
   runConsoleCommand: (id, payload) =>
     request(`/api/bots/${id}/console`, { method: "POST", body: JSON.stringify(payload) }),
+  searchMinecraftAddons: (id, params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        query.set(key, String(value));
+      }
+    });
+    return request(`/api/bots/${id}/minecraft-addons?${query.toString()}`);
+  },
+  getMinecraftAddonVersions: (id, projectId, params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        query.set(key, String(value));
+      }
+    });
+    return request(
+      `/api/bots/${id}/minecraft-addons/${encodeURIComponent(projectId)}/versions?${query.toString()}`
+    );
+  },
+  installMinecraftAddon: (id, payload) =>
+    request(`/api/bots/${id}/minecraft-addons/install`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   getLogs: (id) => request(`/api/bots/${id}/logs`),
   getFiles: (id, relativePath = "") =>
     request(`/api/bots/${id}/files?path=${encodeURIComponent(relativePath)}`),
