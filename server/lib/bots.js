@@ -30,7 +30,7 @@ const {
   writeFiveMServerConfig
 } = require("./fivem");
 const { getBotLogs, appendBotLog, removeBotLogs, readLogTail } = require("./logs");
-const { downloadMinecraftServerJar } = require("./minecraft");
+const { downloadMinecraftServerJar, sanitizeMinecraftServerType } = require("./minecraft");
 const {
   downloadModrinthFile,
   getInstallProfile,
@@ -396,9 +396,9 @@ function createBotRecord(record) {
           expires_at, auto_restart, restart_delay, max_restarts, restart_count, last_restart_at,
           stability_status, ram_limit_mb, cpu_limit_percent, accept_eula, public_host,
           public_port, minecraft_version, detected_minecraft_version, minecraft_max_players,
-          fivem_artifact_build, fivem_license_key, fivem_max_clients, fivem_project_name,
-          fivem_tags, fivem_locale, fivem_onesync_enabled, archive_name, pm2_name, created_at,
-          updated_at, background_url, subdomain
+          minecraft_server_type, fivem_artifact_build, fivem_license_key, fivem_max_clients,
+          fivem_project_name, fivem_tags, fivem_locale, fivem_onesync_enabled, archive_name,
+          pm2_name, created_at, updated_at, background_url, subdomain
         )
         VALUES (
           @id, @owner_user_id, @service_type, @name, @slug, @description, @language,
@@ -407,10 +407,10 @@ function createBotRecord(record) {
           @project_path, @status, @status_message, @expires_at, @auto_restart, @restart_delay,
           @max_restarts, @restart_count, @last_restart_at, @stability_status, @ram_limit_mb,
           @cpu_limit_percent, @accept_eula, @public_host, @public_port, @minecraft_version,
-          @detected_minecraft_version, @minecraft_max_players, @fivem_artifact_build,
-          @fivem_license_key, @fivem_max_clients, @fivem_project_name, @fivem_tags,
-          @fivem_locale, @fivem_onesync_enabled, @archive_name, @pm2_name, @created_at,
-          @updated_at, @background_url, @subdomain
+          @detected_minecraft_version, @minecraft_max_players, @minecraft_server_type,
+          @fivem_artifact_build, @fivem_license_key, @fivem_max_clients, @fivem_project_name,
+          @fivem_tags, @fivem_locale, @fivem_onesync_enabled, @archive_name, @pm2_name,
+          @created_at, @updated_at, @background_url, @subdomain
         )
       `
     )
@@ -984,7 +984,12 @@ async function ensureMinecraftEula(projectPath) {
   );
 }
 
-async function downloadOfficialMinecraftServer(projectPath, versionId, currentEntryFile = "") {
+async function downloadOfficialMinecraftServer(
+  projectPath,
+  versionId,
+  currentEntryFile = "",
+  serverType = "vanilla"
+) {
   const normalizedCurrentEntry = normalizeRelativePath(currentEntryFile || "");
 
   if (
@@ -995,7 +1000,9 @@ async function downloadOfficialMinecraftServer(projectPath, versionId, currentEn
     await fs.rm(path.join(projectPath, normalizedCurrentEntry), { force: true });
   }
 
-  return downloadMinecraftServerJar(projectPath, versionId, "server.jar");
+  return downloadMinecraftServerJar(projectPath, versionId, "server.jar", {
+    serverType
+  });
 }
 
 async function ensureJavaRuntimeAvailable(projectPath) {
@@ -1442,6 +1449,10 @@ async function createBot(actor, payload, artifactFile) {
     serviceType === "minecraft_server"
       ? normalizeMinecraftVersion(payload.minecraft_version, null)
       : null;
+  const requestedMinecraftServerType =
+    serviceType === "minecraft_server"
+      ? sanitizeMinecraftServerType(payload.minecraft_server_type, "vanilla")
+      : null;
   const requestedMinecraftMaxPlayers =
     serviceType === "minecraft_server"
       ? sanitizeMinecraftMaxPlayers(payload.minecraft_max_players, 20)
@@ -1541,9 +1552,15 @@ async function createBot(actor, payload, artifactFile) {
         acceptEula: true,
         name: payload.name,
         public_port: resolvedPublicPort,
-        minecraft_max_players: requestedMinecraftMaxPlayers
+        minecraft_max_players: requestedMinecraftMaxPlayers,
+        minecraft_server_type: requestedMinecraftServerType
       });
-      const download = await downloadOfficialMinecraftServer(botDirectory, requestedMinecraftVersion);
+      const download = await downloadOfficialMinecraftServer(
+        botDirectory,
+        requestedMinecraftVersion,
+        "",
+        requestedMinecraftServerType
+      );
       resolvedMinecraftVersion = download.minecraft_version;
     }
 
@@ -1611,6 +1628,8 @@ async function createBot(actor, payload, artifactFile) {
           : null,
       detected_minecraft_version:
         serviceType === "minecraft_server" ? resolvedMinecraftVersion : null,
+      minecraft_server_type:
+        serviceType === "minecraft_server" ? requestedMinecraftServerType : null,
       minecraft_max_players:
         serviceType === "minecraft_server" ? requestedMinecraftMaxPlayers : null,
       fivem_artifact_build: serviceType === "fivem_server" ? resolvedFiveMArtifactBuild : null,
@@ -1679,6 +1698,12 @@ async function updateBot(botId, actor, payload) {
       ? payload.minecraft_version !== undefined
         ? normalizeMinecraftVersion(payload.minecraft_version, null)
         : normalizeMinecraftVersion(existingBot.minecraft_version, null)
+      : null;
+  const nextMinecraftServerType =
+    existingBot.service_type === "minecraft_server"
+      ? payload.minecraft_server_type !== undefined
+        ? sanitizeMinecraftServerType(payload.minecraft_server_type, existingBot.minecraft_server_type || "vanilla")
+        : sanitizeMinecraftServerType(existingBot.minecraft_server_type, "vanilla")
       : null;
   const nextMinecraftMaxPlayers =
     existingBot.service_type === "minecraft_server"
@@ -1752,15 +1777,19 @@ async function updateBot(botId, actor, payload) {
     const entryExists = selectedEntryFile
       ? await fileExists(path.join(existingBot.project_path, selectedEntryFile))
       : false;
+    const versionForDownload = nextMinecraftVersion || nextDetectedMinecraftVersion;
     const shouldDownloadSelectedVersion =
-      Boolean(nextMinecraftVersion) &&
-      (payload.minecraft_version !== undefined || !entryExists);
+      Boolean(versionForDownload) &&
+      (payload.minecraft_version !== undefined ||
+        payload.minecraft_server_type !== undefined ||
+        !entryExists);
 
     if (shouldDownloadSelectedVersion) {
       const download = await downloadOfficialMinecraftServer(
         existingBot.project_path,
-        nextMinecraftVersion,
-        resolveEffectiveEntryFile(existingBot)
+        versionForDownload,
+        resolveEffectiveEntryFile(existingBot),
+        nextMinecraftServerType
       );
 
       nextDetectedEntryFile = download.entry_file;
@@ -1875,6 +1904,10 @@ async function updateBot(botId, actor, payload) {
       existingBot.service_type === "minecraft_server"
         ? nextDetectedMinecraftVersion
         : existingBot.detected_minecraft_version,
+    minecraft_server_type:
+      existingBot.service_type === "minecraft_server"
+        ? nextMinecraftServerType
+        : existingBot.minecraft_server_type,
     minecraft_max_players:
       existingBot.service_type === "minecraft_server"
         ? nextMinecraftMaxPlayers
@@ -1948,6 +1981,7 @@ async function updateBot(botId, actor, payload) {
       payload.max_restarts !== undefined ||
       payload.ram_limit_mb !== undefined ||
       payload.minecraft_version !== undefined ||
+      payload.minecraft_server_type !== undefined ||
       payload.minecraft_max_players !== undefined ||
       payload.public_port !== undefined ||
       payload.public_host !== undefined ||
@@ -2046,7 +2080,8 @@ async function startBot(botId, actor) {
         const download = await downloadOfficialMinecraftServer(
           bot.project_path,
           bot.minecraft_version || bot.detected_minecraft_version || null,
-          entryFile
+          entryFile,
+          bot.minecraft_server_type || "vanilla"
         );
 
         const downloadedEntryFile = download.entry_file;
@@ -2058,6 +2093,7 @@ async function startBot(botId, actor) {
           detected_entry_file: downloadedEntryFile,
           detected_start_command: nextDetectedStartCommand,
           detected_minecraft_version: download.minecraft_version,
+          minecraft_server_type: download.minecraft_server_type || bot.minecraft_server_type || "vanilla",
           updated_at: nowIso()
         };
 
@@ -2300,7 +2336,7 @@ async function installDependencies(botId, actor) {
         stdout: "",
         stderr: "",
         message:
-          "Serwer Minecraft nie wymaga instalacji zaleznosci przez panel. Wgraj plik JAR albo gotowy pakiet serwera."
+          "Serwer Minecraft pobiera JAR przez wybor wersji i silnika (Vanilla/Paper/Folia/Fabric/Purpur). Zmien wersje albo silnik w ustawieniach i zapisz."
       }
     };
   }
@@ -2554,6 +2590,8 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       minecraft_version: bot.service_type === "minecraft_server" ? bot.minecraft_version : null,
       detected_minecraft_version:
         bot.service_type === "minecraft_server" ? bot.detected_minecraft_version : null,
+      minecraft_server_type:
+        bot.service_type === "minecraft_server" ? bot.minecraft_server_type || "vanilla" : null,
       fivem_artifact_build:
         bot.service_type === "fivem_server" ? nextFiveMArtifactBuild : null,
       archive_name: artifactFile.originalname || bot.archive_name,

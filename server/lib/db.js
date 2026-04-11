@@ -14,6 +14,7 @@ function mapBotRow(row) {
     ...row,
     auto_restart: Boolean(row.auto_restart),
     accept_eula: Boolean(row.accept_eula),
+    minecraft_server_type: row.minecraft_server_type || "vanilla",
     minecraft_max_players:
       row.minecraft_max_players === null || row.minecraft_max_players === undefined
         ? null
@@ -158,6 +159,7 @@ function initDatabase() {
   ensureColumn(database, "bots", "public_port", "INTEGER");
   ensureColumn(database, "bots", "minecraft_version", "TEXT");
   ensureColumn(database, "bots", "detected_minecraft_version", "TEXT");
+  ensureColumn(database, "bots", "minecraft_server_type", "TEXT NOT NULL DEFAULT 'vanilla'");
   ensureColumn(database, "bots", "minecraft_max_players", "INTEGER");
   ensureColumn(database, "bots", "fivem_artifact_build", "TEXT");
   ensureColumn(database, "bots", "fivem_license_key", "TEXT");

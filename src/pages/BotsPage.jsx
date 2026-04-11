@@ -21,6 +21,15 @@ import {
   serviceTypeLabel
 } from "../utils";
 
+const FALLBACK_MINECRAFT_SERVER_TYPES = [
+  { id: "vanilla", label: "Vanilla", hint: "Oficjalny server.jar od Mojang" },
+  { id: "paper", label: "Paper", hint: "Pluginy Bukkit/Spigot/Paper" },
+  { id: "bukkit", label: "Bukkit / Spigot compatible", hint: "Pobiera Paper pod pluginy" },
+  { id: "purpur", label: "Purpur", hint: "Fork Paper" },
+  { id: "folia", label: "Folia", hint: "Eksperymentalny fork Paper" },
+  { id: "fabric", label: "Fabric", hint: "Mody Fabric w mods/" }
+];
+
 function CreateBotPanel({ open, system, user, onClose, onCreated }) {
   const [form, setForm] = useState({
     service_type: "discord_bot",
@@ -28,6 +37,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     description: "",
     language: "",
     minecraft_version: "",
+    minecraft_server_type: "vanilla",
     minecraft_max_players: 20,
     fivem_license_key: "",
     fivem_max_clients: 48,
@@ -54,6 +64,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
   const [error, setError] = useState("");
   const [minecraftVersions, setMinecraftVersions] = useState([]);
   const [latestMinecraftRelease, setLatestMinecraftRelease] = useState("");
+  const [minecraftServerTypes, setMinecraftServerTypes] = useState(FALLBACK_MINECRAFT_SERVER_TYPES);
 
   const isMinecraft = form.service_type === "minecraft_server";
   const isFiveM = form.service_type === "fivem_server";
@@ -75,11 +86,13 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         if (!cancelled) {
           setMinecraftVersions(payload.versions || []);
           setLatestMinecraftRelease(payload.latest_release || "");
+          setMinecraftServerTypes(payload.server_types?.length ? payload.server_types : FALLBACK_MINECRAFT_SERVER_TYPES);
         }
       } catch (_error) {
         if (!cancelled) {
           setMinecraftVersions([]);
           setLatestMinecraftRelease("");
+          setMinecraftServerTypes(FALLBACK_MINECRAFT_SERVER_TYPES);
         }
       }
     }
@@ -202,6 +215,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                               ? ""
                               : currentStartCommand,
                           minecraft_version: current.minecraft_version || "",
+                          minecraft_server_type: current.minecraft_server_type || "vanilla",
                           minecraft_max_players: current.minecraft_max_players || 20,
                           install_on_create: false,
                           public_port: current.public_port || 25565
@@ -218,6 +232,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                               ? currentEntryFile
                               : "run.sh",
                           minecraft_version: "",
+                          minecraft_server_type: "vanilla",
                           minecraft_max_players: 20,
                           install_on_create: false,
                           public_port: current.public_port || 30120
@@ -230,6 +245,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                           entry_file: nextGamePreset.entryFile,
                           start_command: nextGamePreset.startCommand,
                           minecraft_version: "",
+                          minecraft_server_type: "vanilla",
                           minecraft_max_players: 20,
                           install_on_create: false,
                           public_port: current.public_port || nextGamePreset.defaultPort
@@ -245,6 +261,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                             ? ""
                             : current.language,
                         minecraft_version: "",
+                        minecraft_server_type: "vanilla",
                         minecraft_max_players: 20,
                         entry_file:
                           current.entry_file === "server.jar" ||
@@ -329,6 +346,28 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
           </label>
           {isMinecraft ? (
             <>
+              <label>
+                Silnik serwera
+                <select
+                  value={form.minecraft_server_type}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      minecraft_server_type: event.target.value
+                    }))
+                  }
+                >
+                  {minecraftServerTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  {minecraftServerTypes.find((type) => type.id === form.minecraft_server_type)?.hint ||
+                    "ByteHost pobierze odpowiedni server.jar."}
+                </small>
+              </label>
               <label>
                 Wersja Minecraft
                 <input

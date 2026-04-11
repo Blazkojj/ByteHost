@@ -51,6 +51,19 @@ function attachOptionalAuth(request, _response, next) {
   }
 }
 
+function authenticateToken(token) {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    return getPublicUserById(payload.sub) || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
 function requireAuth(request, _response, next) {
   if (!request.user) {
     next(createHttpError(401, "Zaloguj sie, aby kontynuowac."));
@@ -97,6 +110,7 @@ async function loginWithPassword(email, password) {
 
 module.exports = {
   attachOptionalAuth,
+  authenticateToken,
   requireAuth,
   requireAdmin,
   loginWithPassword,

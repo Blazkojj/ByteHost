@@ -64,6 +64,23 @@ const ACTION_SUCCESS_MESSAGES = {
   console: "Komenda zostala wyslana."
 };
 
+const TERMINAL_STATUS_LABELS = {
+  idle: "Offline",
+  connecting: "Laczenie...",
+  online: "Live",
+  polling: "Fallback",
+  error: "Blad"
+};
+
+const FALLBACK_MINECRAFT_SERVER_TYPES = [
+  { id: "vanilla", label: "Vanilla", hint: "Oficjalny server.jar od Mojang" },
+  { id: "paper", label: "Paper", hint: "Pluginy Bukkit/Spigot/Paper" },
+  { id: "bukkit", label: "Bukkit / Spigot compatible", hint: "Pobiera Paper pod pluginy" },
+  { id: "purpur", label: "Purpur", hint: "Fork Paper" },
+  { id: "folia", label: "Folia", hint: "Eksperymentalny fork Paper" },
+  { id: "fabric", label: "Fabric", hint: "Mody Fabric w mods/" }
+];
+
 function terminalLineTone(line) {
   const normalized = String(line || "").toLowerCase();
 
@@ -121,6 +138,7 @@ function buildSettingsState(service) {
     subdomain: service.subdomain || "",
     language: service.language || "",
     minecraft_version: service.minecraft_version || "",
+    minecraft_server_type: service.minecraft_server_type || "vanilla",
     minecraft_max_players: service.minecraft_max_players ?? 20,
     fivem_license_key: service.fivem_license_key || "",
     fivem_max_clients: service.fivem_max_clients ?? 48,
@@ -148,6 +166,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   const uploadInputRef = useRef(null);
   const archiveUpdateInputRef = useRef(null);
   const liveTerminalRef = useRef(null);
+  const terminalSocketRef = useRef(null);
 
   const [bot, setBot] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
@@ -163,9 +182,11 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   const [actionState, setActionState] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [terminalStatus, setTerminalStatus] = useState("idle");
   const [installResult, setInstallResult] = useState(null);
   const [minecraftVersions, setMinecraftVersions] = useState([]);
   const [latestMinecraftRelease, setLatestMinecraftRelease] = useState("");
+  const [minecraftServerTypes, setMinecraftServerTypes] = useState(FALLBACK_MINECRAFT_SERVER_TYPES);
   const [uploadTargetPath, setUploadTargetPath] = useState("");
 
   const serviceType = bot?.service_type || "";
@@ -201,10 +222,15 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       (isGameService && (activeTab === "console" || activeTab === "players"));
 
     if (!shouldStreamLogs) {
+      setTerminalStatus("idle");
       return undefined;
     }
 
     let cancelled = false;
+    let fallbackInterval = null;
+    const socket = new WebSocket(api.getTerminalSocketUrl(botId));
+    terminalSocketRef.current = socket;
+    setTerminalStatus("connecting");
 
     async function loadLogs() {
       try {
@@ -219,12 +245,78 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       }
     }
 
-    loadLogs();
-    const interval = window.setInterval(loadLogs, 3000);
+    function startPollingFallback() {
+      if (cancelled || fallbackInterval) {
+        return;
+      }
+
+      setTerminalStatus("polling");
+      loadLogs();
+      fallbackInterval = window.setInterval(loadLogs, 3000);
+    }
+
+    socket.addEventListener("open", () => {
+      if (!cancelled) {
+        setTerminalStatus("online");
+      }
+    });
+
+    socket.addEventListener("message", (event) => {
+      let payload = null;
+
+      try {
+        payload = JSON.parse(event.data);
+      } catch (_error) {
+        return;
+      }
+
+      if (payload.type === "logs" && payload.logs) {
+        setLogs(payload.logs);
+        return;
+      }
+
+      if (payload.type === "command-result") {
+        setConsoleResult(payload.result);
+        setMessage("Polecenie zostalo wyslane do dzialajacego serwera.");
+        setActionState("");
+        return;
+      }
+
+      if (payload.type === "command-error" || payload.type === "error") {
+        setMessage("");
+        setActionState("");
+        setError(payload.message || "Terminal zwrocil blad.");
+      }
+    });
+
+    socket.addEventListener("error", () => {
+      if (!cancelled) {
+        setTerminalStatus("error");
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      if (terminalSocketRef.current === socket) {
+        terminalSocketRef.current = null;
+      }
+
+      if (!cancelled) {
+        startPollingFallback();
+      }
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      setTerminalStatus("idle");
+      if (fallbackInterval) {
+        window.clearInterval(fallbackInterval);
+      }
+
+      if (terminalSocketRef.current === socket) {
+        terminalSocketRef.current = null;
+      }
+
+      socket.close();
     };
   }, [activeTab, botId, isGameService]);
 
@@ -301,11 +393,13 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
         if (!cancelled) {
           setMinecraftVersions(payload.versions || []);
           setLatestMinecraftRelease(payload.latest_release || "");
+          setMinecraftServerTypes(payload.server_types?.length ? payload.server_types : FALLBACK_MINECRAFT_SERVER_TYPES);
         }
       } catch (_error) {
         if (!cancelled) {
           setMinecraftVersions([]);
           setLatestMinecraftRelease("");
+          setMinecraftServerTypes(FALLBACK_MINECRAFT_SERVER_TYPES);
         }
       }
     }
@@ -560,14 +654,59 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   }
 
   async function sendConsoleText(command) {
+    const normalizedCommand = String(command || "").trim();
+    if (!normalizedCommand) {
+      setError("Podaj polecenie do wyslania.");
+      return;
+    }
+
     setActionState("console");
     setMessage(ACTION_PROGRESS_MESSAGES.console);
     setError("");
 
+    const terminalSocket = terminalSocketRef.current;
+
+    if (
+      isGameService &&
+      terminalSocket &&
+      terminalSocket.readyState === WebSocket.OPEN
+    ) {
+      try {
+        terminalSocket.send(
+          JSON.stringify({
+            type: "command",
+            mode: "server",
+            command: normalizedCommand
+          })
+        );
+      } catch (socketError) {
+        setMessage("");
+        setActionState("");
+        setError(socketError.message || "Nie udalo sie wyslac komendy do live terminala.");
+        return;
+      }
+
+      setLogs((current) => ({
+        ...current,
+        combined: [current.combined?.trimEnd(), `[console] > ${normalizedCommand}`]
+          .filter(Boolean)
+          .join("\n")
+      }));
+      setConsoleResult({
+        mode: "server",
+        cwd: bot?.project_path,
+        command: normalizedCommand,
+        sent: true,
+        sent_at: new Date().toISOString()
+      });
+      setConsoleCommand("");
+      return;
+    }
+
     try {
       const result = await api.runConsoleCommand(botId, {
         mode: isGameService ? "server" : "shell",
-        command
+        command: normalizedCommand
       });
 
       setConsoleResult(result);
@@ -834,8 +973,18 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               hint={
                 bot.detected_minecraft_version
                   ? `Pobrana: ${bot.detected_minecraft_version}`
-                  : "Ustaw wersje, aby panel pobral oficjalny server.jar"
+                  : "Ustaw wersje, aby panel pobral server.jar"
               }
+            />
+          ) : null}
+          {isMinecraft ? (
+            <SummaryTile
+              label="Silnik"
+              value={
+                minecraftServerTypes.find((type) => type.id === (bot.minecraft_server_type || "vanilla"))
+                  ?.label || bot.minecraft_server_type || "Vanilla"
+              }
+              hint="Vanilla, Paper, Bukkit/Spigot compatible, Purpur, Folia albo Fabric"
             />
           ) : null}
           {isFiveM ? (
@@ -1057,6 +1206,28 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             </label>
             {isMinecraft ? (
               <>
+                <label>
+                  Silnik serwera
+                  <select
+                    value={settings.minecraft_server_type}
+                    onChange={(event) =>
+                      setSettings((current) => ({
+                        ...current,
+                        minecraft_server_type: event.target.value
+                      }))
+                    }
+                  >
+                    {minecraftServerTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    {minecraftServerTypes.find((type) => type.id === settings.minecraft_server_type)?.hint ||
+                      "ByteHost pobierze odpowiedni server.jar."}
+                  </small>
+                </label>
                 <label>
                   Wersja Minecraft
                   <input
@@ -1305,6 +1476,9 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             <div className="terminal-header">
               <Terminal size={16} />
               <span>Live logs</span>
+              <span className={`terminal-live-pill ${terminalStatus}`}>
+                {TERMINAL_STATUS_LABELS[terminalStatus] || terminalStatus}
+              </span>
             </div>
             <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
           </div>
@@ -1354,6 +1528,9 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 <div className="terminal-header">
                   <Terminal size={16} />
                   <span>Live console</span>
+                  <span className={`terminal-live-pill ${terminalStatus}`}>
+                    {TERMINAL_STATUS_LABELS[terminalStatus] || terminalStatus}
+                  </span>
                 </div>
                 <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
               </div>
@@ -1456,6 +1633,9 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               <div className="terminal-header">
                 <Terminal size={16} />
                 <span>Live console</span>
+                <span className={`terminal-live-pill ${terminalStatus}`}>
+                  {TERMINAL_STATUS_LABELS[terminalStatus] || terminalStatus}
+                </span>
               </div>
               <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
             </div>

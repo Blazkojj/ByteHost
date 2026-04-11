@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -9,6 +10,7 @@ const { attachOptionalAuth } = require("./lib/auth");
 const { initDatabase } = require("./lib/db");
 const { ensureStorageDirectories } = require("./lib/storage");
 const { startScheduler } = require("./lib/scheduler");
+const { attachTerminalWebSocket } = require("./lib/terminal");
 const { ensureDefaultOwner } = require("./lib/users");
 const adminRoutes = require("./routes/admin");
 const authRoutes = require("./routes/auth");
@@ -70,7 +72,10 @@ async function bootstrap() {
     });
   });
 
-  app.listen(PORT, () => {
+  const server = http.createServer(app);
+  attachTerminalWebSocket(server);
+
+  server.listen(PORT, () => {
     console.log(`ByteHost listening on http://localhost:${PORT}`);
   });
 }

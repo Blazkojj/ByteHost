@@ -21,6 +21,18 @@ function emitUnauthorized() {
   window.dispatchEvent(new Event("bytehost:unauthorized"));
 }
 
+function buildWebSocketUrl(pathname) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const url = new URL(pathname, `${protocol}//${window.location.host}`);
+  const token = getStoredToken();
+
+  if (token) {
+    url.searchParams.set("token", token);
+  }
+
+  return url.toString();
+}
+
 async function request(url, options = {}) {
   const isFormData = options.body instanceof FormData;
   const token = options.skipAuth ? "" : getStoredToken();
@@ -122,6 +134,8 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   getLogs: (id) => request(`/api/bots/${id}/logs`),
+  getTerminalSocketUrl: (id) =>
+    buildWebSocketUrl(`/api/bots/${encodeURIComponent(id)}/terminal`),
   getFiles: (id, relativePath = "") =>
     request(`/api/bots/${id}/files?path=${encodeURIComponent(relativePath)}`),
   createFile: (id, payload) =>

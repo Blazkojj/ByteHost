@@ -22,16 +22,17 @@
     "express": "^4.21.2",
     "extract-zip": "^2.0.1",
     "isbinaryfile": "^5.0.4",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.510.0",
     "mime-types": "^2.1.35",
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
-    "jsonwebtoken": "^9.0.2",
     "pm2": "^5.4.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.5.2",
-    "systeminformation": "^5.25.11"
+    "systeminformation": "^5.25.11",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.4.1",
