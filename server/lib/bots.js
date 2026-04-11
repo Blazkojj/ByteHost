@@ -846,6 +846,14 @@ function resolveEffectiveEntryFile(bot) {
   return normalizeRelativePath(bot.entry_file || bot.detected_entry_file || "");
 }
 
+function isMinecraftJarEntry(entryFile) {
+  return Boolean(entryFile && entryFile.toLowerCase().endsWith(".jar"));
+}
+
+function isMinecraftManagedGameScript(entryFile) {
+  return ["start-server.sh", "install-server.sh"].includes(String(entryFile || "").toLowerCase());
+}
+
 function isUsingDetectedEntryFile(bot) {
   return !bot.entry_file || bot.entry_file === bot.detected_entry_file;
 }
@@ -1651,6 +1659,13 @@ async function updateBot(botId, actor, payload) {
   let nextDetectedEntryFile = existingBot.detected_entry_file;
   let nextDetectedMinecraftVersion = existingBot.detected_minecraft_version;
   let nextFiveMArtifactBuild = existingBot.fivem_artifact_build;
+  if (
+    existingBot.service_type === "minecraft_server" &&
+    nextEntryFile &&
+    !isMinecraftJarEntry(nextEntryFile)
+  ) {
+    nextEntryFile = "server.jar";
+  }
   const nextMinecraftVersion =
     existingBot.service_type === "minecraft_server"
       ? payload.minecraft_version !== undefined
@@ -1781,7 +1796,8 @@ async function updateBot(botId, actor, payload) {
   if (
     existingBot.service_type === "minecraft_server" &&
     payload.start_command === undefined &&
-    isUsingDetectedMinecraftStartCommand(existingBot)
+    (isUsingDetectedMinecraftStartCommand(existingBot) ||
+      existingBot.start_command === 'bash "start-server.sh"')
   ) {
     nextStartCommand = defaultStartCommand;
   }
@@ -1992,13 +2008,36 @@ async function startBot(botId, actor) {
       await writeMinecraftServerProperties(bot.project_path, bot);
 
       let entryFile = resolveEffectiveEntryFile(bot);
-      const entryPath = entryFile ? path.join(bot.project_path, entryFile) : null;
-      const entryExists = entryPath ? await fileExists(entryPath) : false;
+      let entryPath = entryFile ? path.join(bot.project_path, entryFile) : null;
+      let entryExists = entryPath ? await fileExists(entryPath) : false;
+      const entryLooksLikeWrongPreset =
+        Boolean(entryFile) && (!isMinecraftJarEntry(entryFile) || isMinecraftManagedGameScript(entryFile));
 
-      if ((!entryFile || !entryExists) && bot.minecraft_version) {
+      if (entryLooksLikeWrongPreset) {
+        const serverJarExists = await fileExists(path.join(bot.project_path, "server.jar"));
+        const nextDetectedStartCommand = buildMinecraftStartCommand("server.jar", bot.ram_limit_mb);
+        bot = updateBotRow(botId, {
+          entry_file: "server.jar",
+          detected_entry_file: "server.jar",
+          start_command:
+            !bot.start_command || bot.start_command === 'bash "start-server.sh"'
+              ? nextDetectedStartCommand
+              : bot.start_command,
+          detected_start_command: nextDetectedStartCommand,
+          updated_at: nowIso()
+        });
+        entryFile = "server.jar";
+        entryPath = path.join(bot.project_path, entryFile);
+        entryExists = serverJarExists;
+      }
+
+      if (
+        (!entryFile || !entryExists) &&
+        (bot.minecraft_version || bot.detected_minecraft_version || !entryFile || entryLooksLikeWrongPreset)
+      ) {
         const download = await downloadOfficialMinecraftServer(
           bot.project_path,
-          bot.minecraft_version,
+          bot.minecraft_version || bot.detected_minecraft_version || null,
           entryFile
         );
 
@@ -2014,16 +2053,17 @@ async function startBot(botId, actor) {
           updated_at: nowIso()
         };
 
-        if (isUsingDetectedEntryFile(bot)) {
+        if (isUsingDetectedEntryFile(bot) || entryLooksLikeWrongPreset) {
           nextRow.entry_file = downloadedEntryFile;
         }
 
-        if (isUsingDetectedMinecraftStartCommand(bot)) {
+        if (isUsingDetectedMinecraftStartCommand(bot) || bot.start_command === 'bash "start-server.sh"') {
           nextRow.start_command = nextDetectedStartCommand;
         }
 
         bot = updateBotRow(botId, nextRow);
         entryFile = resolveEffectiveEntryFile(bot);
+        entryExists = await fileExists(path.join(bot.project_path, entryFile));
       }
 
       if (!entryFile) {

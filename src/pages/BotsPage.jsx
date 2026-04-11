@@ -186,14 +186,21 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 setForm((current) => {
                   const nextServiceType = event.target.value;
                   const nextGamePreset = getGameServicePreset(nextServiceType);
+                  const currentEntryFile = current.entry_file || "";
+                  const currentStartCommand = current.start_command || "";
 
                   return nextServiceType === "minecraft_server"
                       ? {
                           ...current,
                           service_type: nextServiceType,
                           language: "Java",
-                          entry_file: current.entry_file || "server.jar",
-                          start_command: current.start_command,
+                          entry_file: currentEntryFile.toLowerCase().endsWith(".jar")
+                            ? currentEntryFile
+                            : "server.jar",
+                          start_command:
+                            currentStartCommand === 'bash "start-server.sh"'
+                              ? ""
+                              : currentStartCommand,
                           minecraft_version: current.minecraft_version || "",
                           minecraft_max_players: current.minecraft_max_players || 20,
                           install_on_create: false,
@@ -204,7 +211,12 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                           ...current,
                           service_type: nextServiceType,
                           language: "FiveM",
-                          entry_file: current.entry_file || "run.sh",
+                          entry_file:
+                            currentEntryFile &&
+                            currentEntryFile !== "server.jar" &&
+                            currentEntryFile !== "start-server.sh"
+                              ? currentEntryFile
+                              : "run.sh",
                           minecraft_version: "",
                           minecraft_max_players: 20,
                           install_on_create: false,
