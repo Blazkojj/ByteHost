@@ -871,6 +871,57 @@ textarea:disabled {
   color: #d8e9ff;
 }
 
+.terminal-output {
+  min-height: 420px;
+  max-height: 620px;
+  overflow: auto;
+  padding: 18px 20px;
+  background:
+    radial-gradient(circle at top right, rgba(15, 134, 255, 0.12), transparent 30%),
+    #07111f;
+  color: #d8e9ff;
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.terminal-line {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 20px;
+  color: #d8e9ff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.terminal-prompt {
+  color: rgba(148, 163, 184, 0.54);
+  user-select: none;
+}
+
+.terminal-line.bytehost .terminal-prompt,
+.terminal-line.bytehost .terminal-text {
+  color: #38bdf8;
+  text-shadow: 0 0 18px rgba(56, 189, 248, 0.12);
+}
+
+.terminal-line.error .terminal-text {
+  color: #fb7185;
+}
+
+.terminal-line.warning .terminal-text {
+  color: #facc15;
+}
+
+.terminal-line.success .terminal-text {
+  color: #4ade80;
+}
+
+.terminal-line.console .terminal-text {
+  color: #a5b4fc;
+}
+
 .code-editor {
   background: var(--input-bg);
   color: var(--text);
@@ -967,6 +1018,12 @@ textarea:disabled {
   background: #ebf8f2;
   border: 1px solid #cfe9db;
   color: var(--success);
+}
+
+.banner.info {
+  background: #eef6ff;
+  border: 1px solid #c8ddff;
+  color: #1d4ed8;
 }
 
 .banner.error {
@@ -2250,8 +2307,22 @@ textarea:disabled {
   color: #e5e7eb;
 }
 
+:root[data-theme="dark"] .terminal-output {
+  min-height: 360px;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.16), transparent 32%),
+    #090a0f;
+  color: #e5e7eb;
+}
+
 :root[data-theme="dark"] .terminal-header {
   background: #101117;
+}
+
+:root[data-theme="dark"] .banner.info {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(59, 130, 246, 0.38);
+  color: #93c5fd;
 }
 
 :root[data-theme="dark"] .file-row {

@@ -44,6 +44,71 @@ function SummaryTile({ label, value, hint }) {
   );
 }
 
+const TERMINAL_EMPTY_TEXT = "Brak logow do wyswietlenia.";
+
+const ACTION_PROGRESS_MESSAGES = {
+  start: "Startowanie uslugi... ByteHost uruchamia proces.",
+  stop: "Zatrzymywanie uslugi... ByteHost wysyla stop do procesu.",
+  restart: "Restartowanie uslugi... ByteHost przeladowuje proces.",
+  install: "Przygotowanie uslugi... ByteHost instaluje wymagane pliki.",
+  delete: "Usuwanie uslugi... ByteHost sprzata proces i pliki.",
+  console: "Wysylanie komendy do konsoli..."
+};
+
+const ACTION_SUCCESS_MESSAGES = {
+  start: "Usluga zostala uruchomiona.",
+  stop: "Usluga zostala zatrzymana.",
+  restart: "Usluga zostala zrestartowana.",
+  install: "Instalacja/przygotowanie zostalo zakonczone.",
+  delete: "Usluga zostala usunieta.",
+  console: "Komenda zostala wyslana."
+};
+
+function terminalLineTone(line) {
+  const normalized = String(line || "").toLowerCase();
+
+  if (normalized.includes("bytehost")) {
+    return "bytehost";
+  }
+
+  if (/\b(error|fatal|failed|exception|crash|denied|timeout|nie udalo|blad)\b/.test(normalized)) {
+    return "error";
+  }
+
+  if (/\b(warn|warning|uwaga|deprecated)\b/.test(normalized)) {
+    return "warning";
+  }
+
+  if (/\b(info|online|started|listening|success|done|gotowe|running)\b/.test(normalized)) {
+    return "success";
+  }
+
+  if (normalized.includes("[console]") || normalized.startsWith(">") || normalized.startsWith("$ ")) {
+    return "console";
+  }
+
+  return "default";
+}
+
+function TerminalOutput({ content, emptyText = TERMINAL_EMPTY_TEXT, containerRef }) {
+  const text = String(content || "").trimEnd() || emptyText;
+  const lines = text.split(/\r?\n/).slice(-1000);
+
+  return (
+    <div className="terminal-output" ref={containerRef}>
+      {lines.map((line, index) => (
+        <div
+          className={`terminal-line ${terminalLineTone(line)}`}
+          key={`${index}-${line.slice(0, 24)}`}
+        >
+          <span className="terminal-prompt">&gt;</span>
+          <span className="terminal-text">{line || " "}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function buildSettingsState(service) {
   const isMinecraft = service.service_type === "minecraft_server";
   const isFiveM = service.service_type === "fivem_server";
@@ -270,12 +335,13 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
   async function runAction(type) {
     setActionState(type);
-    setMessage("");
+    setMessage(ACTION_PROGRESS_MESSAGES[type] || "Wykonywanie akcji...");
     setError("");
 
     try {
       if (type === "delete") {
         if (!window.confirm("Usunac te usluge razem z plikami i procesem PM2?")) {
+          setMessage("");
           return;
         }
 
@@ -300,8 +366,9 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       }
 
       await onRefreshAll();
-      setMessage("Akcja zostala wykonana.");
+      setMessage(ACTION_SUCCESS_MESSAGES[type] || "Akcja zostala wykonana.");
     } catch (runError) {
+      setMessage("");
       setError(runError.message);
     } finally {
       setActionState("");
@@ -494,7 +561,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
   async function sendConsoleText(command) {
     setActionState("console");
-    setMessage("");
+    setMessage(ACTION_PROGRESS_MESSAGES.console);
     setError("");
 
     try {
@@ -511,6 +578,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
           : "Polecenie zostalo wykonane."
       );
     } catch (consoleError) {
+      setMessage("");
       setError(consoleError.message);
     } finally {
       setActionState("");
@@ -714,20 +782,22 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             </button>
             <button className="ghost-button" onClick={() => runAction("start")} disabled={actionState}>
               <Play size={16} />
-              <span>Start</span>
+              <span>{actionState === "start" ? "Startuje..." : "Start"}</span>
             </button>
             <button className="ghost-button" onClick={() => runAction("stop")} disabled={actionState}>
               <Square size={16} />
-              <span>Stop</span>
+              <span>{actionState === "stop" ? "Zatrzymuje..." : "Stop"}</span>
             </button>
             <button className="ghost-button" onClick={() => runAction("restart")} disabled={actionState}>
               <RotateCcw size={16} />
-              <span>Restart</span>
+              <span>{actionState === "restart" ? "Restartuje..." : "Restart"}</span>
             </button>
             <button className="ghost-button" onClick={() => runAction("install")} disabled={actionState}>
               <Wrench size={16} />
               <span>
-                {isMinecraft
+                {actionState === "install"
+                  ? "Instaluje..."
+                  : isMinecraft
                   ? "Przygotuj"
                   : isFiveM
                     ? "Napraw runtime"
@@ -738,7 +808,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             </button>
             <button className="danger-button" onClick={() => runAction("delete")} disabled={actionState}>
               <Trash2 size={16} />
-              <span>Usun</span>
+              <span>{actionState === "delete" ? "Usuwam..." : "Usun"}</span>
             </button>
           </div>
         </div>
@@ -876,7 +946,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
           ) : null}
         </div>
 
-        {message ? <div className="banner success">{message}</div> : null}
+        {message ? <div className={`banner ${actionState ? "info" : "success"}`}>{message}</div> : null}
         {error ? <div className="banner error">{error}</div> : null}
       </section>
 
@@ -1236,7 +1306,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               <Terminal size={16} />
               <span>Live logs</span>
             </div>
-            <pre ref={liveTerminalRef}>{logs.combined || "Brak logow do wyswietlenia."}</pre>
+            <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
           </div>
         ) : null}
 
@@ -1285,7 +1355,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                   <Terminal size={16} />
                   <span>Live console</span>
                 </div>
-                <pre ref={liveTerminalRef}>{logs.combined || "Brak logow do wyswietlenia."}</pre>
+                <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
               </div>
             </div>
           ) : (
@@ -1321,20 +1391,22 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                   <Terminal size={16} />
                   <span>Output</span>
                 </div>
-                <pre>
-                  {consoleResult
-                    ? [
-                        `$ ${consoleResult.command}`,
-                        `cwd: ${consoleResult.cwd}`,
-                        `exit code: ${consoleResult.code}`,
-                        "",
-                        consoleResult.stdout || "",
-                        consoleResult.stderr ? `\n[stderr]\n${consoleResult.stderr}` : ""
-                      ]
-                        .filter(Boolean)
-                        .join("\n")
-                    : "Brak wykonanych polecen."}
-                </pre>
+                <TerminalOutput
+                  content={
+                    consoleResult
+                      ? [
+                          `$ ${consoleResult.command}`,
+                          `cwd: ${consoleResult.cwd}`,
+                          `exit code: ${consoleResult.code}`,
+                          "",
+                          consoleResult.stdout || "",
+                          consoleResult.stderr ? `\n[stderr]\n${consoleResult.stderr}` : ""
+                        ]
+                          .filter(Boolean)
+                          .join("\n")
+                      : "Brak wykonanych polecen."
+                  }
+                />
               </div>
             </div>
           )
@@ -1385,7 +1457,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 <Terminal size={16} />
                 <span>Live console</span>
               </div>
-              <pre ref={liveTerminalRef}>{logs.combined || "Brak logow do wyswietlenia."}</pre>
+              <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
             </div>
           </div>
         ) : null}
@@ -1748,7 +1820,10 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             </div>
           </div>
           <div className="terminal-card">
-            <pre>{installResult.stdout || installResult.stderr || installResult.message || "Brak outputu."}</pre>
+            <TerminalOutput
+              content={installResult.stdout || installResult.stderr || installResult.message}
+              emptyText="Brak outputu."
+            />
           </div>
         </section>
       ) : null}

@@ -655,6 +655,14 @@ function extractBytehostControlLines(content) {
     .join("\n");
 }
 
+async function appendBytehostControlLog(botId, message, stream = "out") {
+  await appendBotLog(
+    botId,
+    stream,
+    `[bytehost] ${new Date().toISOString()} ${message}\n`
+  ).catch(() => {});
+}
+
 async function isManagedConsoleInputReady(projectPath) {
   try {
     const stats = await fs.stat(getManagedConsoleInputPath(projectPath));
@@ -2234,6 +2242,7 @@ async function startBot(botId, actor) {
     }
 
     await assertStartWithinLimits(bot, owner);
+    await appendBytehostControlLog(bot.id, `Start uslugi: ${resolvedStartCommand}`);
     await startBotProcess({
       ...bot,
       start_command: resolvedStartCommand
@@ -2244,6 +2253,7 @@ async function startBot(botId, actor) {
       last_restart_at: nowIso(),
       updated_at: nowIso()
     });
+    await appendBytehostControlLog(bot.id, "Proces zostal uruchomiony.");
 
     return getBotWithRuntime(botId, actor);
   } catch (error) {
@@ -2254,24 +2264,34 @@ async function startBot(botId, actor) {
 
 async function stopBot(botId, actor) {
   const bot = getBotRow(botId, actor);
+  await appendBytehostControlLog(bot.id, "Stop uslugi: zatrzymywanie procesu.");
   await stopProcess(bot.pm2_name);
   updateBotRow(botId, {
     status: "OFFLINE",
     status_message: null,
     updated_at: nowIso()
   });
+  await appendBytehostControlLog(bot.id, "Proces zostal zatrzymany.");
   return getBotWithRuntime(botId, actor);
 }
 
 async function restartBot(botId, actor) {
-  await deleteProcess(getBotRow(botId, actor).pm2_name);
+  const bot = getBotRow(botId, actor);
+  await appendBytehostControlLog(bot.id, "Restart uslugi: zamykanie procesu.");
+  await deleteProcess(bot.pm2_name);
+  await appendBytehostControlLog(bot.id, "Restart uslugi: ponowne uruchamianie.");
   return startBot(botId, actor);
 }
 
 async function installDependencies(botId, actor) {
   const bot = getBotRow(botId, actor);
+  await appendBytehostControlLog(bot.id, "Instalator zostal uruchomiony.");
 
   if (bot.service_type === "minecraft_server") {
+    await appendBytehostControlLog(
+      bot.id,
+      "Minecraft jest przygotowywany przez wybor wersji/JAR, instalacja zaleznosci zostala pominieta."
+    );
     return {
       bot: await getBotWithRuntime(botId, actor),
       install: {
@@ -2304,6 +2324,7 @@ async function installDependencies(botId, actor) {
     }
 
     updateBotRow(botId, nextRow);
+    await appendBytehostControlLog(bot.id, "Artefakt FiveM zostal pobrany lub naprawiony.");
 
     return {
       bot: await getBotWithRuntime(botId, actor),
@@ -2328,6 +2349,7 @@ async function installDependencies(botId, actor) {
     await writeGameServerEnv(bot.project_path, bot.service_type, bot);
 
     const command = bot.install_command || bot.detected_install_command || gamePreset.installCommand;
+    await appendBytehostControlLog(bot.id, `Instalator gry uruchamia: ${command}`);
 
     try {
       const result = await runShellCommand(command, {
@@ -2346,6 +2368,7 @@ async function installDependencies(botId, actor) {
         package_manager: analysis.package_manager,
         updated_at: nowIso()
       });
+      await appendBytehostControlLog(bot.id, `${gamePreset.label} zostal przygotowany.`);
 
       return {
         bot: await getBotWithRuntime(botId, actor),
@@ -2358,6 +2381,11 @@ async function installDependencies(botId, actor) {
         }
       };
     } catch (error) {
+      await appendBytehostControlLog(
+        bot.id,
+        `Instalacja ${gamePreset.label} nie powiodla sie: ${error.message}`,
+        "error"
+      );
       throw createHttpError(400, `Instalacja ${gamePreset.label} nie powiodla sie: ${error.message}`, {
         stdout: error.stdout,
         stderr: error.stderr
@@ -2368,6 +2396,7 @@ async function installDependencies(botId, actor) {
   const command = bot.install_command || bot.detected_install_command;
 
   if (!command) {
+    await appendBytehostControlLog(bot.id, "Nie wykryto komendy instalacji zaleznosci.");
     return {
       bot: await getBotWithRuntime(botId, actor),
       install: {
@@ -2381,11 +2410,13 @@ async function installDependencies(botId, actor) {
   }
 
   try {
+    await appendBytehostControlLog(bot.id, `Instalator uruchamia: ${command}`);
     const result = await runShellCommand(command, {
       cwd: bot.project_path,
       maxOutput: 200000,
       timeoutMs: 300000
     });
+    await appendBytehostControlLog(bot.id, "Instalacja zaleznosci zostala zakonczona.");
 
     return {
       bot: await getBotWithRuntime(botId, actor),
@@ -2397,6 +2428,11 @@ async function installDependencies(botId, actor) {
       }
     };
   } catch (error) {
+    await appendBytehostControlLog(
+      bot.id,
+      `Instalacja zaleznosci nie powiodla sie: ${error.message}`,
+      "error"
+    );
     throw createHttpError(400, `Instalacja zaleznosci nie powiodla sie: ${error.message}`, {
       stdout: error.stdout,
       stderr: error.stderr
