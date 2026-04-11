@@ -42,6 +42,12 @@ const {
   searchModrinthProjects
 } = require("./modrinth");
 const {
+  downloadCurseForgeFile,
+  getCurseForgeVersion,
+  listCurseForgeProjectVersions,
+  searchCurseForgeProjects
+} = require("./curseforge");
+const {
   GAME_SERVICE_TYPES,
   buildGameStartCommand,
   bootstrapGameWorkspace,
@@ -2854,6 +2860,52 @@ function assertMinecraftAddonBot(bot) {
   }
 }
 
+const MINECRAFT_ADDON_SOURCES = new Set(["modrinth", "curseforge"]);
+const MOD_LOADER_TYPES = new Set(["fabric", "forge", "neoforge", "quilt"]);
+const PLUGIN_LOADER_TYPES = new Set(["paper", "spigot", "bukkit", "craftbukkit", "purpur", "folia"]);
+
+function sanitizeMinecraftAddonSource(value) {
+  const normalized = coerceNullableString(value, "modrinth").toLowerCase();
+  return MINECRAFT_ADDON_SOURCES.has(normalized) ? normalized : "modrinth";
+}
+
+function sanitizeMinecraftAddonLoader(value) {
+  const normalized = coerceNullableString(value, null)?.toLowerCase();
+
+  if (!normalized || normalized === "auto" || normalized === "any") {
+    return null;
+  }
+
+  return normalized === "craftbukkit" ? "bukkit" : normalized;
+}
+
+function resolveMinecraftAddonLoader(bot, type, source = {}) {
+  if (coerceBoolean(source.all_loaders, false)) {
+    return null;
+  }
+
+  const requestedLoader = sanitizeMinecraftAddonLoader(source.loader);
+  if (requestedLoader) {
+    return requestedLoader;
+  }
+
+  const serverType = sanitizeMinecraftAddonLoader(bot.minecraft_server_type);
+
+  if ((type === "mod" || type === "modpack") && MOD_LOADER_TYPES.has(serverType)) {
+    return serverType;
+  }
+
+  if (type === "plugin" && PLUGIN_LOADER_TYPES.has(serverType)) {
+    if (serverType === "craftbukkit") {
+      return "bukkit";
+    }
+
+    return serverType;
+  }
+
+  return null;
+}
+
 function resolveMinecraftAddonGameVersion(bot, source = {}) {
   if (coerceBoolean(source.all_versions, false)) {
     return null;
@@ -2872,7 +2924,7 @@ function sanitizeDownloadedFileName(value) {
     .trim();
 
   if (!baseName || baseName === "." || baseName === "..") {
-    throw createHttpError(400, "Modrinth zwrocil nieprawidlowa nazwe pliku.");
+    throw createHttpError(400, "Zrodlo dodatku zwrocilo nieprawidlowa nazwe pliku.");
   }
 
   return baseName;
@@ -2984,25 +3036,54 @@ async function installModrinthModpack(bot, buffer, fileName) {
 async function searchMinecraftAddons(botId, actor, query = {}) {
   const bot = getBotRow(botId, actor);
   assertMinecraftAddonBot(bot);
+  const type = getInstallProfileKey(query.type);
+  const source = sanitizeMinecraftAddonSource(query.source);
+  const gameVersion = resolveMinecraftAddonGameVersion(bot, query);
+  const loader = resolveMinecraftAddonLoader(bot, type, query);
+
+  if (source === "curseforge") {
+    return searchCurseForgeProjects({
+      type,
+      query: query.query,
+      sort: query.sort,
+      page: query.page,
+      limit: query.limit || 10,
+      gameVersion,
+      loader
+    });
+  }
 
   return searchModrinthProjects({
-    type: query.type,
+    type,
     query: query.query,
     sort: query.sort,
     page: query.page,
     limit: query.limit || 10,
-    gameVersion: resolveMinecraftAddonGameVersion(bot, query)
+    gameVersion,
+    loader
   });
 }
 
 async function listMinecraftAddonVersions(botId, actor, projectId, query = {}) {
   const bot = getBotRow(botId, actor);
   assertMinecraftAddonBot(bot);
+  const type = getInstallProfileKey(query.type);
+  const source = sanitizeMinecraftAddonSource(query.source);
+  const gameVersion = resolveMinecraftAddonGameVersion(bot, query);
+  const loader = resolveMinecraftAddonLoader(bot, type, query);
+
+  if (source === "curseforge") {
+    return listCurseForgeProjectVersions(projectId, {
+      type,
+      loader,
+      gameVersion
+    });
+  }
 
   return listModrinthProjectVersions(projectId, {
-    type: query.type,
-    loader: query.loader,
-    gameVersion: resolveMinecraftAddonGameVersion(bot, query)
+    type,
+    loader,
+    gameVersion
   });
 }
 
@@ -3013,14 +3094,27 @@ async function installMinecraftAddon(botId, actor, payload = {}) {
 
   const type = getInstallProfileKey(payload.type);
   const profile = getInstallProfile(type);
+  const source = sanitizeMinecraftAddonSource(payload.source);
+  const gameVersion = resolveMinecraftAddonGameVersion(bot, payload);
+  const loader = resolveMinecraftAddonLoader(bot, type, payload);
   let version = null;
 
-  if (payload.version_id) {
+  if (source === "curseforge" && payload.version_id) {
+    version = await getCurseForgeVersion(payload.version_id);
+  } else if (source === "curseforge" && payload.project_id) {
+    const versionsPayload = await listCurseForgeProjectVersions(payload.project_id, {
+      loader,
+      gameVersion
+    });
+    version = versionsPayload.versions[0]
+      ? await getCurseForgeVersion(versionsPayload.versions[0].id)
+      : null;
+  } else if (payload.version_id) {
     version = await getModrinthVersion(payload.version_id);
   } else if (payload.project_id) {
     const versionsPayload = await listModrinthProjectVersions(payload.project_id, {
-      loader: payload.loader,
-      gameVersion: resolveMinecraftAddonGameVersion(bot, payload)
+      loader,
+      gameVersion
     });
     version = versionsPayload.versions[0]
       ? await getModrinthVersion(versionsPayload.versions[0].id)
@@ -3041,7 +3135,9 @@ async function installMinecraftAddon(botId, actor, payload = {}) {
   const targetRelativePath = normalizeRelativePath(path.posix.join(targetDirectory, fileName));
   const targetPath = resolveBotPath(bot.id, targetRelativePath);
   const tempPath = `${targetPath}.download-${Date.now()}`;
-  const buffer = await downloadModrinthFile(primaryFile);
+  const buffer = source === "curseforge"
+    ? await downloadCurseForgeFile(primaryFile)
+    : await downloadModrinthFile(primaryFile);
   let installedFile = null;
 
   if (type === "modpack" && fileName.toLowerCase().endsWith(".mrpack")) {
@@ -3077,11 +3173,14 @@ async function installMinecraftAddon(botId, actor, payload = {}) {
   return {
     ok: true,
     type,
+    source,
+    loader,
     label: profile.label,
     version: {
       id: version.id,
       name: version.name,
       version_number: version.version_number,
+      source: version.source || source,
       game_versions: version.game_versions || [],
       loaders: version.loaders || []
     },

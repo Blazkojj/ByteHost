@@ -21,8 +21,97 @@ const SORT_OPTIONS = [
   { id: "relevance", label: "Trafnosc" }
 ];
 
+const ADDON_SOURCES = [
+  { id: "modrinth", label: "Modrinth" },
+  { id: "curseforge", label: "CurseForge" }
+];
+
+const LOADER_OPTIONS = {
+  modpack: [
+    { id: "auto", label: "Auto loader" },
+    { id: "any", label: "Dowolny loader" },
+    { id: "fabric", label: "Fabric" },
+    { id: "forge", label: "Forge" },
+    { id: "neoforge", label: "NeoForge" },
+    { id: "quilt", label: "Quilt" }
+  ],
+  mod: [
+    { id: "auto", label: "Auto loader" },
+    { id: "any", label: "Dowolny loader" },
+    { id: "fabric", label: "Fabric" },
+    { id: "forge", label: "Forge" },
+    { id: "neoforge", label: "NeoForge" },
+    { id: "quilt", label: "Quilt" }
+  ],
+  plugin: [
+    { id: "auto", label: "Auto silnik" },
+    { id: "any", label: "Dowolny silnik" },
+    { id: "paper", label: "Paper" },
+    { id: "spigot", label: "Spigot" },
+    { id: "bukkit", label: "Bukkit" },
+    { id: "purpur", label: "Purpur" },
+    { id: "folia", label: "Folia" }
+  ],
+  datapack: [
+    { id: "auto", label: "Auto" },
+    { id: "any", label: "Dowolne" }
+  ],
+  resourcepack: [
+    { id: "auto", label: "Auto" },
+    { id: "any", label: "Dowolne" }
+  ],
+  shader: [
+    { id: "auto", label: "Auto" },
+    { id: "any", label: "Dowolne" }
+  ]
+};
+
 function getTypeLabel(type) {
   return INSTALLER_TYPES.find((entry) => entry.id === type)?.label || "Dodatki";
+}
+
+function getSourceLabel(source) {
+  return ADDON_SOURCES.find((entry) => entry.id === source)?.label || "Modrinth";
+}
+
+function getProjectUrl(project, type) {
+  if (project.project_url) {
+    return project.project_url;
+  }
+
+  if (project.source === "curseforge") {
+    return `https://www.curseforge.com/minecraft/mc-mods/${project.slug || project.id}`;
+  }
+
+  return `https://modrinth.com/${project.project_type || type}/${project.slug}`;
+}
+
+function getAutoLoader(bot, type) {
+  const serverType = String(bot?.minecraft_server_type || "").toLowerCase();
+
+  if (["mod", "modpack"].includes(type) && ["fabric", "forge", "neoforge", "quilt"].includes(serverType)) {
+    return serverType;
+  }
+
+  if (type === "plugin") {
+    if (serverType === "craftbukkit") {
+      return "bukkit";
+    }
+
+    if (["paper", "spigot", "bukkit", "purpur", "folia"].includes(serverType)) {
+      return serverType;
+    }
+  }
+
+  return "";
+}
+
+function getLoaderLabel(loader, autoLoader) {
+  if (loader === "auto") {
+    return autoLoader ? `auto: ${autoLoader}` : "auto";
+  }
+
+  return loader || "dowolny";
 }
 
 function AddonIcon({ project }) {
@@ -65,6 +154,8 @@ function VersionLabel({ version }) {
 export function MinecraftInstaller({ botId, bot, onInstalled }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("modpack");
+  const [source, setSource] = useState("modrinth");
+  const [loader, setLoader] = useState("auto");
   const [sort, setSort] = useState("downloads");
   const [page, setPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -80,6 +171,9 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
   const [error, setError] = useState("");
 
   const gameVersion = bot?.minecraft_version || bot?.detected_minecraft_version || "";
+  const autoLoader = getAutoLoader(bot, type);
+  const loaderOptions = LOADER_OPTIONS[type] || LOADER_OPTIONS.modpack;
+  const requestLoader = loader === "any" ? "" : loader;
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(Number(payload.total_hits || 0) / Number(payload.limit || 10))),
     [payload.limit, payload.total_hits]
@@ -96,6 +190,8 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
         const nextPayload = await api.searchMinecraftAddons(botId, {
           query,
           type,
+          source,
+          loader: requestLoader,
           sort,
           page,
           limit: 10,
@@ -121,7 +217,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [botId, gameVersion, matchVersion, page, query, refreshKey, sort, type]);
+  }, [botId, gameVersion, matchVersion, page, query, refreshKey, requestLoader, sort, source, type]);
 
   async function openProject(project) {
     setSelectedProject(project);
@@ -134,6 +230,8 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
     try {
       const nextVersions = await api.getMinecraftAddonVersions(botId, project.id, {
         type,
+        source: project.source || source,
+        loader: requestLoader,
         game_version: matchVersion ? gameVersion : "",
         all_versions: matchVersion ? "" : "true"
       });
@@ -160,6 +258,8 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
     try {
       const result = await api.installMinecraftAddon(botId, {
         type,
+        source: selectedProject.source || source,
+        loader: requestLoader,
         project_id: selectedProject.id,
         version_id: selectedVersionId,
         game_version: matchVersion ? gameVersion : "",
@@ -182,6 +282,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
 
   function updateType(nextType) {
     setType(nextType);
+    setLoader("auto");
     setPage(1);
   }
 
@@ -197,8 +298,9 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
           <p className="eyebrow">Instalator</p>
           <h3>Dodatki Minecraft</h3>
           <small>
-            Zrodlo: Modrinth. Pliki trafiaja automatycznie do mods/, plugins/,
-            resourcepacks/, shaderpacks/ albo modpacks/.
+            Zrodlo: {getSourceLabel(source)}. Loader: {getLoaderLabel(loader, autoLoader)}.
+            Pliki trafiaja automatycznie do mods/, plugins/, resourcepacks/,
+            shaderpacks/ albo modpacks/.
           </small>
         </div>
         <button className="ghost-button compact" onClick={() => setRefreshKey((current) => current + 1)}>
@@ -220,6 +322,34 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
           {INSTALLER_TYPES.map((entry) => (
             <option key={entry.id} value={entry.id}>
               {entry.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={source}
+          onChange={(event) => {
+            setSource(event.target.value);
+            setPage(1);
+          }}
+        >
+          {ADDON_SOURCES.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={loader}
+          onChange={(event) => {
+            setLoader(event.target.value);
+            setPage(1);
+          }}
+        >
+          {loaderOptions.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.id === "auto" && autoLoader
+                ? `${entry.label}: ${autoLoader}`
+                : entry.label}
             </option>
           ))}
         </select>
@@ -252,8 +382,16 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
         </span>
       </label>
 
+      {source === "curseforge" ? (
+        <div className="banner info">
+          CurseForge dziala przez oficjalne API i wymaga CURSEFORGE_API_KEY w .env.
+          Bez klucza panel pokaze blad zamiast wynikow.
+        </div>
+      ) : null}
+
       {message ? <div className="banner success">{message}</div> : null}
       {error ? <div className="banner error">{error}</div> : null}
+      {payload.warning ? <div className="banner info">{payload.warning}</div> : null}
 
       <div className="installer-list">
         {loading ? (
@@ -263,7 +401,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
         ) : (
           payload.hits.map((project) => (
             <button
-              key={project.id}
+              key={`${project.source || source}:${project.id}`}
               className="installer-row"
               type="button"
               onClick={() => openProject(project)}
@@ -276,6 +414,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
                 <small>{project.description}</small>
               </span>
               <span className="installer-row-meta">
+                <span>{getSourceLabel(project.source || source)}</span>
                 <span>{formatNumber(project.downloads)} pobran</span>
                 <span>{project.latest_version || "auto"}</span>
               </span>
@@ -349,6 +488,9 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
               <span>
                 <strong>Pobrania:</strong> {formatNumber(selectedProject.downloads)}
               </span>
+              <span>
+                <strong>Zrodlo:</strong> {getSourceLabel(selectedProject.source || source)}
+              </span>
             </div>
 
             <label className="wide">
@@ -385,12 +527,12 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
             <div className="form-actions wide">
               <a
                 className="ghost-button"
-                href={`https://modrinth.com/${selectedProject.project_type}/${selectedProject.slug}`}
+                href={getProjectUrl(selectedProject, type)}
                 target="_blank"
                 rel="noreferrer"
               >
                 <ExternalLink size={16} />
-                <span>Modrinth</span>
+                <span>{getSourceLabel(selectedProject.source || source)}</span>
               </a>
               <button className="danger-button" type="button" onClick={() => setSelectedProject(null)}>
                 Anuluj

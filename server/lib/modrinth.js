@@ -65,16 +65,19 @@ function getTargetDirectory(type) {
   return getInstallProfile(type).targetDirectory;
 }
 
-function buildSearchFacets(type, gameVersion = "") {
+function buildSearchFacets(type, gameVersion = "", loader = "") {
   const profile = getInstallProfile(type);
   const facets = [[`project_type:${profile.projectType}`]];
   const normalizedVersion = coerceNullableString(gameVersion, "");
+  const normalizedLoader = coerceNullableString(loader, "");
 
   if (normalizedVersion) {
     facets.push([`versions:${normalizedVersion}`]);
   }
 
-  if (profile.searchCategories.length > 0) {
+  if (normalizedLoader) {
+    facets.push([`categories:${normalizedLoader}`]);
+  } else if (profile.searchCategories.length > 0) {
     facets.push(profile.searchCategories.map((category) => `categories:${category}`));
   }
 
@@ -148,6 +151,8 @@ function toProjectHit(hit) {
     author: hit.author,
     icon_url: hit.icon_url || null,
     project_type: hit.project_type,
+    source: "modrinth",
+    project_url: `https://modrinth.com/${hit.project_type}/${hit.slug}`,
     categories: hit.categories || [],
     display_categories: hit.display_categories || [],
     client_side: hit.client_side,
@@ -169,6 +174,7 @@ function toVersionEntry(version) {
     name: version.name,
     version_number: version.version_number,
     version_type: version.version_type,
+    source: "modrinth",
     game_versions: version.game_versions || [],
     loaders: version.loaders || [],
     date_published: version.date_published || null,
@@ -182,9 +188,10 @@ async function searchModrinthProjects(options = {}) {
   const type = getInstallProfileKey(options.type);
   const limit = sanitizeLimit(options.limit, 10);
   const page = sanitizePage(options.page);
+  const loader = coerceNullableString(options.loader, null);
   const payload = await modrinthJson("search", {
     query: coerceNullableString(options.query, ""),
-    facets: JSON.stringify(buildSearchFacets(type, options.gameVersion)),
+    facets: JSON.stringify(buildSearchFacets(type, options.gameVersion, loader)),
     index: sanitizeSort(options.sort),
     limit,
     offset: (page - 1) * limit
@@ -192,6 +199,8 @@ async function searchModrinthProjects(options = {}) {
 
   return {
     type,
+    source: "modrinth",
+    loader,
     profile: getInstallProfile(type),
     page,
     limit,
@@ -223,6 +232,8 @@ async function listModrinthProjectVersions(projectId, options = {}) {
   const versions = await modrinthJson(`project/${encodeURIComponent(normalizedProjectId)}/version`, query);
 
   return {
+    source: "modrinth",
+    loader,
     versions: Array.isArray(versions) ? versions.map(toVersionEntry) : []
   };
 }

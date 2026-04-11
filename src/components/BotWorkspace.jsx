@@ -72,6 +72,22 @@ const TERMINAL_STATUS_LABELS = {
   error: "Blad"
 };
 
+const WORKSPACE_TAB_IDS = new Set([
+  "overview",
+  "logs",
+  "console",
+  "players",
+  "installer",
+  "backups",
+  "files",
+  "env"
+]);
+
+function readWorkspaceTabHash() {
+  const tabId = window.location.hash.replace(/^#/, "");
+  return WORKSPACE_TAB_IDS.has(tabId) ? tabId : "overview";
+}
+
 const FALLBACK_MINECRAFT_SERVER_TYPES = [
   { id: "vanilla", label: "Vanilla", hint: "Oficjalny server.jar od Mojang" },
   { id: "paper", label: "Paper", hint: "Pluginy Bukkit/Spigot/Paper" },
@@ -176,7 +192,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   const terminalSocketRef = useRef(null);
 
   const [bot, setBot] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(readWorkspaceTabHash);
   const [settings, setSettings] = useState(null);
   const [logs, setLogs] = useState({ combined: "" });
   const [backups, setBackups] = useState([]);
@@ -221,6 +237,16 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     setFilesData(null);
     setLogs({ combined: "" });
     loadBot();
+  }, [botId]);
+
+  useEffect(() => {
+    function syncActiveTabFromHash() {
+      setActiveTab(readWorkspaceTabHash());
+    }
+
+    syncActiveTabFromHash();
+    window.addEventListener("hashchange", syncActiveTabFromHash);
+    return () => window.removeEventListener("hashchange", syncActiveTabFromHash);
   }, [botId]);
 
   useEffect(() => {
@@ -345,8 +371,14 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   useEffect(() => {
     if (activeTab === "installer" && bot && !isMinecraft) {
       setActiveTab("overview");
+      window.history.replaceState(null, "", window.location.pathname);
     }
-  }, [activeTab, bot, isMinecraft]);
+
+    if (activeTab === "players" && bot && !isGameService) {
+      setActiveTab("overview");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [activeTab, bot, isGameService, isMinecraft]);
 
   useEffect(() => {
     if (activeTab !== "backups") {
@@ -878,6 +910,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     { id: "files", label: "Pliki" },
     { id: "env", label: ".env" }
   ];
+  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Przeglad";
 
   return (
     <div className="workspace-stack">
@@ -1113,16 +1146,11 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       </section>
 
       <section className="panel-card">
-        <div className="tab-row">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="server-section-bar">
+          <div>
+            <p className="eyebrow">Panel serwera</p>
+            <h3>{activeTabLabel}</h3>
+          </div>
           <button className="ghost-button compact" onClick={refreshDetail}>
             <RefreshCw size={16} />
             <span>Sync</span>
@@ -1776,12 +1804,30 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                     <FolderOpen size={16} />
                     <span>Mody</span>
                   </button>
+                  <button className="ghost-button compact" onClick={() => openManagedDirectory("config")}>
+                    <FolderOpen size={16} />
+                    <span>Config modow</span>
+                  </button>
                   <button
                     className="ghost-button compact"
                     onClick={() => openManagedDirectory("resourcepacks")}
                   >
                     <FolderOpen size={16} />
                     <span>Resource packi</span>
+                  </button>
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => openManagedDirectory("world/datapacks")}
+                  >
+                    <FolderOpen size={16} />
+                    <span>Datapacki</span>
+                  </button>
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => openManagedDirectory("shaderpacks")}
+                  >
+                    <FolderOpen size={16} />
+                    <span>Shadery</span>
                   </button>
                   <button
                     className="ghost-button compact"
@@ -1804,6 +1850,10 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                     <Upload size={16} />
                     <span>Wrzuc mod</span>
                   </button>
+                  <button className="ghost-button compact" onClick={() => triggerUploadTo("config")}>
+                    <Upload size={16} />
+                    <span>Wrzuc config</span>
+                  </button>
                   <button
                     className="ghost-button compact"
                     onClick={() => triggerUploadTo("resourcepacks")}
@@ -1811,13 +1861,20 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                     <Upload size={16} />
                     <span>Wrzuc resource pack</span>
                   </button>
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => triggerUploadTo("world/datapacks")}
+                  >
+                    <Upload size={16} />
+                    <span>Wrzuc datapack</span>
+                  </button>
                 </div>
 
                 <div className="info-card">
                   Pluginy trafiaja do <strong>plugins/</strong>, mody do <strong>mods/</strong>, a
-                  paczki zasobow do <strong>resourcepacks/</strong>. Jesli chcesz wymusic paczke
-                  klientom, ustaw jeszcze odpowiednie pola resource-pack w{" "}
-                  <strong>server.properties</strong>.
+                  paczki zasobow do <strong>resourcepacks/</strong>. Pliki .jar sa binarne, wiec
+                  panel pozwala je otworzyc, usunac albo podmienic, a edycje tekstowa robisz na
+                  plikach configow, JSON, TOML, YAML i server.properties.
                 </div>
               </>
             ) : null}
