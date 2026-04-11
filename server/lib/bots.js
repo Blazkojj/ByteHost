@@ -48,6 +48,7 @@ const {
   getGamePortRange,
   getGamePreset,
   isGamePresetService,
+  sanitizeGameEngine,
   writeGameServerEnv
 } = require("./gamePresets");
 const { mergeBotWithRuntime, deriveBotRuntime } = require("./runtime");
@@ -390,7 +391,7 @@ function createBotRecord(record) {
     .prepare(
       `
         INSERT INTO bots (
-          id, owner_user_id, service_type, name, slug, description, language, detected_language,
+          id, owner_user_id, service_type, game_engine, name, slug, description, language, detected_language,
           entry_file, detected_entry_file, start_command, detected_start_command, install_command,
           detected_install_command, package_manager, project_path, status, status_message,
           expires_at, auto_restart, restart_delay, max_restarts, restart_count, last_restart_at,
@@ -401,7 +402,7 @@ function createBotRecord(record) {
           pm2_name, created_at, updated_at, background_url, subdomain
         )
         VALUES (
-          @id, @owner_user_id, @service_type, @name, @slug, @description, @language,
+          @id, @owner_user_id, @service_type, @game_engine, @name, @slug, @description, @language,
           @detected_language, @entry_file, @detected_entry_file, @start_command,
           @detected_start_command, @install_command, @detected_install_command, @package_manager,
           @project_path, @status, @status_message, @expires_at, @auto_restart, @restart_delay,
@@ -870,7 +871,12 @@ function isUsingDetectedMinecraftStartCommand(bot) {
   return (
     !bot.start_command ||
     bot.start_command === bot.detected_start_command ||
-    bot.start_command === buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+    bot.start_command ===
+      buildMinecraftStartCommand(
+        resolveEffectiveEntryFile(bot),
+        bot.ram_limit_mb,
+        bot.minecraft_server_type
+      )
   );
 }
 
@@ -904,7 +910,11 @@ function resolveEffectiveStartCommand(bot) {
   }
 
   if (bot.service_type === "minecraft_server") {
-    return buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb);
+    return buildMinecraftStartCommand(
+      resolveEffectiveEntryFile(bot),
+      bot.ram_limit_mb,
+      bot.minecraft_server_type
+    );
   }
 
   if (bot.service_type === "fivem_server") {
@@ -934,9 +944,15 @@ async function analyzeServiceProject(projectPath, serviceType, ramLimitMb) {
   });
 }
 
-function getDefaultStartCommand(serviceType, entryFile, detectedStartCommand, ramLimitMb) {
+function getDefaultStartCommand(
+  serviceType,
+  entryFile,
+  detectedStartCommand,
+  ramLimitMb,
+  minecraftServerType = ""
+) {
   if (serviceType === "minecraft_server") {
-    return buildMinecraftStartCommand(entryFile, ramLimitMb);
+    return buildMinecraftStartCommand(entryFile, ramLimitMb, minecraftServerType);
   }
 
   if (serviceType === "fivem_server") {
@@ -1287,13 +1303,21 @@ async function restoreBotBackup(botId, actor, backupId, payload = {}) {
   );
   const previousAutoStart =
     bot.service_type === "minecraft_server"
-      ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+      ? buildMinecraftStartCommand(
+          resolveEffectiveEntryFile(bot),
+          bot.ram_limit_mb,
+          bot.minecraft_server_type
+        )
       : bot.service_type === "fivem_server"
         ? buildFiveMStartCommand(resolveEffectiveEntryFile(bot) || "run.sh", "server.cfg")
       : bot.detected_start_command;
   const nextAutoStart =
     bot.service_type === "minecraft_server"
-      ? buildMinecraftStartCommand(nextEntryFile || analysis.detected_entry_file, bot.ram_limit_mb)
+      ? buildMinecraftStartCommand(
+          nextEntryFile || analysis.detected_entry_file,
+          bot.ram_limit_mb,
+          bot.minecraft_server_type
+        )
       : bot.service_type === "fivem_server"
         ? buildFiveMStartCommand(
             nextEntryFile || analysis.detected_entry_file || "run.sh",
@@ -1325,6 +1349,7 @@ async function restoreBotBackup(botId, actor, backupId, payload = {}) {
     install_command: analysis.install_command,
     detected_install_command: analysis.install_command,
     package_manager: analysis.package_manager,
+    game_engine: isGamePresetService(bot.service_type) ? bot.game_engine : null,
     minecraft_version: bot.service_type === "minecraft_server" ? bot.minecraft_version : null,
     detected_minecraft_version:
       bot.service_type === "minecraft_server" ? bot.detected_minecraft_version : null,
@@ -1433,6 +1458,9 @@ async function createBot(actor, payload, artifactFile) {
 
   const serviceType = sanitizeServiceType(payload.service_type, "discord_bot");
   const gamePreset = getGamePreset(serviceType);
+  const requestedGameEngine = gamePreset
+    ? sanitizeGameEngine(serviceType, payload.game_engine)
+    : null;
   const ramLimitMb = coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb);
   const cpuLimitPercent = coerceNullableNumber(
     payload.cpu_limit_percent,
@@ -1531,7 +1559,8 @@ async function createBot(actor, payload, artifactFile) {
       await bootstrapGameWorkspace(botDirectory, serviceType, {
         name: payload.name || gamePreset.label,
         public_port: resolvedPublicPort,
-        max_players: gamePreset.maxPlayers
+        max_players: gamePreset.maxPlayers,
+        game_engine: requestedGameEngine
       });
 
       if (artifactFile) {
@@ -1588,13 +1617,15 @@ async function createBot(actor, payload, artifactFile) {
       serviceType,
       entryFile || analysis.detected_entry_file,
       analysis.detected_start_command,
-      ramLimitMb
+      ramLimitMb,
+      requestedMinecraftServerType
     );
 
     createBotRecord({
       id: botId,
       owner_user_id: actor.id,
       service_type: serviceType,
+      game_engine: gamePreset ? requestedGameEngine : null,
       name: derivedName,
       slug: slugify(derivedName) || botId.slice(0, 8),
       description: coerceNullableString(payload.description, "") || "",
@@ -1747,6 +1778,12 @@ async function updateBot(botId, actor, payload) {
         ? coerceBoolean(payload.fivem_onesync_enabled, existingBot.fivem_onesync_enabled)
         : coerceBoolean(existingBot.fivem_onesync_enabled, true)
       : null;
+  const nextGameEngine =
+    isGamePresetService(existingBot.service_type)
+      ? payload.game_engine !== undefined
+        ? sanitizeGameEngine(existingBot.service_type, payload.game_engine, existingBot.game_engine)
+        : sanitizeGameEngine(existingBot.service_type, existingBot.game_engine)
+      : existingBot.game_engine;
   const canOverridePublicPort = isAdminUser(actor);
   const nextPublicHost =
     isGameService(existingBot.service_type)
@@ -1806,7 +1843,11 @@ async function updateBot(botId, actor, payload) {
 
   const nextMinecraftAuto =
     existingBot.service_type === "minecraft_server"
-      ? buildMinecraftStartCommand(nextEntryFile || nextDetectedEntryFile, nextRamLimit)
+      ? buildMinecraftStartCommand(
+          nextEntryFile || nextDetectedEntryFile,
+          nextRamLimit,
+          nextMinecraftServerType
+        )
       : null;
   const nextFiveMAuto =
     existingBot.service_type === "fivem_server"
@@ -1874,6 +1915,7 @@ async function updateBot(botId, actor, payload) {
       existingBot.language,
       existingBot.service_type
     ),
+    game_engine: nextGameEngine,
     entry_file: nextEntryFile,
     detected_entry_file: nextDetectedEntryFile,
     start_command: nextStartCommand,
@@ -1944,7 +1986,7 @@ async function updateBot(botId, actor, payload) {
       excludeBotId: existingBot.id,
       nextRamLimitMb: nextRamLimit,
       nextCpuLimitPercent: nextCpuLimit,
-      addingBot: true
+      addingBot: false
     });
   }
 
@@ -1985,6 +2027,7 @@ async function updateBot(botId, actor, payload) {
       payload.minecraft_max_players !== undefined ||
       payload.public_port !== undefined ||
       payload.public_host !== undefined ||
+      payload.game_engine !== undefined ||
       payload.fivem_license_key !== undefined ||
       payload.fivem_max_clients !== undefined ||
       payload.fivem_project_name !== undefined ||
@@ -2057,7 +2100,11 @@ async function startBot(botId, actor) {
 
       if (entryLooksLikeWrongPreset) {
         const serverJarExists = await fileExists(path.join(bot.project_path, "server.jar"));
-        const nextDetectedStartCommand = buildMinecraftStartCommand("server.jar", bot.ram_limit_mb);
+        const nextDetectedStartCommand = buildMinecraftStartCommand(
+          "server.jar",
+          bot.ram_limit_mb,
+          bot.minecraft_server_type
+        );
         bot = updateBotRow(botId, {
           entry_file: "server.jar",
           detected_entry_file: "server.jar",
@@ -2087,7 +2134,8 @@ async function startBot(botId, actor) {
         const downloadedEntryFile = download.entry_file;
         const nextDetectedStartCommand = buildMinecraftStartCommand(
           downloadedEntryFile,
-          bot.ram_limit_mb
+          bot.ram_limit_mb,
+          download.minecraft_server_type || bot.minecraft_server_type
         );
         const nextRow = {
           detected_entry_file: downloadedEntryFile,
@@ -2199,7 +2247,8 @@ async function startBot(botId, actor) {
         const bootstrap = await bootstrapGameWorkspace(bot.project_path, bot.service_type, {
           name: bot.name || gamePreset.label,
           public_port: bot.public_port || gamePreset.defaultPort,
-          max_players: gamePreset.maxPlayers
+          max_players: gamePreset.maxPlayers,
+          game_engine: bot.game_engine
         });
         const nextRow = {
           detected_language: bootstrap.detected_language,
@@ -2259,7 +2308,11 @@ async function startBot(botId, actor) {
 
     const nextDetectedStartCommand =
       bot.service_type === "minecraft_server"
-        ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+        ? buildMinecraftStartCommand(
+            resolveEffectiveEntryFile(bot),
+            bot.ram_limit_mb,
+            bot.minecraft_server_type
+          )
         : bot.service_type === "fivem_server"
           ? buildFiveMStartCommand(resolveEffectiveEntryFile(bot) || "run.sh", "server.cfg")
           : isGamePresetService(bot.service_type)
@@ -2380,7 +2433,8 @@ async function installDependencies(botId, actor) {
     await bootstrapGameWorkspace(bot.project_path, bot.service_type, {
       name: bot.name || gamePreset.label,
       public_port: bot.public_port || gamePreset.defaultPort,
-      max_players: gamePreset.maxPlayers
+      max_players: gamePreset.maxPlayers,
+      game_engine: bot.game_engine
     });
     await writeGameServerEnv(bot.project_path, bot.service_type, bot);
 
@@ -2552,13 +2606,21 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
     );
     const previousAutoStart =
       bot.service_type === "minecraft_server"
-        ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
+        ? buildMinecraftStartCommand(
+            resolveEffectiveEntryFile(bot),
+            bot.ram_limit_mb,
+            bot.minecraft_server_type
+          )
         : bot.service_type === "fivem_server"
           ? buildFiveMStartCommand(resolveEffectiveEntryFile(bot) || "run.sh", "server.cfg")
         : bot.detected_start_command;
     const nextAutoStart =
       bot.service_type === "minecraft_server"
-        ? buildMinecraftStartCommand(nextEntryFile || analysis.detected_entry_file, bot.ram_limit_mb)
+        ? buildMinecraftStartCommand(
+            nextEntryFile || analysis.detected_entry_file,
+            bot.ram_limit_mb,
+            bot.minecraft_server_type
+          )
         : bot.service_type === "fivem_server"
           ? buildFiveMStartCommand(nextEntryFile || analysis.detected_entry_file || "run.sh", "server.cfg")
         : analysis.detected_start_command;
@@ -2587,6 +2649,7 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       install_command: analysis.install_command,
       detected_install_command: analysis.install_command,
       package_manager: analysis.package_manager,
+      game_engine: isGamePresetService(bot.service_type) ? bot.game_engine : null,
       minecraft_version: bot.service_type === "minecraft_server" ? bot.minecraft_version : null,
       detected_minecraft_version:
         bot.service_type === "minecraft_server" ? bot.detected_minecraft_version : null,
@@ -2655,7 +2718,7 @@ async function executeBotConsoleCommand(botId, actor, payload) {
     if (runtime.status !== "ONLINE") {
       throw createHttpError(
         400,
-        "Prawdziwa konsola serwera dziala tylko wtedy, gdy usluga jest uruchomiona."
+        "Prawdziwa konsola dziala tylko wtedy, gdy usluga jest uruchomiona."
       );
     }
 
@@ -2676,7 +2739,7 @@ async function executeBotConsoleCommand(botId, actor, payload) {
     if (!consoleReady) {
       throw createHttpError(
         400,
-        "Nie udalo sie przygotowac prawdziwej konsoli serwera. Sprobuj ponownie za kilka sekund albo zrestartuj usluge recznie."
+        "Nie udalo sie przygotowac prawdziwej konsoli. Sprobuj ponownie za kilka sekund albo zrestartuj usluge recznie."
       );
     }
 

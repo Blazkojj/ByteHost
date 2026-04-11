@@ -75,10 +75,15 @@ const TERMINAL_STATUS_LABELS = {
 const FALLBACK_MINECRAFT_SERVER_TYPES = [
   { id: "vanilla", label: "Vanilla", hint: "Oficjalny server.jar od Mojang" },
   { id: "paper", label: "Paper", hint: "Pluginy Bukkit/Spigot/Paper" },
+  { id: "spigot", label: "Spigot compatible", hint: "Pobiera Paper pod pluginy Spigot" },
   { id: "bukkit", label: "Bukkit / Spigot compatible", hint: "Pobiera Paper pod pluginy" },
+  { id: "craftbukkit", label: "CraftBukkit compatible", hint: "Pobiera Paper pod pluginy Bukkit" },
   { id: "purpur", label: "Purpur", hint: "Fork Paper" },
   { id: "folia", label: "Folia", hint: "Eksperymentalny fork Paper" },
-  { id: "fabric", label: "Fabric", hint: "Mody Fabric w mods/" }
+  { id: "fabric", label: "Fabric", hint: "Mody Fabric w mods/" },
+  { id: "velocity", label: "Velocity proxy", hint: "Proxy Minecraft od PaperMC" },
+  { id: "waterfall", label: "Waterfall proxy", hint: "Proxy kompatybilny z BungeeCord" },
+  { id: "travertine", label: "Travertine proxy", hint: "Proxy dla starszych wersji Minecraft" }
 ];
 
 function terminalLineTone(line) {
@@ -130,6 +135,7 @@ function buildSettingsState(service) {
   const isMinecraft = service.service_type === "minecraft_server";
   const isFiveM = service.service_type === "fivem_server";
   const gamePreset = getGameServicePreset(service.service_type);
+  const defaultGameEngine = gamePreset?.engineOptions?.[0]?.id || "";
 
   return {
     name: service.name || "",
@@ -140,6 +146,7 @@ function buildSettingsState(service) {
     minecraft_version: service.minecraft_version || "",
     minecraft_server_type: service.minecraft_server_type || "vanilla",
     minecraft_max_players: service.minecraft_max_players ?? 20,
+    game_engine: service.game_engine || defaultGameEngine,
     fivem_license_key: service.fivem_license_key || "",
     fivem_max_clients: service.fivem_max_clients ?? 48,
     fivem_project_name: service.fivem_project_name || service.name || "",
@@ -219,6 +226,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   useEffect(() => {
     const shouldStreamLogs =
       activeTab === "logs" ||
+      activeTab === "console" ||
       (isGameService && (activeTab === "console" || activeTab === "players"));
 
     if (!shouldStreamLogs) {
@@ -277,7 +285,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
       if (payload.type === "command-result") {
         setConsoleResult(payload.result);
-        setMessage("Polecenie zostalo wyslane do dzialajacego serwera.");
+        setMessage("Polecenie zostalo wyslane do dzialajacej uslugi.");
         setActionState("");
         return;
       }
@@ -666,11 +674,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
     const terminalSocket = terminalSocketRef.current;
 
-    if (
-      isGameService &&
-      terminalSocket &&
-      terminalSocket.readyState === WebSocket.OPEN
-    ) {
+    if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
       try {
         terminalSocket.send(
           JSON.stringify({
@@ -705,17 +709,13 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
     try {
       const result = await api.runConsoleCommand(botId, {
-        mode: isGameService ? "server" : "shell",
+        mode: "server",
         command: normalizedCommand
       });
 
       setConsoleResult(result);
       setConsoleCommand("");
-      setMessage(
-        isGameService
-          ? "Polecenie zostalo wyslane do dzialajacego serwera."
-          : "Polecenie zostalo wykonane."
-      );
+      setMessage("Polecenie zostalo wyslane do dzialajacej uslugi.");
     } catch (consoleError) {
       setMessage("");
       setError(consoleError.message);
@@ -984,7 +984,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 minecraftServerTypes.find((type) => type.id === (bot.minecraft_server_type || "vanilla"))
                   ?.label || bot.minecraft_server_type || "Vanilla"
               }
-              hint="Vanilla, Paper, Bukkit/Spigot compatible, Purpur, Folia albo Fabric"
+              hint="Vanilla, Paper, Spigot/Bukkit, Purpur, Folia, Fabric i proxy PaperMC"
             />
           ) : null}
           {isFiveM ? (
@@ -992,6 +992,19 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               label="Artefakt FiveM"
               value={bot.fivem_artifact_build || "Auto"}
               hint="Oficjalny Linux build FXServer"
+            />
+          ) : null}
+          {gamePreset?.engineOptions?.length ? (
+            <SummaryTile
+              label="Silnik"
+              value={
+                gamePreset.engineOptions.find((engine) => engine.id === bot.game_engine)?.label ||
+                gamePreset.engineOptions[0].label
+              }
+              hint={
+                gamePreset.engineOptions.find((engine) => engine.id === bot.game_engine)?.hint ||
+                "Wariant zapisany w .bytehost/game.env"
+              }
             />
           ) : null}
           <SummaryTile
@@ -1268,6 +1281,30 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 </label>
               </>
             ) : null}
+            {gamePreset?.engineOptions?.length ? (
+              <label>
+                Silnik / wariant gry
+                <select
+                  value={settings.game_engine}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      game_engine: event.target.value
+                    }))
+                  }
+                >
+                  {gamePreset.engineOptions.map((engine) => (
+                    <option key={engine.id} value={engine.id}>
+                      {engine.label}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  {gamePreset.engineOptions.find((engine) => engine.id === settings.game_engine)?.hint ||
+                    "ByteHost zapisze wariant w .bytehost/game.env."}
+                </small>
+              </label>
+            ) : null}
             <label>
               Plik startowy
               <input
@@ -1485,108 +1522,56 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
         ) : null}
 
         {activeTab === "console" ? (
-          isGameService ? (
-            <div className="console-stack">
-              <form className="console-form" onSubmit={runConsoleCommand}>
-                <label className="wide">
-                  Prawdziwa konsola serwera
-                  <input
-                    value={consoleCommand}
-                    onChange={(event) => setConsoleCommand(event.target.value)}
-                    placeholder={
-                      isMinecraft
-                        ? "np. list, say Witaj, whitelist add Nick, stop"
-                        : "np. say Witaj, refresh, ensure moj-zasob, stop"
-                    }
-                  />
-                </label>
-                <div className="form-actions wide">
-                  <button
-                    className="primary-button"
-                    type="submit"
-                    disabled={actionState === "console"}
-                  >
-                    <Terminal size={16} />
-                    <span>Wyslij do serwera</span>
-                  </button>
-                </div>
-              </form>
-
-              <div className="info-card">
-                Ta konsola wysyla komendy bezposrednio do dzialajacego serwera. Live output
-                ponizej pokazuje stdout i stderr procesu, wiec zobaczysz dolaczenia graczy,
-                bledy, komendy i odpowiedzi serwera tak jak w hostingu gier.
-              </div>
-
-              {consoleResult?.mode === "server" ? (
-                <div className="info-card">
-                  Ostatnio wyslano: <strong>{consoleResult.command}</strong>
-                </div>
-              ) : null}
-
-              <div className="terminal-card">
-                <div className="terminal-header">
-                  <Terminal size={16} />
-                  <span>Live console</span>
-                  <span className={`terminal-live-pill ${terminalStatus}`}>
-                    {TERMINAL_STATUS_LABELS[terminalStatus] || terminalStatus}
-                  </span>
-                </div>
-                <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
-              </div>
-            </div>
-          ) : (
-            <div className="console-stack">
-              <form className="console-form" onSubmit={runConsoleCommand}>
-                <label className="wide">
-                  Konsola robocza uslugi
-                  <input
-                    value={consoleCommand}
-                    onChange={(event) => setConsoleCommand(event.target.value)}
-                    placeholder={"np. npm run lint, ls -la, python3 -V"}
-                  />
-                </label>
-                <div className="form-actions wide">
-                  <button
-                    className="primary-button"
-                    type="submit"
-                    disabled={actionState === "console"}
-                  >
-                    <Terminal size={16} />
-                    <span>Wykonaj polecenie</span>
-                  </button>
-                </div>
-              </form>
-
-              <div className="info-card">
-                Konsola wykonuje polecenia w katalogu projektu uslugi. To nie jest stdin procesu
-                PM2, tylko robocza konsola serwisowa do testow, npm, pip i komend systemowych.
-              </div>
-
-              <div className="terminal-card">
-                <div className="terminal-header">
-                  <Terminal size={16} />
-                  <span>Output</span>
-                </div>
-                <TerminalOutput
-                  content={
-                    consoleResult
-                      ? [
-                          `$ ${consoleResult.command}`,
-                          `cwd: ${consoleResult.cwd}`,
-                          `exit code: ${consoleResult.code}`,
-                          "",
-                          consoleResult.stdout || "",
-                          consoleResult.stderr ? `\n[stderr]\n${consoleResult.stderr}` : ""
-                        ]
-                          .filter(Boolean)
-                          .join("\n")
-                      : "Brak wykonanych polecen."
+          <div className="console-stack">
+            <form className="console-form" onSubmit={runConsoleCommand}>
+              <label className="wide">
+                {isGameService ? "Prawdziwa konsola serwera" : "Prawdziwa konsola procesu"}
+                <input
+                  value={consoleCommand}
+                  onChange={(event) => setConsoleCommand(event.target.value)}
+                  placeholder={
+                    isMinecraft
+                      ? "np. list, say Witaj, whitelist add Nick, stop"
+                      : isFiveM
+                        ? "np. status, say Witaj, refresh, ensure moj-zasob"
+                        : gamePreset
+                          ? "np. status, players, list, save"
+                          : "stdin procesu, np. help albo komenda obslugiwana przez bota"
                   }
                 />
+              </label>
+              <div className="form-actions wide">
+                <button className="primary-button" type="submit" disabled={actionState === "console"}>
+                  <Terminal size={16} />
+                  <span>Wyslij do konsoli</span>
+                </button>
               </div>
+            </form>
+
+            <div className="info-card">
+              Ta konsola laczy sie z dzialajacym procesem przez live terminal. Output ponizej
+              pokazuje stdout/stderr PM2, a pole komendy wysyla tekst do stdin procesu. Dla botow
+              Discord komenda zadziala wtedy, gdy sam bot czyta stdin, ale logi sa live tak samo
+              jak przy serwerach gier.
             </div>
-          )
+
+            {consoleResult?.mode === "server" ? (
+              <div className="info-card">
+                Ostatnio wyslano: <strong>{consoleResult.command}</strong>
+              </div>
+            ) : null}
+
+            <div className="terminal-card">
+              <div className="terminal-header">
+                <Terminal size={16} />
+                <span>Live console</span>
+                <span className={`terminal-live-pill ${terminalStatus}`}>
+                  {TERMINAL_STATUS_LABELS[terminalStatus] || terminalStatus}
+                </span>
+              </div>
+              <TerminalOutput content={logs.combined} containerRef={liveTerminalRef} />
+            </div>
+          </div>
         ) : null}
 
         {activeTab === "players" && isGameService ? (

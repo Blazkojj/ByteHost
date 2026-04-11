@@ -24,10 +24,15 @@ import {
 const FALLBACK_MINECRAFT_SERVER_TYPES = [
   { id: "vanilla", label: "Vanilla", hint: "Oficjalny server.jar od Mojang" },
   { id: "paper", label: "Paper", hint: "Pluginy Bukkit/Spigot/Paper" },
+  { id: "spigot", label: "Spigot compatible", hint: "Pobiera Paper pod pluginy Spigot" },
   { id: "bukkit", label: "Bukkit / Spigot compatible", hint: "Pobiera Paper pod pluginy" },
+  { id: "craftbukkit", label: "CraftBukkit compatible", hint: "Pobiera Paper pod pluginy Bukkit" },
   { id: "purpur", label: "Purpur", hint: "Fork Paper" },
   { id: "folia", label: "Folia", hint: "Eksperymentalny fork Paper" },
-  { id: "fabric", label: "Fabric", hint: "Mody Fabric w mods/" }
+  { id: "fabric", label: "Fabric", hint: "Mody Fabric w mods/" },
+  { id: "velocity", label: "Velocity proxy", hint: "Proxy Minecraft od PaperMC" },
+  { id: "waterfall", label: "Waterfall proxy", hint: "Proxy kompatybilny z BungeeCord" },
+  { id: "travertine", label: "Travertine proxy", hint: "Proxy dla starszych wersji Minecraft" }
 ];
 
 function CreateBotPanel({ open, system, user, onClose, onCreated }) {
@@ -39,6 +44,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     minecraft_version: "",
     minecraft_server_type: "vanilla",
     minecraft_max_players: 20,
+    game_engine: "",
     fivem_license_key: "",
     fivem_max_clients: 48,
     fivem_project_name: "",
@@ -217,6 +223,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                           minecraft_version: current.minecraft_version || "",
                           minecraft_server_type: current.minecraft_server_type || "vanilla",
                           minecraft_max_players: current.minecraft_max_players || 20,
+                          game_engine: "",
                           install_on_create: false,
                           public_port: current.public_port || 25565
                         }
@@ -234,6 +241,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                           minecraft_version: "",
                           minecraft_server_type: "vanilla",
                           minecraft_max_players: 20,
+                          game_engine: "",
                           install_on_create: false,
                           public_port: current.public_port || 30120
                         }
@@ -247,6 +255,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                           minecraft_version: "",
                           minecraft_server_type: "vanilla",
                           minecraft_max_players: 20,
+                          game_engine: nextGamePreset.engineOptions?.[0]?.id || "",
                           install_on_create: false,
                           public_port: current.public_port || nextGamePreset.defaultPort
                         }
@@ -263,6 +272,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                         minecraft_version: "",
                         minecraft_server_type: "vanilla",
                         minecraft_max_players: 20,
+                        game_engine: "",
                         entry_file:
                           current.entry_file === "server.jar" ||
                           current.entry_file === "start-server.sh"
@@ -407,6 +417,31 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 <small>Maksymalna liczba graczy online na serwerze.</small>
               </label>
             </>
+          ) : null}
+          {selectedGamePreset?.engineOptions?.length ? (
+            <label>
+              Silnik / wariant gry
+              <select
+                value={form.game_engine || selectedGamePreset.engineOptions[0].id}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    game_engine: event.target.value
+                  }))
+                }
+              >
+                {selectedGamePreset.engineOptions.map((engine) => (
+                  <option key={engine.id} value={engine.id}>
+                    {engine.label}
+                  </option>
+                ))}
+              </select>
+              <small>
+                {selectedGamePreset.engineOptions.find(
+                  (engine) => engine.id === (form.game_engine || selectedGamePreset.engineOptions[0].id)
+                )?.hint || "ByteHost zapisze wariant w .bytehost/game.env."}
+              </small>
+            </label>
           ) : null}
           <label>
             Plik startowy

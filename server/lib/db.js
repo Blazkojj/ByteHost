@@ -14,6 +14,7 @@ function mapBotRow(row) {
     ...row,
     auto_restart: Boolean(row.auto_restart),
     accept_eula: Boolean(row.accept_eula),
+    game_engine: row.game_engine || null,
     minecraft_server_type: row.minecraft_server_type || "vanilla",
     minecraft_max_players:
       row.minecraft_max_players === null || row.minecraft_max_players === undefined
@@ -154,6 +155,7 @@ function initDatabase() {
 
   ensureColumn(database, "bots", "owner_user_id", "TEXT");
   ensureColumn(database, "bots", "service_type", "TEXT NOT NULL DEFAULT 'discord_bot'");
+  ensureColumn(database, "bots", "game_engine", "TEXT");
   ensureColumn(database, "bots", "accept_eula", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(database, "bots", "public_host", "TEXT");
   ensureColumn(database, "bots", "public_port", "INTEGER");

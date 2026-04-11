@@ -8,6 +8,7 @@ const { getBotLogPaths } = require("./logs");
 
 let connectionPromise;
 const MANAGED_SERVER_SERVICE_TYPES = new Set([
+  "discord_bot",
   "minecraft_server",
   "fivem_server",
   ...GAME_SERVICE_TYPES

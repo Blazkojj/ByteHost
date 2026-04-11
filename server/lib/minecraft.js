@@ -26,9 +26,19 @@ const MINECRAFT_SERVER_TYPES = [
     hint: "Najpopularniejszy silnik pod pluginy Bukkit/Spigot/Paper"
   },
   {
+    id: "spigot",
+    label: "Spigot compatible",
+    hint: "Pobiera Paper, czyli nowoczesny zamiennik kompatybilny z pluginami Spigot"
+  },
+  {
     id: "bukkit",
     label: "Bukkit / Spigot compatible",
     hint: "Pobiera Paper, czyli praktyczny silnik kompatybilny z pluginami Bukkit/Spigot"
+  },
+  {
+    id: "craftbukkit",
+    label: "CraftBukkit compatible",
+    hint: "Pobiera Paper, bo CraftBukkit/Spigot nie maja prostego oficjalnego server.jar API"
   },
   {
     id: "purpur",
@@ -44,10 +54,35 @@ const MINECRAFT_SERVER_TYPES = [
     id: "fabric",
     label: "Fabric",
     hint: "Loader Fabric pod mody w folderze mods/"
+  },
+  {
+    id: "velocity",
+    label: "Velocity proxy",
+    hint: "Proxy Minecraft od PaperMC"
+  },
+  {
+    id: "waterfall",
+    label: "Waterfall proxy",
+    hint: "Proxy kompatybilny z BungeeCord od PaperMC"
+  },
+  {
+    id: "travertine",
+    label: "Travertine proxy",
+    hint: "Proxy PaperMC dla starszych wersji Minecraft"
   }
 ];
 
 const MINECRAFT_SERVER_TYPE_IDS = new Set(MINECRAFT_SERVER_TYPES.map((entry) => entry.id));
+const PAPERMC_PROJECT_BY_SERVER_TYPE = {
+  paper: "paper",
+  spigot: "paper",
+  bukkit: "paper",
+  craftbukkit: "paper",
+  folia: "folia",
+  velocity: "velocity",
+  waterfall: "waterfall",
+  travertine: "travertine"
+};
 
 let manifestCache = {
   expiresAt: 0,
@@ -57,8 +92,8 @@ let manifestCache = {
 function sanitizeMinecraftServerType(value, fallback = "vanilla") {
   const normalized = coerceNullableString(value, fallback).toLowerCase();
 
-  if (normalized === "spigot" || normalized === "craftbukkit") {
-    return "bukkit";
+  if (normalized === "bungeecord") {
+    return "waterfall";
   }
 
   return MINECRAFT_SERVER_TYPE_IDS.has(normalized) ? normalized : fallback;
@@ -199,13 +234,13 @@ function verifySha256(buffer, expectedSha256, versionId) {
 }
 
 async function getPaperMcDownload(project, versionId, requestedServerType) {
-  let version = coerceNullableString(versionId, null);
-
-  if (!version) {
-    const projectPayload = await fetchJson(`${PAPERMC_API_BASE}/${encodeURIComponent(project)}`);
-    const versionGroups = projectPayload?.versions || {};
-    version = Object.values(versionGroups).flat().find(Boolean);
-  }
+  const projectPayload = await fetchJson(`${PAPERMC_API_BASE}/${encodeURIComponent(project)}`);
+  const versionGroups = projectPayload?.versions || {};
+  const availableVersions = Object.values(versionGroups).flat().filter(Boolean);
+  const requestedVersion = coerceNullableString(versionId, null);
+  const version = requestedVersion && availableVersions.includes(requestedVersion)
+    ? requestedVersion
+    : availableVersions[0];
 
   if (!version) {
     throw createHttpError(502, `Nie udalo sie znalezc wersji ${requestedServerType}.`);
@@ -219,7 +254,7 @@ async function getPaperMcDownload(project, versionId, requestedServerType) {
   const build =
     buildList.find((entry) => String(entry.channel || "").toUpperCase() === "STABLE") ||
     buildList[0];
-  const download = build?.downloads?.["server:default"];
+  const download = build?.downloads?.["server:default"] || build?.downloads?.application;
 
   if (!download?.url) {
     throw createHttpError(
@@ -290,12 +325,12 @@ async function getMinecraftServerDownloadForType(serverType, versionId) {
     return getMinecraftServerDownload(versionId);
   }
 
-  if (normalizedServerType === "paper" || normalizedServerType === "bukkit") {
-    return getPaperMcDownload("paper", versionId, normalizedServerType);
-  }
-
-  if (normalizedServerType === "folia") {
-    return getPaperMcDownload("folia", versionId, normalizedServerType);
+  if (PAPERMC_PROJECT_BY_SERVER_TYPE[normalizedServerType]) {
+    return getPaperMcDownload(
+      PAPERMC_PROJECT_BY_SERVER_TYPE[normalizedServerType],
+      versionId,
+      normalizedServerType
+    );
   }
 
   if (normalizedServerType === "purpur") {

@@ -28,6 +28,18 @@ const GAME_PRESETS = {
     portRangeStart: numberFromEnv("PROJECT_ZOMBOID_PORT_RANGE_START", 16261),
     portRangeEnd: numberFromEnv("PROJECT_ZOMBOID_PORT_RANGE_END", 16361),
     maxPlayers: 32,
+    engineOptions: [
+      {
+        id: "vanilla",
+        label: "Vanilla dedicated server",
+        hint: "Oficjalny dedicated server pobierany przez SteamCMD"
+      },
+      {
+        id: "workshop",
+        label: "Workshop mods",
+        hint: "Ten sam runtime, ale przygotowany pod mody z Workshopa"
+      }
+    ],
     addonFolders: [
       { label: "Mods", path: "Zomboid/mods", description: "Lokalne mody Project Zomboid." },
       { label: "Workshop", path: "Zomboid/Workshop", description: "Pliki z Workshopa." },
@@ -84,6 +96,23 @@ exec bash start-server.sh -servername "$SERVER_NAME"
     portRangeStart: numberFromEnv("TERRARIA_PORT_RANGE_START", 7777),
     portRangeEnd: numberFromEnv("TERRARIA_PORT_RANGE_END", 7877),
     maxPlayers: 16,
+    engineOptions: [
+      {
+        id: "vanilla",
+        label: "Vanilla dedicated server",
+        hint: "Oficjalny dedicated server Terraria"
+      },
+      {
+        id: "tshock",
+        label: "TShock",
+        hint: "Pluginy TShock, runtime wrzucasz lub podmieniasz w plikach"
+      },
+      {
+        id: "tmodloader",
+        label: "tModLoader",
+        hint: "Mody tModLoader, runtime wrzucasz lub podmieniasz w plikach"
+      }
+    ],
     addonFolders: [
       { label: "TShock plugins", path: "tshock/plugins", description: "Pluginy TShock, jesli uzywasz TShocka." },
       { label: "Worlds", path: "worlds", description: "Swiaty Terraria." },
@@ -160,6 +189,23 @@ exec ./TerrariaServer.bin.x86_64 -port "$PORT" -players "$MAX_PLAYERS" -world "$
     portRangeStart: numberFromEnv("CS2_PORT_RANGE_START", 27015),
     portRangeEnd: numberFromEnv("CS2_PORT_RANGE_END", 27115),
     maxPlayers: 12,
+    engineOptions: [
+      {
+        id: "vanilla",
+        label: "Valve dedicated server",
+        hint: "Czysty CS2 dedicated server przez SteamCMD"
+      },
+      {
+        id: "metamod",
+        label: "Metamod:Source",
+        hint: "Pod pluginy CS2 instalowane recznie do addons/"
+      },
+      {
+        id: "counterstrikesharp",
+        label: "CounterStrikeSharp",
+        hint: "Framework pluginow CS2 instalowany recznie do addons/"
+      }
+    ],
     addonFolders: [
       { label: "Addons", path: "server/game/csgo/addons", description: "Pluginy/addony CS2." },
       { label: "CFG", path: "server/game/csgo/cfg", description: "Konfiguracje serwera." },
@@ -224,6 +270,18 @@ exec ./game/bin/linuxsteamrt64/cs2 "\${ARGS[@]}"
     portRangeStart: numberFromEnv("CSGO_PORT_RANGE_START", 27016),
     portRangeEnd: numberFromEnv("CSGO_PORT_RANGE_END", 27116),
     maxPlayers: 12,
+    engineOptions: [
+      {
+        id: "vanilla",
+        label: "SRCDS vanilla",
+        hint: "Czysty CS:GO dedicated server przez SteamCMD"
+      },
+      {
+        id: "sourcemod",
+        label: "SourceMod + MetaMod",
+        hint: "Pluginy SourceMod instalowane recznie do addons/"
+      }
+    ],
     addonFolders: [
       { label: "Addons", path: "server/csgo/addons", description: "Pluginy/addony CS:GO." },
       { label: "CFG", path: "server/csgo/cfg", description: "Konfiguracje serwera." },
@@ -286,6 +344,23 @@ exec ./srcds_run "\${ARGS[@]}"
     portRangeStart: numberFromEnv("UNTURNED_PORT_RANGE_START", 27017),
     portRangeEnd: numberFromEnv("UNTURNED_PORT_RANGE_END", 27117),
     maxPlayers: 24,
+    engineOptions: [
+      {
+        id: "vanilla",
+        label: "Vanilla dedicated server",
+        hint: "Oficjalny dedicated server Unturned przez SteamCMD"
+      },
+      {
+        id: "rocketmod",
+        label: "RocketMod",
+        hint: "Pluginy RocketMod instalowane recznie w folderze serwera"
+      },
+      {
+        id: "openmod",
+        label: "OpenMod",
+        hint: "Pluginy OpenMod instalowane recznie w folderze serwera"
+      }
+    ],
     addonFolders: [
       { label: "Workshop content", path: "server/Servers/ByteHost/Workshop/Content", description: "Mody z Workshopa." },
       { label: "Workshop maps", path: "server/Servers/ByteHost/Workshop/Maps", description: "Mapy z Workshopa." },
@@ -350,6 +425,19 @@ function getGamePreset(serviceType) {
   return GAME_PRESETS[serviceType] || null;
 }
 
+function getGameEngineOptions(serviceType) {
+  const preset = getGamePreset(serviceType);
+  return preset?.engineOptions || [];
+}
+
+function sanitizeGameEngine(serviceType, value, fallback = null) {
+  const engineOptions = getGameEngineOptions(serviceType);
+  const fallbackEngine = fallback || engineOptions[0]?.id || "vanilla";
+  const normalized = String(value || fallbackEngine).toLowerCase();
+
+  return engineOptions.some((engine) => engine.id === normalized) ? normalized : fallbackEngine;
+}
+
 function isGamePresetService(serviceType) {
   return GAME_SERVICE_TYPES.has(serviceType);
 }
@@ -360,6 +448,7 @@ function listGamePresets() {
     label: preset.label,
     language: preset.language,
     defaultPort: preset.defaultPort,
+    engineOptions: preset.engineOptions || [],
     addonFolders: preset.addonFolders
   }));
 }
@@ -418,6 +507,7 @@ async function writeGameServerEnv(projectPath, serviceType, options = {}) {
   const envPath = path.join(envDirectory, "game.env");
   const serviceName = options.name || preset.label;
   const publicPort = options.public_port || preset.defaultPort;
+  const gameEngine = sanitizeGameEngine(serviceType, options.game_engine);
   const maxPlayers =
     options.max_players ||
     options.minecraft_max_players ||
@@ -432,6 +522,7 @@ async function writeGameServerEnv(projectPath, serviceType, options = {}) {
       envLine("PORT", publicPort),
       envLine("MAX_PLAYERS", maxPlayers),
       envLine("SERVER_NAME", serviceName),
+      envLine("GAME_ENGINE", gameEngine),
       envLine("PZ_SERVER_NAME", serviceName),
       envLine("UNTURNED_SERVER_NAME", serviceName),
       envLine("TERRARIA_WORLD_NAME", serviceName.replace(/[^a-zA-Z0-9_-]+/g, "_")),
@@ -473,8 +564,10 @@ module.exports = {
   bootstrapGameWorkspace,
   ensureGameAddonFolders,
   getGamePortRange,
+  getGameEngineOptions,
   getGamePreset,
   isGamePresetService,
   listGamePresets,
+  sanitizeGameEngine,
   writeGameServerEnv
 };

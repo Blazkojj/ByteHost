@@ -262,14 +262,17 @@ async function detectInstallCommand(projectPath, language, packageJson) {
   };
 }
 
-function buildMinecraftStartCommand(entryFile, ramLimitMb = 2048) {
+function buildMinecraftStartCommand(entryFile, ramLimitMb = 2048, serverType = "") {
   if (!entryFile) {
     return null;
   }
 
   const maxRam = Math.max(512, Number(ramLimitMb || 0) || 2048);
   const minRam = Math.max(256, Math.min(1024, maxRam));
-  return `java -Xms${minRam}M -Xmx${maxRam}M -jar "${entryFile}" nogui`;
+  const proxyJar =
+    /(velocity|waterfall|travertine|bungeecord)/i.test(path.basename(entryFile)) ||
+    /^(velocity|waterfall|travertine)$/i.test(String(serverType || ""));
+  return `java -Xms${minRam}M -Xmx${maxRam}M -jar "${entryFile}"${proxyJar ? "" : " nogui"}`;
 }
 
 function buildFiveMStartCommand(entryFile = "run.sh", configFile = "server.cfg") {
