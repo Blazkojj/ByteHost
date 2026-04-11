@@ -166,6 +166,8 @@ function initDatabase() {
   ensureColumn(database, "bots", "fivem_tags", "TEXT");
   ensureColumn(database, "bots", "fivem_locale", "TEXT");
   ensureColumn(database, "bots", "fivem_onesync_enabled", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn(database, "bots", "background_url", "TEXT");
+  ensureColumn(database, "bots", "subdomain", "TEXT");
 
   const existingLimits = database.prepare("SELECT id FROM system_limits WHERE id = 1").get();
   if (!existingLimits) {

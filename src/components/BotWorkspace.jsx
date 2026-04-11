@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import { MinecraftInstaller } from "./MinecraftInstaller";
+import { getGameServicePreset, isGameServiceType } from "../gameServices";
 import {
   formatDate,
   formatDuration,
@@ -46,10 +47,13 @@ function SummaryTile({ label, value, hint }) {
 function buildSettingsState(service) {
   const isMinecraft = service.service_type === "minecraft_server";
   const isFiveM = service.service_type === "fivem_server";
+  const gamePreset = getGameServicePreset(service.service_type);
 
   return {
     name: service.name || "",
     description: service.description || "",
+    background_url: service.background_url || "",
+    subdomain: service.subdomain || "",
     language: service.language || "",
     minecraft_version: service.minecraft_version || "",
     minecraft_max_players: service.minecraft_max_players ?? 20,
@@ -69,7 +73,8 @@ function buildSettingsState(service) {
     cpu_limit_percent: service.cpu_limit_percent ?? 35,
     accept_eula: Boolean(service.accept_eula),
     public_host: service.public_host || "",
-    public_port: service.public_port ?? (isMinecraft ? 25565 : isFiveM ? 30120 : "")
+    public_port:
+      service.public_port ?? (isMinecraft ? 25565 : isFiveM ? 30120 : gamePreset?.defaultPort || "")
   };
 }
 
@@ -101,7 +106,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   const serviceType = bot?.service_type || "";
   const isMinecraft = serviceType === "minecraft_server";
   const isFiveM = serviceType === "fivem_server";
-  const isGameService = isMinecraft || isFiveM;
+  const gamePreset = getGameServicePreset(serviceType);
+  const isGameService = isGameServiceType(serviceType);
   const canManagePublicPort = Boolean(user?.is_admin);
 
   useEffect(() => {
@@ -126,7 +132,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
   useEffect(() => {
     const shouldStreamLogs =
-      activeTab === "logs" || (activeTab === "console" && isGameService);
+      activeTab === "logs" ||
+      (isGameService && (activeTab === "console" || activeTab === "players"));
 
     if (!shouldStreamLogs) {
       return undefined;
@@ -482,6 +489,10 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
   async function runConsoleCommand(event) {
     event.preventDefault();
+    await sendConsoleText(consoleCommand);
+  }
+
+  async function sendConsoleText(command) {
     setActionState("console");
     setMessage("");
     setError("");
@@ -489,7 +500,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     try {
       const result = await api.runConsoleCommand(botId, {
         mode: isGameService ? "server" : "shell",
-        command: consoleCommand
+        command
       });
 
       setConsoleResult(result);
@@ -643,10 +654,18 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   }
 
   const joinAddress = serviceJoinAddress(bot);
+  const playerQuickCommands = isMinecraft
+    ? ["list", "whitelist list"]
+    : isFiveM
+      ? ["status", "players"]
+      : gamePreset
+        ? ["status", "players", "list"]
+        : [];
   const tabs = [
     { id: "overview", label: "Przeglad" },
     { id: "logs", label: "Logi" },
     { id: "console", label: "Konsola" },
+    ...(isGameService ? [{ id: "players", label: "Gracze" }] : []),
     ...(isMinecraft ? [{ id: "installer", label: "Instalator" }] : []),
     { id: "backups", label: "Backupy" },
     { id: "files", label: "Pliki" },
@@ -707,7 +726,15 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             </button>
             <button className="ghost-button" onClick={() => runAction("install")} disabled={actionState}>
               <Wrench size={16} />
-              <span>{isMinecraft ? "Przygotuj" : isFiveM ? "Napraw runtime" : "Dependencies"}</span>
+              <span>
+                {isMinecraft
+                  ? "Przygotuj"
+                  : isFiveM
+                    ? "Napraw runtime"
+                    : gamePreset
+                      ? gamePreset.installLabel
+                  : "Dependencies"}
+              </span>
             </button>
             <button className="danger-button" onClick={() => runAction("delete")} disabled={actionState}>
               <Trash2 size={16} />
@@ -720,7 +747,15 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
           <SummaryTile
             label="Typ"
             value={serviceTypeLabel(bot.service_type)}
-            hint={isMinecraft ? "Java + PM2" : isFiveM ? "FXServer + PM2" : "Discord + PM2"}
+            hint={
+              isMinecraft
+                ? "Java + PM2"
+                : isFiveM
+                  ? "FXServer + PM2"
+                  : gamePreset
+                    ? `${gamePreset.language} + PM2`
+                : "Discord + PM2"
+            }
           />
           {isMinecraft ? (
             <SummaryTile
@@ -765,12 +800,14 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             }
           />
           <SummaryTile
-            label={isMinecraft || isFiveM ? "Sloty" : "RAM"}
+            label={isGameService ? "Sloty" : "RAM"}
             value={
               isMinecraft
                 ? formatNumber(bot.minecraft_max_players || 20)
                 : isFiveM
                   ? formatNumber(bot.fivem_max_clients || 48)
+                  : gamePreset
+                    ? formatNumber(gamePreset.maxPlayers)
                   : formatMemoryFromMb(bot.ram_usage_mb)
             }
             hint={
@@ -778,31 +815,33 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 ? "EULA akceptowana automatycznie przez ByteHost"
                 : isFiveM
                   ? "Limit graczy ustawiany w sv_maxclients"
+                  : gamePreset
+                    ? "Domyslnie w .bytehost/game.env"
                   : `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
             }
           />
           <SummaryTile
-            label={isMinecraft || isFiveM ? "RAM" : "CPU"}
+            label={isGameService ? "RAM" : "CPU"}
             value={
-              isMinecraft || isFiveM
+              isGameService
                 ? formatMemoryFromMb(bot.ram_usage_mb)
                 : formatNumber(bot.cpu_usage_percent, "%")
             }
             hint={
-              isMinecraft || isFiveM
+              isGameService
                 ? `Limit: ${formatMemoryLimit(bot.ram_limit_mb)}`
                 : `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
             }
           />
           <SummaryTile
-            label={isMinecraft || isFiveM ? "CPU" : "Storage"}
+            label={isGameService ? "CPU" : "Storage"}
             value={
-              isMinecraft || isFiveM
+              isGameService
                 ? formatNumber(bot.cpu_usage_percent, "%")
                 : formatMemoryFromMb(bot.storage_usage_mb || 0)
             }
             hint={
-              isMinecraft || isFiveM
+              isGameService
                 ? `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
                 : "Rozmiar plikow uslugi"
             }
@@ -815,16 +854,19 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             />
           ) : null}
           <SummaryTile
-            label={isMinecraft || isFiveM ? "Uptime" : "Stabilnosc"}
+            label={isGameService ? "Uptime" : "Stabilnosc"}
             value={
-              isMinecraft || isFiveM ? formatDuration(bot.uptime_seconds) : bot.stability_status || "STOPPED"
+              isGameService ? formatDuration(bot.uptime_seconds) : bot.stability_status || "STOPPED"
             }
             hint={
-              isMinecraft || isFiveM
+              isGameService
                 ? `Restarty: ${bot.restart_count || 0}`
                 : bot.status_message || "Brak alertow"
             }
           />
+          {bot.subdomain ? (
+            <SummaryTile label="Subdomena" value={bot.subdomain} hint="Zapisana w ByteHost" />
+          ) : null}
           {isGameService ? (
             <SummaryTile
               label="Storage"
@@ -862,6 +904,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 ? "ByteHost moze sam pobrac oficjalny server.jar dla wybranej wersji Minecraft, ustawic port w server.properties i zbudowac komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
                 : isFiveM
                   ? "ByteHost pobiera oficjalny artefakt FXServer dla Linuxa, generuje zarzadzany blok server.cfg i ustawia podstawowe komendy startowe. Ponizej mozesz ustawic sloty, OneSync, licencje i publiczny port."
+                  : gamePreset
+                    ? `${gamePreset.label} ma wlasny workspace z install-server.sh, start-server.sh i folderami pod mody/pluginy. Kliknij Reinstall dependencies, zeby pobrac lub naprawic pliki serwera.`
                 : "ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect sie pomyli."}
             </div>
 
@@ -870,6 +914,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 ? "Aktualizacja samym JAR-em podmienia silnik serwera bez czyszczenia swiata i pluginow. Wrzucenie ZIP lub RAR zastapi caly katalog uslugi, wiec traktuj to jak pelny reinstall serwera."
                 : isFiveM
                   ? "ZIP lub RAR dla FiveM traktuj jako pakiet serwera albo resources. Panel zachowuje oficjalny runtime FXServer, a resources, pluginy i skrypty wgrywasz wygodnie przez File Manager do folderu resources/."
+                  : gamePreset
+                    ? "ZIP lub RAR dla tej gry moze zawierac dodatki, pluginy, konfiguracje albo gotowe pliki serwera. Wgrywanie przez File Manager jest najbezpieczniejsze dla pojedynczych modow."
                 : "Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje .env, odswieza auto-detekcje i moze automatycznie przeinstalowac zaleznosci oraz wznowic proces."}
             </div>
 
@@ -877,7 +923,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               <div className="info-card wide">
                 {isMinecraft
                   ? "Kazdy gracz wejdzie dopiero wtedy, gdy publiczny host i port gry rzeczywiscie beda wystawione na zewnatrz. Panel zapisuje ten adres dla operatora, ale nie zastapi przekierowania portu lub tunelu TCP do Minecrafta."
-                  : "FiveM dostaje automatyczny adres publiczny `IP:port`, ale port nadal musi byc przekierowany na routerze do VM z ByteHost. Panel nie moze sam skonfigurowac przekierowania w Twoim routerze."}
+                  : "Serwer gry dostaje automatyczny adres publiczny `IP:port`, ale port nadal musi byc przekierowany na routerze do VM z ByteHost. Panel nie moze sam skonfigurowac przekierowania w Twoim routerze."}
               </div>
             ) : null}
 
@@ -902,10 +948,32 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               />
             </label>
             <label>
+              Subdomena
+              <input
+                placeholder="np. mc.bytehost.online"
+                value={settings.subdomain}
+                onChange={(event) =>
+                  setSettings((current) => ({ ...current, subdomain: event.target.value }))
+                }
+              />
+              <small>Panel zapisuje subdomene przy usludze. Rekord DNS ustawisz osobno.</small>
+            </label>
+            <label>
+              Tlo serwera
+              <input
+                placeholder="https://..."
+                value={settings.background_url}
+                onChange={(event) =>
+                  setSettings((current) => ({ ...current, background_url: event.target.value }))
+                }
+              />
+              <small>URL obrazka widocznego na karcie serwera.</small>
+            </label>
+            <label>
               Jezyk
               <select
                 value={settings.language}
-                disabled={isMinecraft || isFiveM}
+                disabled={isMinecraft || isFiveM || Boolean(gamePreset)}
                 onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}
               >
                 <option value="Node.js">Node.js</option>
@@ -913,6 +981,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 <option value="Python">Python</option>
                 <option value="Java">Java</option>
                 <option value="FiveM">FiveM</option>
+                <option value="SteamCMD">SteamCMD</option>
+                <option value="Terraria">Terraria</option>
               </select>
             </label>
             {isMinecraft ? (
@@ -960,7 +1030,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             <label>
               Plik startowy
               <input
-                placeholder={isFiveM ? "run.sh" : undefined}
+                placeholder={isFiveM ? "run.sh" : gamePreset ? gamePreset.entryFile : undefined}
                 value={settings.entry_file}
                 onChange={(event) =>
                   setSettings((current) => ({ ...current, entry_file: event.target.value }))
@@ -970,7 +1040,13 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             <label className="wide">
               Komenda startowa
               <input
-                placeholder={isFiveM ? 'bash "run.sh" +exec "server.cfg"' : undefined}
+                placeholder={
+                  isFiveM
+                    ? 'bash "run.sh" +exec "server.cfg"'
+                    : gamePreset
+                      ? gamePreset.startCommand
+                    : undefined
+                }
                 value={settings.start_command}
                 onChange={(event) =>
                   setSettings((current) => ({ ...current, start_command: event.target.value }))
@@ -1019,7 +1095,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 }
               />
             </label>
-            {isMinecraft ? (
+            {isGameService ? (
               <>
                 <label>
                   Adres publiczny
@@ -1047,9 +1123,11 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                       : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
                   </small>
                 </label>
-                <div className="info-card wide">
-                  ByteHost akceptuje Minecraft EULA automatycznie przy starcie serwera.
-                </div>
+                {isMinecraft ? (
+                  <div className="info-card wide">
+                    ByteHost akceptuje Minecraft EULA automatycznie przy starcie serwera.
+                  </div>
+                ) : null}
               </>
             ) : null}
             {isFiveM ? (
@@ -1117,32 +1195,6 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                       }))
                     }
                   />
-                </label>
-                <label>
-                  Adres publiczny
-                  <input
-                    placeholder="Auto: publiczne IP hosta"
-                    value={settings.public_host}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, public_host: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  Port publiczny
-                  <input
-                    type="number"
-                    value={settings.public_port}
-                    disabled={!canManagePublicPort}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, public_port: event.target.value }))
-                    }
-                  />
-                  <small>
-                    {canManagePublicPort
-                      ? "Ten sam port musi byc przekierowany w routerze dla TCP i UDP. Jesli bedzie zajety, ByteHost znajdzie wolny."
-                      : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
-                  </small>
                 </label>
                 <label className="checkbox-field wide">
                   <input
@@ -1286,6 +1338,56 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               </div>
             </div>
           )
+        ) : null}
+
+        {activeTab === "players" && isGameService ? (
+          <div className="workspace-stack">
+            <div className="info-card wide">
+              Player manager korzysta z prawdziwej konsoli serwera. Kliknij szybka komende, a
+              wynik pojawi sie w live console/logach tak jak w Pterodactylu. Dla gier SteamCMD
+              dokladne komendy zaleza od silnika i pluginow RCON.
+            </div>
+            <div className="file-actions">
+              {playerQuickCommands.map((command) => (
+                <button
+                  key={command}
+                  className="ghost-button compact"
+                  onClick={() => sendConsoleText(command)}
+                  disabled={actionState === "console"}
+                >
+                  <Terminal size={16} />
+                  <span>{command}</span>
+                </button>
+              ))}
+            </div>
+            <form className="console-form" onSubmit={runConsoleCommand}>
+              <label className="wide">
+                Komenda gracza / administracji
+                <input
+                  value={consoleCommand}
+                  onChange={(event) => setConsoleCommand(event.target.value)}
+                  placeholder={
+                    isMinecraft
+                      ? "np. kick Nick, ban Nick, op Nick"
+                      : isFiveM
+                        ? "np. status, clientkick ID powod"
+                        : "np. status, players, list"
+                  }
+                />
+              </label>
+              <button className="primary-button" type="submit" disabled={actionState === "console"}>
+                <Terminal size={16} />
+                <span>Wyslij</span>
+              </button>
+            </form>
+            <div className="terminal-card">
+              <div className="terminal-header">
+                <Terminal size={16} />
+                <span>Live console</span>
+              </div>
+              <pre ref={liveTerminalRef}>{logs.combined || "Brak logow do wyswietlenia."}</pre>
+            </div>
+          </div>
         ) : null}
 
         {activeTab === "installer" && isMinecraft ? (
@@ -1510,6 +1612,49 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                   Zasoby FiveM wrzucaj do <strong>resources/</strong>. ByteHost nie usuwa Twoich
                   dodatkow przy zwyklej pracy panelu, a serwer mozna potem dolaczyc do{" "}
                   <strong>ensure</strong> w <strong>server.cfg</strong>.
+                </div>
+              </>
+            ) : null}
+
+            {gamePreset ? (
+              <>
+                <div className="file-actions">
+                  {gamePreset.addonFolders.map((folder) => (
+                    <button
+                      key={folder.path}
+                      className="ghost-button compact"
+                      onClick={() => openManagedDirectory(folder.path)}
+                    >
+                      <FolderOpen size={16} />
+                      <span>{folder.label}</span>
+                    </button>
+                  ))}
+                  <button
+                    className="ghost-button compact"
+                    onClick={() => openManagedDirectory(".bytehost")}
+                  >
+                    <Save size={16} />
+                    <span>game.env</span>
+                  </button>
+                </div>
+
+                <div className="file-actions">
+                  {gamePreset.addonFolders.map((folder) => (
+                    <button
+                      key={`upload-${folder.path}`}
+                      className="ghost-button compact"
+                      onClick={() => triggerUploadTo(folder.path)}
+                    >
+                      <Upload size={16} />
+                      <span>Wrzuc do {folder.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="info-card">
+                  {gamePreset.label} ma gotowe foldery pod dodatki. Konfiguracje portu, slotow i
+                  nazwy serwera znajdziesz w <strong>.bytehost/game.env</strong>, a pliki gry
+                  pobierasz przyciskiem <strong>{gamePreset.installLabel}</strong>.
                 </div>
               </>
             ) : null}

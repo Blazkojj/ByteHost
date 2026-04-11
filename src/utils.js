@@ -1,3 +1,5 @@
+import { getGameServicePreset, isGameServiceType } from "./gameServices";
+
 export const statusTheme = {
   ONLINE: "success",
   OFFLINE: "muted",
@@ -96,6 +98,11 @@ export function serviceTypeLabel(serviceType) {
     return "Serwer FiveM";
   }
 
+  const gamePreset = getGameServicePreset(serviceType);
+  if (gamePreset) {
+    return gamePreset.label;
+  }
+
   return "Bot Discord";
 }
 
@@ -108,12 +115,17 @@ export function serviceArtifactLabel(serviceType) {
     return "Pakiet FiveM (ZIP / RAR)";
   }
 
+  const gamePreset = getGameServicePreset(serviceType);
+  if (gamePreset) {
+    return gamePreset.artifactLabel;
+  }
+
   return "Archiwum projektu (ZIP / RAR)";
 }
 
 export function serviceJoinAddress(service) {
   if (
-    !["minecraft_server", "fivem_server"].includes(service?.service_type) ||
+    !isGameServiceType(service?.service_type) ||
     !service.public_host
   ) {
     return "Brak";
@@ -121,7 +133,12 @@ export function serviceJoinAddress(service) {
 
   const rawHost = String(service.public_host);
   const host = rawHost.includes(":") && !rawHost.startsWith("[") ? `[${rawHost}]` : rawHost;
-  const defaultPort = service.service_type === "minecraft_server" ? 25565 : 30120;
+  const defaultPort =
+    service.service_type === "minecraft_server"
+      ? 25565
+      : service.service_type === "fivem_server"
+        ? 30120
+        : getGameServicePreset(service.service_type)?.defaultPort;
   const port = service.public_port || defaultPort;
 
   if (service.service_type === "minecraft_server" && port === defaultPort) {

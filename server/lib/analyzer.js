@@ -1,6 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 
+const { buildGameStartCommand, getGamePreset, isGamePresetService } = require("./gamePresets");
 const { normalizeRelativePath } = require("./utils");
 
 const SKIP_DIRECTORIES = new Set([
@@ -336,6 +337,21 @@ async function analyzeFiveMProject(projectPath) {
   };
 }
 
+async function analyzeGamePresetProject(projectPath, serviceType) {
+  const preset = getGamePreset(serviceType);
+  const detected_entry_file =
+    (await findFirstExisting(projectPath, [preset.entryFile, "start.sh", "run.sh"])) ||
+    preset.entryFile;
+
+  return {
+    detected_language: preset.language,
+    detected_entry_file,
+    detected_start_command: buildGameStartCommand(serviceType, detected_entry_file),
+    install_command: preset.installCommand,
+    package_manager: preset.packageManager
+  };
+}
+
 async function analyzeProject(projectPath, options = {}) {
   const collectedFiles = await collectFiles(projectPath);
   const serviceType = options.serviceType || "discord_bot";
@@ -346,6 +362,10 @@ async function analyzeProject(projectPath, options = {}) {
 
   if (serviceType === "fivem_server") {
     return analyzeFiveMProject(projectPath);
+  }
+
+  if (isGamePresetService(serviceType)) {
+    return analyzeGamePresetProject(projectPath, serviceType);
   }
 
   const packageJson = await readJsonIfExists(path.join(projectPath, "package.json"));

@@ -560,7 +560,7 @@ progress::-webkit-progress-value {
 
 .bots-layout {
   display: grid;
-  grid-template-columns: 330px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
 }
 
@@ -575,19 +575,45 @@ progress::-webkit-progress-value {
 
 .bot-list {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 12px;
-  max-height: calc(100vh - 250px);
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .bot-list-item {
+  position: relative;
   display: grid;
+  min-height: 128px;
+  align-content: space-between;
   gap: 10px;
-  padding: 16px;
+  overflow: hidden;
+  padding: 18px;
   border-radius: 20px;
   border: 1px solid var(--border);
   background: var(--list-item-bg);
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.server-list-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(135deg, rgba(2, 8, 23, 0.88), rgba(15, 23, 42, 0.52)), var(--server-bg);
+  background-size: cover;
+  background-position: center;
+  opacity: var(--server-bg-opacity, 0);
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.server-list-card[style]::before {
+  --server-bg-opacity: 1;
+}
+
+.bot-list-item > * {
+  position: relative;
+  z-index: 1;
 }
 
 .bot-list-item:hover,

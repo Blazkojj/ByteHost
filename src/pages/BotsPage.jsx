@@ -5,6 +5,12 @@ import { Plus, Upload } from "lucide-react";
 import { api } from "../api";
 import { BotWorkspace } from "../components/BotWorkspace";
 import {
+  GAME_SERVICE_PRESETS,
+  GAME_SERVICE_TYPES,
+  getGameServicePreset,
+  isGameServiceType
+} from "../gameServices";
+import {
   formatLimitValue,
   hasVisibleAccountPlan,
   formatMemoryFromMb,
@@ -39,7 +45,9 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     install_on_create: false,
     accept_eula: true,
     public_host: "",
-    public_port: 25565
+    public_port: 25565,
+    background_url: "",
+    subdomain: ""
   });
   const [archive, setArchive] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -49,7 +57,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
 
   const isMinecraft = form.service_type === "minecraft_server";
   const isFiveM = form.service_type === "fivem_server";
-  const isGameService = isMinecraft || isFiveM;
+  const selectedGamePreset = getGameServicePreset(form.service_type);
+  const isGameService = isGameServiceType(form.service_type);
 
   useEffect(() => {
     if (open) {
@@ -130,6 +139,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 ? "Dodaj serwer Minecraft"
                 : isFiveM
                   ? "Dodaj serwer FiveM"
+                  : selectedGamePreset
+                    ? `Dodaj ${selectedGamePreset.label}`
                   : "Dodaj bota Discord"}
             </h3>
           </div>
@@ -143,6 +154,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej. Publiczny host moze ustawic sie automatycznie na Twoje IP, a EULA jest akceptowana automatycznie."
             : isFiveM
               ? "ByteHost sam pobiera oficjalny artefakt FXServer oraz bazowe cfx-server-data. ZIP albo RAR jest opcjonalny i sluzy do nalozenia gotowego pakietu resources/modow/pluginow na swiezy serwer."
+              : selectedGamePreset
+                ? selectedGamePreset.hint
             : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
         </div>
 
@@ -150,7 +163,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
           <div className="info-card">
             {isMinecraft
               ? "Panel moze sam ustawic adres publiczny jako `publiczne_IP[:port]`. Jesli port Minecraft jest zajety, ByteHost sam dobierze wolny. Owner moze go zmienic recznie, a zwykly uzytkownik dostaje port automatycznie."
-              : "Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Jesli port FiveM jest zajety, ByteHost sam dobierze wolny. Owner moze go zmienic recznie, a zwykly uzytkownik dostaje port automatycznie."}
+              : "Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Jesli port gry jest zajety, ByteHost sam dobierze wolny. Owner moze go zmienic recznie, a zwykly uzytkownik dostaje port automatycznie."}
           </div>
         ) : null}
 
@@ -170,22 +183,26 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             <select
               value={form.service_type}
               onChange={(event) =>
-                setForm((current) =>
-                  event.target.value === "minecraft_server"
+                setForm((current) => {
+                  const nextServiceType = event.target.value;
+                  const nextGamePreset = getGameServicePreset(nextServiceType);
+
+                  return nextServiceType === "minecraft_server"
                       ? {
                           ...current,
-                          service_type: event.target.value,
+                          service_type: nextServiceType,
                           language: "Java",
                           entry_file: current.entry_file || "server.jar",
+                          start_command: current.start_command,
                           minecraft_version: current.minecraft_version || "",
                           minecraft_max_players: current.minecraft_max_players || 20,
                           install_on_create: false,
                           public_port: current.public_port || 25565
                         }
-                    : event.target.value === "fivem_server"
+                    : nextServiceType === "fivem_server"
                       ? {
                           ...current,
-                          service_type: event.target.value,
+                          service_type: nextServiceType,
                           language: "FiveM",
                           entry_file: current.entry_file || "run.sh",
                           minecraft_version: "",
@@ -193,23 +210,51 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                           install_on_create: false,
                           public_port: current.public_port || 30120
                         }
+                    : nextGamePreset
+                      ? {
+                          ...current,
+                          service_type: nextServiceType,
+                          language: nextGamePreset.language,
+                          entry_file: nextGamePreset.entryFile,
+                          start_command: nextGamePreset.startCommand,
+                          minecraft_version: "",
+                          minecraft_max_players: 20,
+                          install_on_create: false,
+                          public_port: current.public_port || nextGamePreset.defaultPort
+                        }
                     : {
                         ...current,
-                        service_type: event.target.value,
+                        service_type: nextServiceType,
                         language:
-                          current.language === "Java" || current.language === "FiveM"
+                          current.language === "Java" ||
+                          current.language === "FiveM" ||
+                          current.language === "SteamCMD" ||
+                          current.language === "Terraria"
                             ? ""
                             : current.language,
                         minecraft_version: "",
                         minecraft_max_players: 20,
-                        entry_file: current.entry_file === "server.jar" ? "" : current.entry_file
-                      }
-                )
+                        entry_file:
+                          current.entry_file === "server.jar" ||
+                          current.entry_file === "start-server.sh"
+                            ? ""
+                            : current.entry_file,
+                        start_command:
+                          current.start_command === 'bash "start-server.sh"'
+                            ? ""
+                            : current.start_command
+                      };
+                })
               }
             >
               <option value="discord_bot">Bot Discord</option>
               <option value="minecraft_server">Serwer Minecraft</option>
               <option value="fivem_server">Serwer FiveM</option>
+              {GAME_SERVICE_TYPES.map((serviceType) => (
+                <option key={serviceType} value={serviceType}>
+                  {GAME_SERVICE_PRESETS[serviceType].label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -235,7 +280,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               accept={
                 isMinecraft
                   ? ".jar,.zip,.rar,application/java-archive,application/x-java-archive,application/zip,application/x-rar-compressed"
-                  : isFiveM
+                  : isFiveM || selectedGamePreset
                     ? ".zip,.rar,application/zip,application/x-rar-compressed"
                   : ".zip,.rar,application/zip,application/x-rar-compressed"
               }
@@ -248,6 +293,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                   ? "Opcjonalne. Mozesz utworzyc pusty serwer i dodac JAR pozniej albo od razu wrzucic JAR/ZIP/RAR."
                   : isFiveM
                     ? "Opcjonalne. Bez pliku ByteHost postawi czysty FiveM z oficjalnym FXServerem i cfx-server-data. ZIP/RAR nalozy Twoje resources/mods/pluginy na gotowy runtime."
+                    : selectedGamePreset
+                      ? "Opcjonalne. Bez pliku ByteHost utworzy workspace i skrypty instalacji, a dodatki wrzucisz pozniej przez manager plikow."
                   : "Mozesz dodac plik teraz lub utworzyc pusty workspace."}
             </small>
           </label>
@@ -255,7 +302,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             Jezyk projektu
             <select
               value={form.language}
-              disabled={isMinecraft || isFiveM}
+              disabled={isMinecraft || isFiveM || Boolean(selectedGamePreset)}
               onChange={(event) => setForm((current) => ({ ...current, language: event.target.value }))}
             >
               <option value="">Auto detect</option>
@@ -264,6 +311,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               <option value="Python">Python</option>
               <option value="Java">Java</option>
               <option value="FiveM">FiveM</option>
+              <option value="SteamCMD">SteamCMD</option>
+              <option value="Terraria">Terraria</option>
             </select>
           </label>
           {isMinecraft ? (
@@ -311,7 +360,15 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
           <label>
             Plik startowy
             <input
-              placeholder={isMinecraft ? "server.jar" : isFiveM ? "run.sh" : "dist/index.js"}
+              placeholder={
+                isMinecraft
+                  ? "server.jar"
+                  : isFiveM
+                    ? "run.sh"
+                    : selectedGamePreset
+                      ? selectedGamePreset.entryFile
+                  : "dist/index.js"
+              }
               value={form.entry_file}
               onChange={(event) => setForm((current) => ({ ...current, entry_file: event.target.value }))}
             />
@@ -324,6 +381,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                   ? 'java -Xms1024M -Xmx2048M -jar "server.jar" nogui'
                   : isFiveM
                     ? 'bash "run.sh" +exec "server.cfg"'
+                    : selectedGamePreset
+                      ? selectedGamePreset.startCommand
                   : 'npm start lub python3 "main.py"'
               }
               value={form.start_command}
@@ -375,7 +434,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             />
           </label>
 
-          {isMinecraft ? (
+          {isGameService ? (
             <>
               <label>
                 Adres publiczny
@@ -403,9 +462,11 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                     : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
                 </small>
               </label>
-              <div className="info-card wide">
-                ByteHost akceptuje Minecraft EULA automatycznie przy tworzeniu i starcie serwera.
-              </div>
+              {isMinecraft ? (
+                <div className="info-card wide">
+                  ByteHost akceptuje Minecraft EULA automatycznie przy tworzeniu i starcie serwera.
+                </div>
+              ) : null}
             </>
           ) : null}
 
@@ -463,32 +524,6 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                   }
                 />
               </label>
-              <label>
-                Adres publiczny
-                <input
-                  placeholder="Auto: publiczne IP hosta"
-                  value={form.public_host}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, public_host: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Port publiczny
-                <input
-                  type="number"
-                  value={form.public_port}
-                  disabled={!user?.is_admin}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, public_port: event.target.value }))
-                  }
-                />
-                <small>
-                  {user?.is_admin
-                    ? "Jesli wybrany port jest zajety, ByteHost automatycznie znajdzie wolny."
-                    : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
-                </small>
-              </label>
               <label className="checkbox-field wide">
                 <input
                   type="checkbox"
@@ -515,7 +550,30 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             />
             <span>Auto restart wlaczony</span>
           </label>
-          {!isMinecraft && !isFiveM ? (
+          <label>
+            Subdomena
+            <input
+              placeholder="np. mc.bytehost.online"
+              value={form.subdomain}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, subdomain: event.target.value }))
+              }
+            />
+            <small>Panel zapisuje subdomene przy usludze. DNS w Cloudflare ustawisz osobno.</small>
+          </label>
+          <label>
+            Tlo serwera
+            <input
+              placeholder="https://..."
+              value={form.background_url}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, background_url: event.target.value }))
+              }
+            />
+            <small>URL obrazka, ktory bedzie widoczny na karcie serwera.</small>
+          </label>
+
+          {!isGameService ? (
             <label className="checkbox-field">
               <input
                 type="checkbox"
@@ -541,6 +599,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                     ? "Utworz serwer Minecraft"
                     : isFiveM
                       ? "Utworz serwer FiveM"
+                      : selectedGamePreset
+                        ? `Utworz ${selectedGamePreset.label}`
                     : "Utworz bota"}
               </span>
             </button>
@@ -630,8 +690,13 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
               bots.map((bot) => (
                 <Link
                   key={bot.id}
-                  className={`bot-list-item ${selectedBot?.id === bot.id ? "active" : ""}`}
+                  className={`bot-list-item server-list-card ${selectedBot?.id === bot.id ? "active" : ""}`}
                   to={`/bots/${bot.id}`}
+                  style={
+                    bot.background_url
+                      ? { "--server-bg": `url("${bot.background_url}")` }
+                      : undefined
+                  }
                 >
                   <div>
                     <strong>{bot.name}</strong>

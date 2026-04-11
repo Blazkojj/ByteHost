@@ -41,6 +41,15 @@ const {
   listModrinthProjectVersions,
   searchModrinthProjects
 } = require("./modrinth");
+const {
+  GAME_SERVICE_TYPES,
+  buildGameStartCommand,
+  bootstrapGameWorkspace,
+  getGamePortRange,
+  getGamePreset,
+  isGamePresetService,
+  writeGameServerEnv
+} = require("./gamePresets");
 const { mergeBotWithRuntime, deriveBotRuntime } = require("./runtime");
 const {
   ensureBotDirectory,
@@ -87,8 +96,21 @@ const {
   toMb
 } = require("./utils");
 
-const ALLOWED_LANGUAGES = new Set(["Node.js", "TypeScript", "Python", "Java", "FiveM"]);
-const ALLOWED_SERVICE_TYPES = new Set(["discord_bot", "minecraft_server", "fivem_server"]);
+const ALLOWED_LANGUAGES = new Set([
+  "Node.js",
+  "TypeScript",
+  "Python",
+  "Java",
+  "FiveM",
+  "SteamCMD",
+  "Terraria"
+]);
+const ALLOWED_SERVICE_TYPES = new Set([
+  "discord_bot",
+  "minecraft_server",
+  "fivem_server",
+  ...GAME_SERVICE_TYPES
+]);
 const DEFAULT_CONSOLE_TIMEOUT_MS = 20000;
 const MAX_CONSOLE_COMMAND_LENGTH = 2000;
 
@@ -113,6 +135,11 @@ function sanitizeLanguage(value, fallback, serviceType = "discord_bot") {
 
   if (serviceType === "fivem_server") {
     return "FiveM";
+  }
+
+  const gamePreset = getGamePreset(serviceType);
+  if (gamePreset) {
+    return gamePreset.language;
   }
 
   if (!value) {
@@ -166,8 +193,39 @@ function sanitizeMinecraftMaxPlayers(value, fallback = 20) {
   return maxPlayers;
 }
 
+function normalizeBackgroundUrl(value) {
+  const normalized = coerceNullableString(value, "");
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^https?:\/\/[^\s]+$/i.test(normalized)) {
+    throw createHttpError(400, "Tlo serwera musi byc pelnym adresem URL http:// albo https://.");
+  }
+
+  return normalized;
+}
+
+function normalizeSubdomain(value) {
+  const normalized = coerceNullableString(value, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const lowered = normalized.toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/.test(lowered)) {
+    throw createHttpError(400, "Subdomena moze zawierac tylko litery, cyfry, kropki i myslniki.");
+  }
+
+  return lowered;
+}
+
 function isGameService(serviceType) {
-  return serviceType === "minecraft_server" || serviceType === "fivem_server";
+  return (
+    serviceType === "minecraft_server" ||
+    serviceType === "fivem_server" ||
+    isGamePresetService(serviceType)
+  );
 }
 
 const DISCORD_NATIVE_LOG_CANDIDATES = [
@@ -191,6 +249,11 @@ function getDefaultServicePort(serviceType) {
 
   if (serviceType === "fivem_server") {
     return FIVEM_DEFAULT_PORT;
+  }
+
+  const gamePreset = getGamePreset(serviceType);
+  if (gamePreset) {
+    return gamePreset.defaultPort;
   }
 
   return null;
@@ -248,6 +311,21 @@ function allocateServicePort(serviceType, preferredPort = null, options = {}) {
     throw createHttpError(
       400,
       `Nie znaleziono wolnego portu FiveM w zakresie ${FIVEM_PORT_RANGE_START}-${FIVEM_PORT_RANGE_END}.`
+    );
+  }
+
+  const gameRange = getGamePortRange(serviceType);
+  if (gameRange) {
+    for (let port = gameRange.start; port <= gameRange.end; port += 1) {
+      if (!reservedPorts.has(port)) {
+        return port;
+      }
+    }
+
+    const gamePreset = getGamePreset(serviceType);
+    throw createHttpError(
+      400,
+      `Nie znaleziono wolnego portu ${gamePreset?.label || "gry"} w zakresie ${gameRange.start}-${gameRange.end}.`
     );
   }
 
@@ -320,7 +398,7 @@ function createBotRecord(record) {
           public_port, minecraft_version, detected_minecraft_version, minecraft_max_players,
           fivem_artifact_build, fivem_license_key, fivem_max_clients, fivem_project_name,
           fivem_tags, fivem_locale, fivem_onesync_enabled, archive_name, pm2_name, created_at,
-          updated_at
+          updated_at, background_url, subdomain
         )
         VALUES (
           @id, @owner_user_id, @service_type, @name, @slug, @description, @language,
@@ -332,7 +410,7 @@ function createBotRecord(record) {
           @detected_minecraft_version, @minecraft_max_players, @fivem_artifact_build,
           @fivem_license_key, @fivem_max_clients, @fivem_project_name, @fivem_tags,
           @fivem_locale, @fivem_onesync_enabled, @archive_name, @pm2_name, @created_at,
-          @updated_at
+          @updated_at, @background_url, @subdomain
         )
       `
     )
@@ -788,6 +866,18 @@ function isUsingDetectedFiveMStartCommand(bot) {
   );
 }
 
+function isUsingDetectedGameStartCommand(bot) {
+  if (!isGamePresetService(bot.service_type)) {
+    return false;
+  }
+
+  return (
+    !bot.start_command ||
+    bot.start_command === bot.detected_start_command ||
+    bot.start_command === buildGameStartCommand(bot.service_type, resolveEffectiveEntryFile(bot))
+  );
+}
+
 function resolveEffectiveStartCommand(bot) {
   if (bot.start_command) {
     return bot.start_command;
@@ -805,6 +895,10 @@ function resolveEffectiveStartCommand(bot) {
     return buildFiveMStartCommand(resolveEffectiveEntryFile(bot), "server.cfg");
   }
 
+  if (isGamePresetService(bot.service_type)) {
+    return buildGameStartCommand(bot.service_type, resolveEffectiveEntryFile(bot));
+  }
+
   return null;
 }
 
@@ -812,7 +906,7 @@ function assertArtifactAllowed(serviceType, artifactKind) {
   if (serviceType !== "minecraft_server" && artifactKind === ".jar") {
     throw createHttpError(
       400,
-      "Plik JAR jest dostepny tylko dla serwerow Minecraft. Boty Discord i FiveM obsluguja ZIP albo RAR."
+      "Plik JAR jest dostepny tylko dla serwerow Minecraft. Pozostale uslugi obsluguja ZIP albo RAR."
     );
   }
 }
@@ -831,6 +925,10 @@ function getDefaultStartCommand(serviceType, entryFile, detectedStartCommand, ra
 
   if (serviceType === "fivem_server") {
     return buildFiveMStartCommand(entryFile || "run.sh", "server.cfg");
+  }
+
+  if (isGamePresetService(serviceType)) {
+    return buildGameStartCommand(serviceType, entryFile);
   }
 
   return detectedStartCommand;
@@ -1311,6 +1409,7 @@ async function createBot(actor, payload, artifactFile) {
   }
 
   const serviceType = sanitizeServiceType(payload.service_type, "discord_bot");
+  const gamePreset = getGamePreset(serviceType);
   const ramLimitMb = coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb);
   const cpuLimitPercent = coerceNullableNumber(
     payload.cpu_limit_percent,
@@ -1401,6 +1500,20 @@ async function createBot(actor, payload, artifactFile) {
         fivem_max_clients: requestedFiveMMaxClients,
         fivem_onesync_enabled: requestedFiveMOneSync
       });
+    } else if (gamePreset) {
+      await bootstrapGameWorkspace(botDirectory, serviceType, {
+        name: payload.name || gamePreset.label,
+        public_port: resolvedPublicPort,
+        max_players: gamePreset.maxPlayers
+      });
+
+      if (artifactFile) {
+        const artifactKind = await detectUploadedArtifactKind(artifactFile.path, artifactFile.originalname);
+        assertArtifactAllowed(serviceType, artifactKind);
+        await importProjectArtifact(artifactFile.path, botDirectory, {
+          originalName: artifactFile.originalname
+        });
+      }
     } else if (artifactFile) {
       const artifactKind = await detectUploadedArtifactKind(artifactFile.path, artifactFile.originalname);
       assertArtifactAllowed(serviceType, artifactKind);
@@ -1429,6 +1542,8 @@ async function createBot(actor, payload, artifactFile) {
               ? "minecraft"
               : serviceType === "fivem_server"
                 ? "fivem"
+                : gamePreset
+                  ? slugify(gamePreset.label) || serviceType
                 : "bot"
           }-${botId.slice(0, 8)}`,
         path.extname(artifactFile?.originalname || "")
@@ -1472,18 +1587,8 @@ async function createBot(actor, payload, artifactFile) {
       ram_limit_mb: ramLimitMb,
       cpu_limit_percent: cpuLimitPercent,
       accept_eula: serviceType === "minecraft_server" ? true : false,
-      public_host:
-        serviceType === "minecraft_server"
-          ? resolvedPublicHost || null
-          : serviceType === "fivem_server"
-            ? resolvedPublicHost || null
-            : null,
-      public_port:
-        serviceType === "minecraft_server"
-          ? resolvedPublicPort
-          : serviceType === "fivem_server"
-            ? resolvedPublicPort
-            : null,
+      public_host: isGameService(serviceType) ? resolvedPublicHost || null : null,
+      public_port: isGameService(serviceType) ? resolvedPublicPort : null,
       minecraft_version:
         serviceType === "minecraft_server"
           ? normalizeMinecraftVersion(payload.minecraft_version, resolvedMinecraftVersion)
@@ -1502,7 +1607,9 @@ async function createBot(actor, payload, artifactFile) {
       archive_name: artifactFile?.originalname || null,
       pm2_name: getBotProcessName(botId),
       created_at: createdAt,
-      updated_at: createdAt
+      updated_at: createdAt,
+      background_url: normalizeBackgroundUrl(payload.background_url),
+      subdomain: normalizeSubdomain(payload.subdomain)
     });
 
     await assertStorageWithinLimit();
@@ -1594,47 +1701,28 @@ async function updateBot(botId, actor, payload) {
       : null;
   const canOverridePublicPort = isAdminUser(actor);
   const nextPublicHost =
-    existingBot.service_type === "fivem_server"
+    isGameService(existingBot.service_type)
       ? payload.public_host !== undefined
         ? normalizePublicHost(payload.public_host)
         : existingBot.public_host || (await resolveGamePublicHost(null))
-      : existingBot.service_type === "minecraft_server"
-        ? payload.public_host !== undefined
-          ? normalizePublicHost(payload.public_host)
-          : existingBot.public_host || (await resolveGamePublicHost(null))
-        : existingBot.public_host;
+      : existingBot.public_host;
   const nextPublicPort =
-    existingBot.service_type === "fivem_server"
-        ? payload.public_port !== undefined
-          ? allocateServicePort(
-              existingBot.service_type,
-              canOverridePublicPort ? payload.public_port : existingBot.public_port,
-              {
-                excludeBotId: existingBot.id,
-                fallbackToFreePort: true
-              }
-            )
-          : existingBot.public_port ||
-            allocateServicePort(existingBot.service_type, null, {
+    isGameService(existingBot.service_type)
+      ? payload.public_port !== undefined
+        ? allocateServicePort(
+            existingBot.service_type,
+            canOverridePublicPort ? payload.public_port : existingBot.public_port,
+            {
               excludeBotId: existingBot.id,
               fallbackToFreePort: true
-            })
-      : existingBot.service_type === "minecraft_server"
-        ? payload.public_port !== undefined
-          ? allocateServicePort(
-              existingBot.service_type,
-              canOverridePublicPort ? payload.public_port : existingBot.public_port,
-              {
-                excludeBotId: existingBot.id,
-                fallbackToFreePort: true
-              }
-            )
-          : existingBot.public_port ||
-            allocateServicePort(existingBot.service_type, null, {
-              excludeBotId: existingBot.id,
-              fallbackToFreePort: true
-            })
-        : existingBot.public_port;
+            }
+          )
+        : existingBot.public_port ||
+          allocateServicePort(existingBot.service_type, null, {
+            excludeBotId: existingBot.id,
+            fallbackToFreePort: true
+          })
+      : existingBot.public_port;
 
   if (existingBot.service_type === "minecraft_server") {
     const selectedEntryFile = nextEntryFile || nextDetectedEntryFile;
@@ -1672,11 +1760,17 @@ async function updateBot(botId, actor, payload) {
     existingBot.service_type === "fivem_server"
       ? buildFiveMStartCommand(nextEntryFile || nextDetectedEntryFile || "run.sh", "server.cfg")
       : null;
+  const nextGameAuto =
+    isGamePresetService(existingBot.service_type)
+      ? buildGameStartCommand(existingBot.service_type, nextEntryFile || nextDetectedEntryFile)
+      : null;
   const defaultStartCommand =
     existingBot.service_type === "minecraft_server"
       ? nextMinecraftAuto
       : existingBot.service_type === "fivem_server"
         ? nextFiveMAuto
+        : isGamePresetService(existingBot.service_type)
+          ? nextGameAuto
       : existingBot.detected_start_command;
 
   let nextStartCommand =
@@ -1700,12 +1794,28 @@ async function updateBot(botId, actor, payload) {
     nextStartCommand = defaultStartCommand;
   }
 
+  if (
+    isGamePresetService(existingBot.service_type) &&
+    payload.start_command === undefined &&
+    isUsingDetectedGameStartCommand(existingBot)
+  ) {
+    nextStartCommand = defaultStartCommand;
+  }
+
   const changes = {
     name: coerceNullableString(payload.name, existingBot.name) || existingBot.name,
     description:
       payload.description !== undefined
         ? coerceNullableString(payload.description, "") || ""
         : existingBot.description,
+    background_url:
+      payload.background_url !== undefined
+        ? normalizeBackgroundUrl(payload.background_url)
+        : existingBot.background_url,
+    subdomain:
+      payload.subdomain !== undefined
+        ? normalizeSubdomain(payload.subdomain)
+        : existingBot.subdomain,
     language: sanitizeLanguage(
       payload.language,
       existingBot.language,
@@ -1799,6 +1909,10 @@ async function updateBot(botId, actor, payload) {
 
   if (updatedRow.service_type === "fivem_server") {
     await writeFiveMServerConfig(updatedRow.project_path, updatedRow);
+  }
+
+  if (isGamePresetService(updatedRow.service_type)) {
+    await writeGameServerEnv(updatedRow.project_path, updatedRow.service_type, updatedRow);
   }
 
   const requiresRestart =
@@ -1991,6 +2105,69 @@ async function startBot(botId, actor) {
       }
     }
 
+    if (isGamePresetService(bot.service_type)) {
+      const gamePreset = getGamePreset(bot.service_type);
+      let entryFile = resolveEffectiveEntryFile(bot) || gamePreset.entryFile;
+      const entryPath = path.join(bot.project_path, entryFile);
+      const entryExists = await fileExists(entryPath);
+
+      if (!entryExists) {
+        const bootstrap = await bootstrapGameWorkspace(bot.project_path, bot.service_type, {
+          name: bot.name || gamePreset.label,
+          public_port: bot.public_port || gamePreset.defaultPort,
+          max_players: gamePreset.maxPlayers
+        });
+        const nextRow = {
+          detected_language: bootstrap.detected_language,
+          detected_entry_file: bootstrap.detected_entry_file,
+          detected_start_command: bootstrap.detected_start_command,
+          install_command: bootstrap.install_command,
+          detected_install_command: bootstrap.install_command,
+          package_manager: bootstrap.package_manager,
+          updated_at: nowIso()
+        };
+
+        if (isUsingDetectedEntryFile(bot) || !bot.entry_file) {
+          nextRow.entry_file = bootstrap.detected_entry_file;
+        }
+
+        if (isUsingDetectedGameStartCommand(bot)) {
+          nextRow.start_command = bootstrap.detected_start_command;
+        }
+
+        bot = updateBotRow(botId, nextRow);
+        entryFile = resolveEffectiveEntryFile(bot) || gamePreset.entryFile;
+      }
+
+      if (!bot.public_port) {
+        bot = updateBotRow(botId, {
+          public_port: allocateServicePort(bot.service_type, null, {
+            excludeBotId: bot.id
+          }),
+          updated_at: nowIso()
+        });
+      }
+
+      if (!bot.public_host) {
+        const detectedHost = await resolveGamePublicHost(null);
+        if (detectedHost) {
+          bot = updateBotRow(botId, {
+            public_host: detectedHost,
+            updated_at: nowIso()
+          });
+        }
+      }
+
+      await writeGameServerEnv(bot.project_path, bot.service_type, bot);
+
+      if (!(await fileExists(path.join(bot.project_path, entryFile)))) {
+        throw createHttpError(
+          400,
+          `Nie znaleziono pliku startowego ${entryFile}. Kliknij Reinstall dependencies albo odtworz start-server.sh w plikach uslugi.`
+        );
+      }
+    }
+
     const resolvedStartCommand = resolveEffectiveStartCommand(bot);
     if (!resolvedStartCommand) {
       throw createHttpError(400, "Brakuje komendy startowej.");
@@ -2001,6 +2178,8 @@ async function startBot(botId, actor) {
         ? buildMinecraftStartCommand(resolveEffectiveEntryFile(bot), bot.ram_limit_mb)
         : bot.service_type === "fivem_server"
           ? buildFiveMStartCommand(resolveEffectiveEntryFile(bot) || "run.sh", "server.cfg")
+          : isGamePresetService(bot.service_type)
+            ? buildGameStartCommand(bot.service_type, resolveEffectiveEntryFile(bot))
         : bot.detected_start_command;
 
     if (
@@ -2097,6 +2276,53 @@ async function installDependencies(botId, actor) {
           "ByteHost pobral lub naprawil oficjalny artefakt FXServer i odswiezyl podstawowy server.cfg."
       }
     };
+  }
+
+  if (isGamePresetService(bot.service_type)) {
+    const gamePreset = getGamePreset(bot.service_type);
+    await bootstrapGameWorkspace(bot.project_path, bot.service_type, {
+      name: bot.name || gamePreset.label,
+      public_port: bot.public_port || gamePreset.defaultPort,
+      max_players: gamePreset.maxPlayers
+    });
+    await writeGameServerEnv(bot.project_path, bot.service_type, bot);
+
+    const command = bot.install_command || bot.detected_install_command || gamePreset.installCommand;
+
+    try {
+      const result = await runShellCommand(command, {
+        cwd: bot.project_path,
+        maxOutput: 300000,
+        timeoutMs: 900000
+      });
+
+      const analysis = await analyzeServiceProject(bot.project_path, bot.service_type, bot.ram_limit_mb);
+      updateBotRow(botId, {
+        detected_language: analysis.detected_language,
+        detected_entry_file: analysis.detected_entry_file,
+        detected_start_command: analysis.detected_start_command,
+        install_command: analysis.install_command,
+        detected_install_command: analysis.install_command,
+        package_manager: analysis.package_manager,
+        updated_at: nowIso()
+      });
+
+      return {
+        bot: await getBotWithRuntime(botId, actor),
+        install: {
+          skipped: false,
+          command,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          message: `${gamePreset.label} zostal przygotowany przez instalator ByteHost.`
+        }
+      };
+    } catch (error) {
+      throw createHttpError(400, `Instalacja ${gamePreset.label} nie powiodla sie: ${error.message}`, {
+        stdout: error.stdout,
+        stderr: error.stderr
+      });
+    }
   }
 
   const command = bot.install_command || bot.detected_install_command;
