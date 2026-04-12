@@ -381,12 +381,52 @@ function updateBotRow(botId, changes) {
   }
 
   const payload = { ...changes, id: botId };
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "minecraft_server_type") &&
+    !payload.minecraft_server_type
+  ) {
+    payload.minecraft_server_type = "vanilla";
+  }
   const setClause = fields.map((field) => `${field} = @${field}`).join(", ");
   getDb().prepare(`UPDATE bots SET ${setClause} WHERE id = @id`).run(payload);
   return getBotRow(botId, null, { skipAccessCheck: true });
 }
 
+function normalizeBotRecordForStorage(record) {
+  const serviceType = sanitizeServiceType(record.service_type, "discord_bot");
+  const gamePreset = getGamePreset(serviceType);
+  const isMinecraft = serviceType === "minecraft_server";
+  const isFiveM = serviceType === "fivem_server";
+  const isGame = isGameService(serviceType);
+
+  return {
+    ...record,
+    service_type: serviceType,
+    game_engine: gamePreset ? record.game_engine : null,
+    accept_eula: isMinecraft ? record.accept_eula : false,
+    public_host: isGame ? record.public_host : null,
+    public_port: isGame ? record.public_port : null,
+    minecraft_version: isMinecraft ? record.minecraft_version : null,
+    detected_minecraft_version: isMinecraft ? record.detected_minecraft_version : null,
+    minecraft_max_players: isMinecraft ? record.minecraft_max_players : null,
+    minecraft_server_type: isMinecraft
+      ? sanitizeMinecraftServerType(record.minecraft_server_type, "vanilla")
+      : "vanilla",
+    fivem_artifact_build: isFiveM ? record.fivem_artifact_build : null,
+    fivem_license_key: isFiveM ? record.fivem_license_key : null,
+    fivem_max_clients: isFiveM ? record.fivem_max_clients : null,
+    fivem_project_name: isFiveM ? record.fivem_project_name : null,
+    fivem_tags: isFiveM ? record.fivem_tags : null,
+    fivem_locale: isFiveM ? record.fivem_locale : null,
+    fivem_onesync_enabled: isFiveM ? record.fivem_onesync_enabled : false,
+    background_url: isGame ? record.background_url : null,
+    subdomain: isGame ? record.subdomain : null
+  };
+}
+
 function createBotRecord(record) {
+  const storageRecord = normalizeBotRecordForStorage(record);
+
   getDb()
     .prepare(
       `
@@ -416,13 +456,13 @@ function createBotRecord(record) {
       `
     )
     .run({
-      ...record,
-      auto_restart: record.auto_restart ? 1 : 0,
-      accept_eula: record.accept_eula ? 1 : 0,
-      fivem_onesync_enabled: record.fivem_onesync_enabled ? 1 : 0
+      ...storageRecord,
+      auto_restart: storageRecord.auto_restart ? 1 : 0,
+      accept_eula: storageRecord.accept_eula ? 1 : 0,
+      fivem_onesync_enabled: storageRecord.fivem_onesync_enabled ? 1 : 0
     });
 
-  return getBotRow(record.id, null, { skipAccessCheck: true });
+  return getBotRow(storageRecord.id, null, { skipAccessCheck: true });
 }
 
 function getBotOwner(bot) {
@@ -2731,7 +2771,7 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
       detected_minecraft_version:
         bot.service_type === "minecraft_server" ? bot.detected_minecraft_version : null,
       minecraft_server_type:
-        bot.service_type === "minecraft_server" ? bot.minecraft_server_type || "vanilla" : null,
+        bot.service_type === "minecraft_server" ? bot.minecraft_server_type || "vanilla" : "vanilla",
       fivem_artifact_build:
         bot.service_type === "fivem_server" ? nextFiveMArtifactBuild : null,
       archive_name: artifactFile.originalname || bot.archive_name,
