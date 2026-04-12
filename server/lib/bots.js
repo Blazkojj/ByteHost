@@ -944,6 +944,60 @@ async function analyzeServiceProject(projectPath, serviceType, ramLimitMb) {
   });
 }
 
+async function bootstrapDiscordWorkspace(projectPath, payload = {}) {
+  const serviceName = coerceNullableString(payload.name, "ByteHost Discord Bot");
+  await fs.mkdir(projectPath, { recursive: true });
+  await fs.writeFile(
+    path.join(projectPath, "package.json"),
+    `${JSON.stringify(
+      {
+        name: slugify(serviceName) || "bytehost-discord-bot",
+        version: "1.0.0",
+        private: true,
+        main: "index.js",
+        scripts: {
+          start: "node index.js"
+        }
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(projectPath, "index.js"),
+    [
+      'console.log("ByteHost Discord bot workspace ready.");',
+      'console.log("Upload your real bot files or edit index.js in File Manager.");',
+      "",
+      "setInterval(() => {",
+      "  // Keeps the placeholder process alive until you upload your bot.",
+      "}, 60000);",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(projectPath, "README-BYTEHOST.txt"),
+    [
+      "ByteHost Discord bot workspace",
+      "",
+      "This placeholder lets the panel create a Discord bot service without an archive.",
+      "Upload your real bot files with ZIP/RAR or edit index.js and package.json in File Manager.",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+function queueDependencyInstall(botId, actor) {
+  setImmediate(() => {
+    installDependencies(botId, actor).catch((error) => {
+      console.error(`ByteHost background install failed for ${botId}:`, error);
+    });
+  });
+}
+
 function getDefaultStartCommand(
   serviceType,
   entryFile,
@@ -1586,6 +1640,8 @@ async function createBot(actor, payload, artifactFile) {
       await importProjectArtifact(artifactFile.path, botDirectory, {
         originalName: artifactFile.originalname
       });
+    } else if (serviceType === "discord_bot") {
+      await bootstrapDiscordWorkspace(botDirectory, payload);
     } else if (serviceType === "minecraft_server") {
       await bootstrapMinecraftWorkspace(botDirectory, {
         acceptEula: true,
@@ -1688,15 +1744,21 @@ async function createBot(actor, payload, artifactFile) {
       subdomain: normalizeSubdomain(payload.subdomain)
     });
 
-    await assertStorageWithinLimit();
-    await assertUserStorageWithinLimit(actor);
+    if (artifactFile || serviceType !== "discord_bot") {
+      await assertStorageWithinLimit();
+      await assertUserStorageWithinLimit(actor);
+    }
 
     if (artifactFile) {
       await fs.rm(artifactFile.path, { force: true });
     }
 
     if (coerceBoolean(payload.install_on_create, false) && serviceType !== "minecraft_server") {
-      await installDependencies(botId, actor);
+      await appendBytehostControlLog(
+        botId,
+        "Instalacja zaleznosci zostala dodana do kolejki w tle."
+      );
+      queueDependencyInstall(botId, actor);
     }
 
     return getBotWithRuntime(botId, actor);

@@ -52,9 +52,13 @@ async function request(url, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const error = new Error(payload?.error || "Wystapil blad zadania.");
+    const errorMessage =
+      typeof payload === "string"
+        ? payload
+        : payload?.error || payload?.message || "Wystapil blad zadania.";
+    const error = new Error(errorMessage);
     error.statusCode = response.status;
-    error.details = payload?.details || null;
+    error.details = typeof payload === "object" ? payload?.details || null : null;
 
     if (response.status === 401) {
       clearStoredToken();
