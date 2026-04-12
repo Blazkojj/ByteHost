@@ -57,6 +57,12 @@ function canCreateServiceType(user, serviceType) {
   return getAllowedServiceTypes(user).includes(serviceType);
 }
 
+function appendCreateField(payload, key, value) {
+  if (value !== "" && value !== null && value !== undefined) {
+    payload.append(key, String(value));
+  }
+}
+
 function CreateBotPanel({ open, system, user, onClose, onCreated }) {
   const [form, setForm] = useState({
     service_type: "discord_bot",
@@ -150,6 +156,154 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     };
   }, [open, isMinecraft]);
 
+  function handleServiceTypeChange(nextServiceType) {
+    setArchive(null);
+    setForm((current) => {
+      const nextGamePreset = getGameServicePreset(nextServiceType);
+      const currentEntryFile = current.entry_file || "";
+      const currentStartCommand = current.start_command || "";
+
+      if (nextServiceType === "minecraft_server") {
+        return {
+          ...current,
+          service_type: nextServiceType,
+          language: "Java",
+          entry_file: currentEntryFile.toLowerCase().endsWith(".jar") ? currentEntryFile : "server.jar",
+          start_command:
+            currentStartCommand === 'bash "start-server.sh"' ? "" : currentStartCommand,
+          minecraft_version: current.minecraft_version || "",
+          minecraft_server_type: current.minecraft_server_type || "vanilla",
+          minecraft_max_players: current.minecraft_max_players || 20,
+          game_engine: "",
+          install_on_create: false,
+          public_port: current.public_port || 25565
+        };
+      }
+
+      if (nextServiceType === "fivem_server") {
+        return {
+          ...current,
+          service_type: nextServiceType,
+          language: "FiveM",
+          entry_file:
+            currentEntryFile &&
+            currentEntryFile !== "server.jar" &&
+            currentEntryFile !== "start-server.sh"
+              ? currentEntryFile
+              : "run.sh",
+          start_command:
+            currentStartCommand === 'bash "start-server.sh"' ? "" : currentStartCommand,
+          minecraft_version: "",
+          minecraft_server_type: "vanilla",
+          minecraft_max_players: 20,
+          game_engine: "",
+          install_on_create: false,
+          public_port: current.public_port || 30120
+        };
+      }
+
+      if (nextGamePreset) {
+        return {
+          ...current,
+          service_type: nextServiceType,
+          language: nextGamePreset.language,
+          entry_file: nextGamePreset.entryFile,
+          start_command: nextGamePreset.startCommand,
+          minecraft_version: "",
+          minecraft_server_type: "vanilla",
+          minecraft_max_players: 20,
+          game_engine: nextGamePreset.engineOptions?.[0]?.id || "",
+          install_on_create: false,
+          public_port: current.public_port || nextGamePreset.defaultPort
+        };
+      }
+
+      return {
+        ...current,
+        service_type: nextServiceType,
+        language:
+          current.language === "Java" ||
+          current.language === "FiveM" ||
+          current.language === "SteamCMD" ||
+          current.language === "Terraria"
+            ? ""
+            : current.language,
+        minecraft_version: "",
+        minecraft_server_type: "vanilla",
+        minecraft_max_players: 20,
+        game_engine: "",
+        fivem_license_key: "",
+        fivem_max_clients: 48,
+        fivem_project_name: "",
+        fivem_tags: "default",
+        fivem_locale: "pl-PL",
+        fivem_onesync_enabled: true,
+        entry_file: "",
+        start_command: "",
+        install_on_create: false,
+        public_host: "",
+        public_port: 25565
+      };
+    });
+  }
+
+  function buildCreatePayload() {
+    const payload = new FormData();
+    const commonFields = [
+      "service_type",
+      "name",
+      "description",
+      "language",
+      "entry_file",
+      "start_command",
+      "auto_restart",
+      "restart_delay",
+      "max_restarts",
+      "cpu_limit_percent",
+      "install_on_create"
+    ];
+
+    commonFields.forEach((key) => appendCreateField(payload, key, form[key]));
+    appendCreateField(payload, "ram_limit_mb", gbInputToMb(form.ram_limit_mb, form.ram_limit_mb));
+
+    if (isGameService) {
+      appendCreateField(payload, "public_host", form.public_host);
+      appendCreateField(payload, "public_port", form.public_port);
+      appendCreateField(payload, "background_url", form.background_url);
+      appendCreateField(payload, "subdomain", form.subdomain);
+    }
+
+    if (isMinecraft) {
+      appendCreateField(payload, "minecraft_version", form.minecraft_version);
+      appendCreateField(payload, "minecraft_server_type", form.minecraft_server_type);
+      appendCreateField(payload, "minecraft_max_players", form.minecraft_max_players);
+      appendCreateField(payload, "accept_eula", form.accept_eula);
+    }
+
+    if (isFiveM) {
+      appendCreateField(payload, "fivem_license_key", form.fivem_license_key);
+      appendCreateField(payload, "fivem_max_clients", form.fivem_max_clients);
+      appendCreateField(payload, "fivem_project_name", form.fivem_project_name);
+      appendCreateField(payload, "fivem_tags", form.fivem_tags);
+      appendCreateField(payload, "fivem_locale", form.fivem_locale);
+      appendCreateField(payload, "fivem_onesync_enabled", form.fivem_onesync_enabled);
+    }
+
+    if (selectedGamePreset) {
+      appendCreateField(payload, "game_engine", form.game_engine);
+    }
+
+    if (archive) {
+      if (!isMinecraft && archive.name.toLowerCase().endsWith(".jar")) {
+        throw new Error("Plik JAR jest tylko dla Minecraft. Dla bota Discord wrzuc ZIP/RAR albo utworz pustego bota.");
+      }
+
+      payload.append("archive", archive);
+    }
+
+    return payload;
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setSaving(true);
@@ -160,22 +314,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         throw new Error("Owner musi najpierw wlaczyc Ci ten typ hostingu w panelu konta.");
       }
 
-      const payload = new FormData();
-
-      Object.entries(form).forEach(([key, value]) => {
-        if (value !== "" && value !== null && value !== undefined) {
-          payload.append(
-            key,
-            key === "ram_limit_mb" ? String(gbInputToMb(value, value)) : String(value)
-          );
-        }
-      });
-
-      if (archive) {
-        payload.append("archive", archive);
-      }
-
-      const bot = await api.createBot(payload);
+      const bot = await api.createBot(buildCreatePayload());
       setArchive(null);
       onCreated(bot);
     } catch (submitError) {
@@ -250,90 +389,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             <select
               value={form.service_type}
               disabled={!canCreateAnyService}
-              onChange={(event) =>
-                setForm((current) => {
-                  const nextServiceType = event.target.value;
-                  const nextGamePreset = getGameServicePreset(nextServiceType);
-                  const currentEntryFile = current.entry_file || "";
-                  const currentStartCommand = current.start_command || "";
-
-                  return nextServiceType === "minecraft_server"
-                      ? {
-                          ...current,
-                          service_type: nextServiceType,
-                          language: "Java",
-                          entry_file: currentEntryFile.toLowerCase().endsWith(".jar")
-                            ? currentEntryFile
-                            : "server.jar",
-                          start_command:
-                            currentStartCommand === 'bash "start-server.sh"'
-                              ? ""
-                              : currentStartCommand,
-                          minecraft_version: current.minecraft_version || "",
-                          minecraft_server_type: current.minecraft_server_type || "vanilla",
-                          minecraft_max_players: current.minecraft_max_players || 20,
-                          game_engine: "",
-                          install_on_create: false,
-                          public_port: current.public_port || 25565
-                        }
-                    : nextServiceType === "fivem_server"
-                      ? {
-                          ...current,
-                          service_type: nextServiceType,
-                          language: "FiveM",
-                          entry_file:
-                            currentEntryFile &&
-                            currentEntryFile !== "server.jar" &&
-                            currentEntryFile !== "start-server.sh"
-                              ? currentEntryFile
-                              : "run.sh",
-                          minecraft_version: "",
-                          minecraft_server_type: "vanilla",
-                          minecraft_max_players: 20,
-                          game_engine: "",
-                          install_on_create: false,
-                          public_port: current.public_port || 30120
-                        }
-                    : nextGamePreset
-                      ? {
-                          ...current,
-                          service_type: nextServiceType,
-                          language: nextGamePreset.language,
-                          entry_file: nextGamePreset.entryFile,
-                          start_command: nextGamePreset.startCommand,
-                          minecraft_version: "",
-                          minecraft_server_type: "vanilla",
-                          minecraft_max_players: 20,
-                          game_engine: nextGamePreset.engineOptions?.[0]?.id || "",
-                          install_on_create: false,
-                          public_port: current.public_port || nextGamePreset.defaultPort
-                        }
-                    : {
-                        ...current,
-                        service_type: nextServiceType,
-                        language:
-                          current.language === "Java" ||
-                          current.language === "FiveM" ||
-                          current.language === "SteamCMD" ||
-                          current.language === "Terraria"
-                            ? ""
-                            : current.language,
-                        minecraft_version: "",
-                        minecraft_server_type: "vanilla",
-                        minecraft_max_players: 20,
-                        game_engine: "",
-                        entry_file:
-                          current.entry_file === "server.jar" ||
-                          current.entry_file === "start-server.sh"
-                            ? ""
-                            : current.entry_file,
-                        start_command:
-                          current.start_command === 'bash "start-server.sh"'
-                            ? ""
-                            : current.start_command
-                      };
-                })
-              }
+              onChange={(event) => handleServiceTypeChange(event.target.value)}
             >
               {serviceTypeOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -611,6 +667,28 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                   ByteHost akceptuje Minecraft EULA automatycznie przy tworzeniu i starcie serwera.
                 </div>
               ) : null}
+              <label>
+                Subdomena
+                <input
+                  placeholder={isMinecraft ? "np. mc.bytehost.online" : "np. server.bytehost.online"}
+                  value={form.subdomain}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, subdomain: event.target.value }))
+                  }
+                />
+                <small>Opcjonalne pole dla serwerow gier. DNS w Cloudflare ustawisz osobno.</small>
+              </label>
+              <label>
+                Tlo serwera
+                <input
+                  placeholder="https://..."
+                  value={form.background_url}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, background_url: event.target.value }))
+                  }
+                />
+                <small>URL obrazka widocznego na karcie serwera gry.</small>
+              </label>
             </>
           ) : null}
 
@@ -694,29 +772,6 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             />
             <span>Auto restart wlaczony</span>
           </label>
-          <label>
-            Subdomena
-            <input
-              placeholder="np. mc.bytehost.online"
-              value={form.subdomain}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, subdomain: event.target.value }))
-              }
-            />
-            <small>Panel zapisuje subdomene przy usludze. DNS w Cloudflare ustawisz osobno.</small>
-          </label>
-          <label>
-            Tlo serwera
-            <input
-              placeholder="https://..."
-              value={form.background_url}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, background_url: event.target.value }))
-              }
-            />
-            <small>URL obrazka, ktory bedzie widoczny na karcie serwera.</small>
-          </label>
-
           {!isGameService ? (
             <label className="checkbox-field">
               <input
