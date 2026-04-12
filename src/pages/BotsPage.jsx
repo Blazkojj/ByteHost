@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Plus, Upload } from "lucide-react";
 
@@ -34,6 +34,28 @@ const FALLBACK_MINECRAFT_SERVER_TYPES = [
   { id: "waterfall", label: "Waterfall proxy", hint: "Proxy kompatybilny z BungeeCord" },
   { id: "travertine", label: "Travertine proxy", hint: "Proxy dla starszych wersji Minecraft" }
 ];
+
+const SERVICE_TYPE_OPTIONS = [
+  { id: "discord_bot", label: "Bot Discord" },
+  { id: "minecraft_server", label: "Serwer Minecraft" },
+  { id: "fivem_server", label: "Serwer FiveM" },
+  ...GAME_SERVICE_TYPES.map((serviceType) => ({
+    id: serviceType,
+    label: GAME_SERVICE_PRESETS[serviceType].label
+  }))
+];
+
+function getAllowedServiceTypes(user) {
+  if (user?.is_admin) {
+    return SERVICE_TYPE_OPTIONS.map((option) => option.id);
+  }
+
+  return Array.isArray(user?.allowed_service_types) ? user.allowed_service_types : [];
+}
+
+function canCreateServiceType(user, serviceType) {
+  return getAllowedServiceTypes(user).includes(serviceType);
+}
 
 function CreateBotPanel({ open, system, user, onClose, onCreated }) {
   const [form, setForm] = useState({
@@ -76,12 +98,28 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
   const isFiveM = form.service_type === "fivem_server";
   const selectedGamePreset = getGameServicePreset(form.service_type);
   const isGameService = isGameServiceType(form.service_type);
+  const allowedServiceTypes = useMemo(() => getAllowedServiceTypes(user), [user]);
+  const serviceTypeOptions = useMemo(
+    () => SERVICE_TYPE_OPTIONS.filter((option) => allowedServiceTypes.includes(option.id)),
+    [allowedServiceTypes]
+  );
+  const canCreateAnyService = serviceTypeOptions.length > 0;
 
   useEffect(() => {
     if (open) {
       setError("");
+      if (!canCreateAnyService) {
+        return;
+      }
+
+      if (!canCreateServiceType(user, form.service_type)) {
+        setForm((current) => ({
+          ...current,
+          service_type: serviceTypeOptions[0].id
+        }));
+      }
     }
-  }, [open]);
+  }, [canCreateAnyService, form.service_type, open, serviceTypeOptions, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +156,10 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
     setError("");
 
     try {
+      if (!canCreateAnyService || !canCreateServiceType(user, form.service_type)) {
+        throw new Error("Owner musi najpierw wlaczyc Ci ten typ hostingu w panelu konta.");
+      }
+
       const payload = new FormData();
 
       Object.entries(form).forEach(([key, value]) => {
@@ -197,10 +239,17 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         ) : null}
 
         <form className="form-grid" onSubmit={handleSubmit}>
+          {!canCreateAnyService ? (
+            <div className="banner warning wide">
+              Nie masz jeszcze wlaczonego zadnego typu hostingu. Mozesz ogladac panel, ale owner
+              musi zaznaczyc np. Bot Discord, Minecraft albo CS2 w Twoim koncie.
+            </div>
+          ) : null}
           <label>
             Typ uslugi
             <select
               value={form.service_type}
+              disabled={!canCreateAnyService}
               onChange={(event) =>
                 setForm((current) => {
                   const nextServiceType = event.target.value;
@@ -286,15 +335,17 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 })
               }
             >
-              <option value="discord_bot">Bot Discord</option>
-              <option value="minecraft_server">Serwer Minecraft</option>
-              <option value="fivem_server">Serwer FiveM</option>
-              {GAME_SERVICE_TYPES.map((serviceType) => (
-                <option key={serviceType} value={serviceType}>
-                  {GAME_SERVICE_PRESETS[serviceType].label}
+              {serviceTypeOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
                 </option>
               ))}
             </select>
+            {!user?.is_admin ? (
+              <small>
+                Widzisz tylko typy hostingu wlaczone przez ownera dla Twojego konta.
+              </small>
+            ) : null}
           </label>
           <label>
             Nazwa
@@ -503,21 +554,28 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               type="number"
               step="0.25"
               value={form.ram_limit_mb}
+              disabled={!user?.is_admin}
               onChange={(event) =>
                 setForm((current) => ({ ...current, ram_limit_mb: event.target.value }))
               }
             />
-            <small>Wpisz wartosc w GB, np. `1` = 1024 MB.</small>
+            <small>
+              {user?.is_admin
+                ? "Wpisz wartosc w GB, np. `1` = 1024 MB."
+                : "Limit ustawia owner. Nie mozesz zmienic RAM dla uslugi."}
+            </small>
           </label>
           <label>
             Limit CPU (%)
             <input
               type="number"
               value={form.cpu_limit_percent}
+              disabled={!user?.is_admin}
               onChange={(event) =>
                 setForm((current) => ({ ...current, cpu_limit_percent: event.target.value }))
               }
             />
+            {!user?.is_admin ? <small>Limit CPU ustawia owner.</small> : null}
           </label>
 
           {isGameService ? (
@@ -749,8 +807,8 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
           {accountLocked ? (
             <div className="info-card">
               Konto nie ma jeszcze aktywnego planu. Mozesz obejrzec panel, ale tworzenie i
-              uruchamianie uslug jest zablokowane, dopoki owner nie aktywuje konta i nie ustawi
-              limitow.
+              uruchamianie uslug jest zablokowane, dopoki owner nie aktywuje konta, nie ustawi
+              limitow i nie wlaczy konkretnych typow hostingu.
             </div>
           ) : null}
 

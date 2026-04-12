@@ -16,7 +16,7 @@ import {
 import logoUrl from "../assets/bytehost.png";
 import { ThemeToggle } from "../components/ThemeToggle";
 
-const PANEL_URL = "https://game.bytehost.online";
+const PANEL_URL = "/login";
 
 const offerCards = [
   {

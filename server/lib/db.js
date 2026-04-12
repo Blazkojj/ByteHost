@@ -39,10 +39,21 @@ function mapUserRow(row) {
     return null;
   }
 
+  let allowedServiceTypes = [];
+  try {
+    const parsed = JSON.parse(row.allowed_service_types || "[]");
+    allowedServiceTypes = Array.isArray(parsed)
+      ? parsed.filter((entry) => typeof entry === "string")
+      : [];
+  } catch (_error) {
+    allowedServiceTypes = [];
+  }
+
   return {
     ...row,
     is_active: Boolean(row.is_active),
-    pending_approval: Boolean(row.pending_approval)
+    pending_approval: Boolean(row.pending_approval),
+    allowed_service_types: allowedServiceTypes
   };
 }
 
@@ -90,6 +101,7 @@ function initDatabase() {
       max_cpu_percent INTEGER,
       max_storage_mb INTEGER,
       expires_at TEXT,
+      allowed_service_types TEXT DEFAULT '[]',
       is_active INTEGER NOT NULL DEFAULT 1,
       pending_approval INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -150,6 +162,7 @@ function initDatabase() {
   ensureColumn(database, "users", "max_cpu_percent", "INTEGER");
   ensureColumn(database, "users", "max_storage_mb", "INTEGER");
   ensureColumn(database, "users", "expires_at", "TEXT");
+  ensureColumn(database, "users", "allowed_service_types", "TEXT DEFAULT '[]'");
   ensureColumn(database, "users", "is_active", "INTEGER NOT NULL DEFAULT 1");
   ensureColumn(database, "users", "pending_approval", "INTEGER NOT NULL DEFAULT 0");
 

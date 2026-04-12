@@ -141,11 +141,13 @@ async function collectSystemStats(actor) {
         expires_at: actor.expires_at || null,
         account_status: getUserAccountStatus(actor),
         has_active_plan: hasProvisionedPlan(actor),
+        allowed_service_types: actor.allowed_service_types || [],
         limits: {
           max_bots: actor.max_bots ?? null,
           max_ram_mb: actor.max_ram_mb ?? null,
           max_cpu_percent: actor.max_cpu_percent ?? null,
-          max_storage_mb: actor.max_storage_mb ?? null
+          max_storage_mb: actor.max_storage_mb ?? null,
+          allowed_service_types: actor.allowed_service_types || []
         },
         usage,
         remaining

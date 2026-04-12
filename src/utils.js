@@ -203,6 +203,13 @@ export function hasVisibleAccountPlan(limits) {
     return false;
   }
 
+  if (
+    Array.isArray(limits.allowed_service_types) &&
+    limits.allowed_service_types.length === 0
+  ) {
+    return false;
+  }
+
   const values = [
     limits.max_bots,
     limits.max_ram_mb,

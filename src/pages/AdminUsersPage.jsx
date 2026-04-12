@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Save, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 
 import { api } from "../api";
+import { GAME_SERVICE_PRESETS, GAME_SERVICE_TYPES } from "../gameServices";
 import {
   accountStatusLabel,
   formatDate,
@@ -10,9 +11,24 @@ import {
   fromDatetimeLocal,
   gbInputToMb,
   mbToGbInput,
+  serviceTypeLabel,
   toDatetimeLocal,
   userRoleLabel
 } from "../utils";
+
+const HOSTING_SERVICE_OPTIONS = [
+  { id: "discord_bot", label: "Bot Discord" },
+  { id: "minecraft_server", label: "Serwer Minecraft" },
+  { id: "fivem_server", label: "Serwer FiveM" },
+  ...GAME_SERVICE_TYPES.map((serviceType) => ({
+    id: serviceType,
+    label: GAME_SERVICE_PRESETS[serviceType].label
+  }))
+];
+
+function normalizeAllowedServices(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
 
 function buildUserForm(user) {
   return {
@@ -24,8 +40,39 @@ function buildUserForm(user) {
     max_storage_mb: user.max_storage_mb ?? "",
     expires_at: toDatetimeLocal(user.expires_at),
     is_active: Boolean(user.is_active),
-    pending_approval: Boolean(user.pending_approval)
+    pending_approval: Boolean(user.pending_approval),
+    allowed_service_types: normalizeAllowedServices(user.allowed_service_types)
   };
+}
+
+function ServiceAccessPicker({ value, disabled, onChange }) {
+  const selected = new Set(normalizeAllowedServices(value));
+
+  function toggleService(serviceType, checked) {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(serviceType);
+    } else {
+      next.delete(serviceType);
+    }
+    onChange([...next]);
+  }
+
+  return (
+    <div className="service-access-grid">
+      {HOSTING_SERVICE_OPTIONS.map((option) => (
+        <label className="checkbox-field service-access-option" key={option.id}>
+          <input
+            type="checkbox"
+            disabled={disabled}
+            checked={selected.has(option.id)}
+            onChange={(event) => toggleService(option.id, event.target.checked)}
+          />
+          <span>{option.label}</span>
+        </label>
+      ))}
+    </div>
+  );
 }
 
 export function AdminUsersPage() {
@@ -39,7 +86,8 @@ export function AdminUsersPage() {
     max_cpu_percent: 100,
     max_storage_mb: 2048,
     expires_at: "",
-    is_active: true
+    is_active: true,
+    allowed_service_types: []
   });
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState("");
@@ -87,7 +135,8 @@ export function AdminUsersPage() {
         max_cpu_percent: 100,
         max_storage_mb: 2048,
         expires_at: "",
-        is_active: true
+        is_active: true,
+        allowed_service_types: []
       });
       setMessage("Nowe konto zostalo utworzone.");
       await loadUsers();
@@ -269,6 +318,22 @@ export function AdminUsersPage() {
             <span>Konto aktywne</span>
           </label>
 
+          <div className="wide service-access-panel">
+            <strong>Dozwolony hosting</strong>
+            <small>
+              Jesli nic nie zaznaczysz, konto moze sie zalogowac i obejrzec panel, ale nie utworzy zadnej uslugi.
+            </small>
+            <ServiceAccessPicker
+              value={createForm.allowed_service_types}
+              onChange={(allowedServiceTypes) =>
+                setCreateForm((current) => ({
+                  ...current,
+                  allowed_service_types: allowedServiceTypes
+                }))
+              }
+            />
+          </div>
+
           <div className="form-actions wide">
             <button className="primary-button" type="submit" disabled={creating}>
               <Plus size={16} />
@@ -336,6 +401,14 @@ export function AdminUsersPage() {
                     <span>RAM: {formatMemoryLimit(user.max_ram_mb)}</span>
                     <span>CPU: {formatLimitValue(user.max_cpu_percent, "%")}</span>
                     <span>Storage: {formatLimitValue(user.max_storage_mb, " MB")}</span>
+                    <span>
+                      Hosting:{" "}
+                      {isOwner
+                        ? "Wszystko"
+                        : normalizeAllowedServices(user.allowed_service_types)
+                            .map(serviceTypeLabel)
+                            .join(", ") || "Brak"}
+                    </span>
                   </div>
 
                   <div className="form-grid nested-form">
@@ -451,6 +524,25 @@ export function AdminUsersPage() {
                       />
                       <span>Konto aktywne</span>
                     </label>
+                    <div className="wide service-access-panel">
+                      <strong>Dozwolony hosting</strong>
+                      <small>
+                        Zaznacz typy uslug, ktore ten uzytkownik moze sam tworzyc. Limity RAM/CPU/storage nadal ustawiasz tylko tutaj.
+                      </small>
+                      <ServiceAccessPicker
+                        disabled={isOwner}
+                        value={form.allowed_service_types}
+                        onChange={(allowedServiceTypes) =>
+                          setUserForms((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...current[user.id],
+                              allowed_service_types: allowedServiceTypes
+                            }
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
 
                   <div className="form-actions">

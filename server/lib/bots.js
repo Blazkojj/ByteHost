@@ -42,12 +42,6 @@ const {
   searchModrinthProjects
 } = require("./modrinth");
 const {
-  downloadCurseForgeFile,
-  getCurseForgeVersion,
-  listCurseForgeProjectVersions,
-  searchCurseForgeProjects
-} = require("./curseforge");
-const {
   GAME_SERVICE_TYPES,
   buildGameStartCommand,
   bootstrapGameWorkspace,
@@ -84,7 +78,7 @@ const {
   uploadFiles
 } = require("./files");
 const {
-  canUserManageServices,
+  canUserCreateServiceType,
   getUserById,
   hasProvisionedPlan,
   isAdminUser,
@@ -1463,13 +1457,23 @@ async function createBot(actor, payload, artifactFile) {
   }
 
   const serviceType = sanitizeServiceType(payload.service_type, "discord_bot");
+  if (!canUserCreateServiceType(actor, serviceType)) {
+    throw createHttpError(
+      403,
+      "Ten typ hostingu nie jest wlaczony dla Twojego konta. Owner musi przypisac go w panelu uzytkownika."
+    );
+  }
+
   const gamePreset = getGamePreset(serviceType);
   const requestedGameEngine = gamePreset
     ? sanitizeGameEngine(serviceType, payload.game_engine)
     : null;
-  const ramLimitMb = coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb);
+  const canSetProvisioningLimits = isAdminUser(actor);
+  const ramLimitMb = canSetProvisioningLimits
+    ? coerceNullableNumber(payload.ram_limit_mb, DEFAULT_BOT_LIMITS.ram_limit_mb)
+    : DEFAULT_BOT_LIMITS.ram_limit_mb;
   const cpuLimitPercent = coerceNullableNumber(
-    payload.cpu_limit_percent,
+    canSetProvisioningLimits ? payload.cpu_limit_percent : DEFAULT_BOT_LIMITS.cpu_limit_percent,
     DEFAULT_BOT_LIMITS.cpu_limit_percent
   );
 
@@ -1708,17 +1712,19 @@ async function createBot(actor, payload, artifactFile) {
 async function updateBot(botId, actor, payload) {
   const existingBot = getBotRow(botId, actor);
   const owner = getBotOwner(existingBot);
+  const canEditProvisioning = isAdminUser(actor);
+  const provisioningPayload = canEditProvisioning ? payload : {};
   const nextRamLimit =
-    payload.ram_limit_mb !== undefined
-      ? coerceNullableNumber(payload.ram_limit_mb, existingBot.ram_limit_mb)
+    provisioningPayload.ram_limit_mb !== undefined
+      ? coerceNullableNumber(provisioningPayload.ram_limit_mb, existingBot.ram_limit_mb)
       : existingBot.ram_limit_mb;
   const nextCpuLimit =
-    payload.cpu_limit_percent !== undefined
-      ? coerceNullableNumber(payload.cpu_limit_percent, existingBot.cpu_limit_percent)
+    provisioningPayload.cpu_limit_percent !== undefined
+      ? coerceNullableNumber(provisioningPayload.cpu_limit_percent, existingBot.cpu_limit_percent)
       : existingBot.cpu_limit_percent;
   let nextEntryFile =
-    payload.entry_file !== undefined
-      ? normalizeRelativePath(coerceNullableString(payload.entry_file, "") || "")
+    provisioningPayload.entry_file !== undefined
+      ? normalizeRelativePath(coerceNullableString(provisioningPayload.entry_file, "") || "")
       : existingBot.entry_file;
   let nextDetectedEntryFile = existingBot.detected_entry_file;
   let nextDetectedMinecraftVersion = existingBot.detected_minecraft_version;
@@ -1732,77 +1738,77 @@ async function updateBot(botId, actor, payload) {
   }
   const nextMinecraftVersion =
     existingBot.service_type === "minecraft_server"
-      ? payload.minecraft_version !== undefined
-        ? normalizeMinecraftVersion(payload.minecraft_version, null)
+      ? provisioningPayload.minecraft_version !== undefined
+        ? normalizeMinecraftVersion(provisioningPayload.minecraft_version, null)
         : normalizeMinecraftVersion(existingBot.minecraft_version, null)
       : null;
   const nextMinecraftServerType =
     existingBot.service_type === "minecraft_server"
-      ? payload.minecraft_server_type !== undefined
-        ? sanitizeMinecraftServerType(payload.minecraft_server_type, existingBot.minecraft_server_type || "vanilla")
+      ? provisioningPayload.minecraft_server_type !== undefined
+        ? sanitizeMinecraftServerType(provisioningPayload.minecraft_server_type, existingBot.minecraft_server_type || "vanilla")
         : sanitizeMinecraftServerType(existingBot.minecraft_server_type, "vanilla")
       : null;
   const nextMinecraftMaxPlayers =
     existingBot.service_type === "minecraft_server"
-      ? payload.minecraft_max_players !== undefined
-        ? sanitizeMinecraftMaxPlayers(payload.minecraft_max_players, existingBot.minecraft_max_players || 20)
+      ? provisioningPayload.minecraft_max_players !== undefined
+        ? sanitizeMinecraftMaxPlayers(provisioningPayload.minecraft_max_players, existingBot.minecraft_max_players || 20)
         : sanitizeMinecraftMaxPlayers(existingBot.minecraft_max_players, 20)
       : null;
   const nextFiveMProjectName =
     existingBot.service_type === "fivem_server"
-      ? payload.fivem_project_name !== undefined
-        ? normalizeFiveMText(payload.fivem_project_name, existingBot.fivem_project_name || existingBot.name)
+      ? provisioningPayload.fivem_project_name !== undefined
+        ? normalizeFiveMText(provisioningPayload.fivem_project_name, existingBot.fivem_project_name || existingBot.name)
         : normalizeFiveMText(existingBot.fivem_project_name, existingBot.name)
       : null;
   const nextFiveMLicenseKey =
     existingBot.service_type === "fivem_server"
-      ? payload.fivem_license_key !== undefined
-        ? normalizeFiveMText(payload.fivem_license_key, "")
+      ? provisioningPayload.fivem_license_key !== undefined
+        ? normalizeFiveMText(provisioningPayload.fivem_license_key, "")
         : normalizeFiveMText(existingBot.fivem_license_key, "")
       : null;
   const nextFiveMMaxClients =
     existingBot.service_type === "fivem_server"
-      ? payload.fivem_max_clients !== undefined
-        ? sanitizeFiveMMaxClients(payload.fivem_max_clients, existingBot.fivem_max_clients || 48)
+      ? provisioningPayload.fivem_max_clients !== undefined
+        ? sanitizeFiveMMaxClients(provisioningPayload.fivem_max_clients, existingBot.fivem_max_clients || 48)
         : sanitizeFiveMMaxClients(existingBot.fivem_max_clients, 48)
       : null;
   const nextFiveMTags =
     existingBot.service_type === "fivem_server"
-      ? payload.fivem_tags !== undefined
-        ? normalizeFiveMText(payload.fivem_tags, "default")
+      ? provisioningPayload.fivem_tags !== undefined
+        ? normalizeFiveMText(provisioningPayload.fivem_tags, "default")
         : normalizeFiveMText(existingBot.fivem_tags, "default")
       : null;
   const nextFiveMLocale =
     existingBot.service_type === "fivem_server"
-      ? payload.fivem_locale !== undefined
-        ? normalizeFiveMText(payload.fivem_locale, "pl-PL")
+      ? provisioningPayload.fivem_locale !== undefined
+        ? normalizeFiveMText(provisioningPayload.fivem_locale, "pl-PL")
         : normalizeFiveMText(existingBot.fivem_locale, "pl-PL")
       : null;
   const nextFiveMOneSync =
     existingBot.service_type === "fivem_server"
-      ? payload.fivem_onesync_enabled !== undefined
-        ? coerceBoolean(payload.fivem_onesync_enabled, existingBot.fivem_onesync_enabled)
+      ? provisioningPayload.fivem_onesync_enabled !== undefined
+        ? coerceBoolean(provisioningPayload.fivem_onesync_enabled, existingBot.fivem_onesync_enabled)
         : coerceBoolean(existingBot.fivem_onesync_enabled, true)
       : null;
   const nextGameEngine =
     isGamePresetService(existingBot.service_type)
-      ? payload.game_engine !== undefined
-        ? sanitizeGameEngine(existingBot.service_type, payload.game_engine, existingBot.game_engine)
+      ? provisioningPayload.game_engine !== undefined
+        ? sanitizeGameEngine(existingBot.service_type, provisioningPayload.game_engine, existingBot.game_engine)
         : sanitizeGameEngine(existingBot.service_type, existingBot.game_engine)
       : existingBot.game_engine;
   const canOverridePublicPort = isAdminUser(actor);
   const nextPublicHost =
     isGameService(existingBot.service_type)
-      ? payload.public_host !== undefined
-        ? normalizePublicHost(payload.public_host)
+      ? provisioningPayload.public_host !== undefined
+        ? normalizePublicHost(provisioningPayload.public_host)
         : existingBot.public_host || (await resolveGamePublicHost(null))
       : existingBot.public_host;
   const nextPublicPort =
     isGameService(existingBot.service_type)
-      ? payload.public_port !== undefined
+      ? provisioningPayload.public_port !== undefined
         ? allocateServicePort(
             existingBot.service_type,
-            canOverridePublicPort ? payload.public_port : existingBot.public_port,
+            canOverridePublicPort ? provisioningPayload.public_port : existingBot.public_port,
             {
               excludeBotId: existingBot.id,
               fallbackToFreePort: true
@@ -1823,8 +1829,8 @@ async function updateBot(botId, actor, payload) {
     const versionForDownload = nextMinecraftVersion || nextDetectedMinecraftVersion;
     const shouldDownloadSelectedVersion =
       Boolean(versionForDownload) &&
-      (payload.minecraft_version !== undefined ||
-        payload.minecraft_server_type !== undefined ||
+      (provisioningPayload.minecraft_version !== undefined ||
+        provisioningPayload.minecraft_server_type !== undefined ||
         !entryExists);
 
     if (shouldDownloadSelectedVersion) {
@@ -1839,7 +1845,7 @@ async function updateBot(botId, actor, payload) {
       nextDetectedMinecraftVersion = download.minecraft_version;
 
       if (
-        payload.entry_file === undefined &&
+        provisioningPayload.entry_file === undefined &&
         (isUsingDetectedEntryFile(existingBot) || !nextEntryFile)
       ) {
         nextEntryFile = download.entry_file;
@@ -1873,13 +1879,13 @@ async function updateBot(botId, actor, payload) {
       : existingBot.detected_start_command;
 
   let nextStartCommand =
-    payload.start_command !== undefined
-      ? coerceNullableString(payload.start_command, null)
+    provisioningPayload.start_command !== undefined
+      ? coerceNullableString(provisioningPayload.start_command, null)
       : existingBot.start_command;
 
   if (
     existingBot.service_type === "minecraft_server" &&
-    payload.start_command === undefined &&
+    provisioningPayload.start_command === undefined &&
     (isUsingDetectedMinecraftStartCommand(existingBot) ||
       existingBot.start_command === 'bash "start-server.sh"')
   ) {
@@ -1888,7 +1894,7 @@ async function updateBot(botId, actor, payload) {
 
   if (
     existingBot.service_type === "fivem_server" &&
-    payload.start_command === undefined &&
+    provisioningPayload.start_command === undefined &&
     isUsingDetectedFiveMStartCommand(existingBot)
   ) {
     nextStartCommand = defaultStartCommand;
@@ -1896,7 +1902,7 @@ async function updateBot(botId, actor, payload) {
 
   if (
     isGamePresetService(existingBot.service_type) &&
-    payload.start_command === undefined &&
+    provisioningPayload.start_command === undefined &&
     isUsingDetectedGameStartCommand(existingBot)
   ) {
     nextStartCommand = defaultStartCommand;
@@ -1909,15 +1915,15 @@ async function updateBot(botId, actor, payload) {
         ? coerceNullableString(payload.description, "") || ""
         : existingBot.description,
     background_url:
-      payload.background_url !== undefined
-        ? normalizeBackgroundUrl(payload.background_url)
+      provisioningPayload.background_url !== undefined
+        ? normalizeBackgroundUrl(provisioningPayload.background_url)
         : existingBot.background_url,
     subdomain:
-      payload.subdomain !== undefined
-        ? normalizeSubdomain(payload.subdomain)
+      provisioningPayload.subdomain !== undefined
+        ? normalizeSubdomain(provisioningPayload.subdomain)
         : existingBot.subdomain,
     language: sanitizeLanguage(
-      payload.language,
+      provisioningPayload.language,
       existingBot.language,
       existingBot.service_type
     ),
@@ -1928,16 +1934,16 @@ async function updateBot(botId, actor, payload) {
     detected_start_command: defaultStartCommand,
     expires_at: null,
     auto_restart:
-      payload.auto_restart !== undefined
-        ? coerceBoolean(payload.auto_restart, existingBot.auto_restart)
+      provisioningPayload.auto_restart !== undefined
+        ? coerceBoolean(provisioningPayload.auto_restart, existingBot.auto_restart)
         : existingBot.auto_restart,
     restart_delay:
-      payload.restart_delay !== undefined
-        ? coerceNullableNumber(payload.restart_delay, existingBot.restart_delay)
+      provisioningPayload.restart_delay !== undefined
+        ? coerceNullableNumber(provisioningPayload.restart_delay, existingBot.restart_delay)
         : existingBot.restart_delay,
     max_restarts:
-      payload.max_restarts !== undefined
-        ? coerceNullableNumber(payload.max_restarts, existingBot.max_restarts)
+      provisioningPayload.max_restarts !== undefined
+        ? coerceNullableNumber(provisioningPayload.max_restarts, existingBot.max_restarts)
         : existingBot.max_restarts,
     ram_limit_mb: nextRamLimit,
     cpu_limit_percent: nextCpuLimit,
@@ -1987,7 +1993,10 @@ async function updateBot(botId, actor, payload) {
     updated_at: nowIso()
   };
 
-  if (payload.ram_limit_mb !== undefined || payload.cpu_limit_percent !== undefined) {
+  if (
+    provisioningPayload.ram_limit_mb !== undefined ||
+    provisioningPayload.cpu_limit_percent !== undefined
+  ) {
     assertBotReservationWithinUserPlan(owner, {
       excludeBotId: existingBot.id,
       nextRamLimitMb: nextRamLimit,
@@ -2022,24 +2031,24 @@ async function updateBot(botId, actor, payload) {
 
   const requiresRestart =
     existingBot.status === "ONLINE" &&
-    (payload.entry_file !== undefined ||
-      payload.start_command !== undefined ||
-      payload.auto_restart !== undefined ||
-      payload.restart_delay !== undefined ||
-      payload.max_restarts !== undefined ||
-      payload.ram_limit_mb !== undefined ||
-      payload.minecraft_version !== undefined ||
-      payload.minecraft_server_type !== undefined ||
-      payload.minecraft_max_players !== undefined ||
-      payload.public_port !== undefined ||
-      payload.public_host !== undefined ||
-      payload.game_engine !== undefined ||
-      payload.fivem_license_key !== undefined ||
-      payload.fivem_max_clients !== undefined ||
-      payload.fivem_project_name !== undefined ||
-      payload.fivem_tags !== undefined ||
-      payload.fivem_locale !== undefined ||
-      payload.fivem_onesync_enabled !== undefined);
+    (provisioningPayload.entry_file !== undefined ||
+      provisioningPayload.start_command !== undefined ||
+      provisioningPayload.auto_restart !== undefined ||
+      provisioningPayload.restart_delay !== undefined ||
+      provisioningPayload.max_restarts !== undefined ||
+      provisioningPayload.ram_limit_mb !== undefined ||
+      provisioningPayload.minecraft_version !== undefined ||
+      provisioningPayload.minecraft_server_type !== undefined ||
+      provisioningPayload.minecraft_max_players !== undefined ||
+      provisioningPayload.public_port !== undefined ||
+      provisioningPayload.public_host !== undefined ||
+      provisioningPayload.game_engine !== undefined ||
+      provisioningPayload.fivem_license_key !== undefined ||
+      provisioningPayload.fivem_max_clients !== undefined ||
+      provisioningPayload.fivem_project_name !== undefined ||
+      provisioningPayload.fivem_tags !== undefined ||
+      provisioningPayload.fivem_locale !== undefined ||
+      provisioningPayload.fivem_onesync_enabled !== undefined);
 
   if (requiresRestart) {
     await restartBot(botId, actor);
@@ -2860,14 +2869,8 @@ function assertMinecraftAddonBot(bot) {
   }
 }
 
-const MINECRAFT_ADDON_SOURCES = new Set(["modrinth", "curseforge"]);
 const MOD_LOADER_TYPES = new Set(["fabric", "forge", "neoforge", "quilt"]);
 const PLUGIN_LOADER_TYPES = new Set(["paper", "spigot", "bukkit", "craftbukkit", "purpur", "folia"]);
-
-function sanitizeMinecraftAddonSource(value) {
-  const normalized = coerceNullableString(value, "modrinth").toLowerCase();
-  return MINECRAFT_ADDON_SOURCES.has(normalized) ? normalized : "modrinth";
-}
 
 function sanitizeMinecraftAddonLoader(value) {
   const normalized = coerceNullableString(value, null)?.toLowerCase();
@@ -3037,21 +3040,8 @@ async function searchMinecraftAddons(botId, actor, query = {}) {
   const bot = getBotRow(botId, actor);
   assertMinecraftAddonBot(bot);
   const type = getInstallProfileKey(query.type);
-  const source = sanitizeMinecraftAddonSource(query.source);
   const gameVersion = resolveMinecraftAddonGameVersion(bot, query);
   const loader = resolveMinecraftAddonLoader(bot, type, query);
-
-  if (source === "curseforge") {
-    return searchCurseForgeProjects({
-      type,
-      query: query.query,
-      sort: query.sort,
-      page: query.page,
-      limit: query.limit || 10,
-      gameVersion,
-      loader
-    });
-  }
 
   return searchModrinthProjects({
     type,
@@ -3068,17 +3058,8 @@ async function listMinecraftAddonVersions(botId, actor, projectId, query = {}) {
   const bot = getBotRow(botId, actor);
   assertMinecraftAddonBot(bot);
   const type = getInstallProfileKey(query.type);
-  const source = sanitizeMinecraftAddonSource(query.source);
   const gameVersion = resolveMinecraftAddonGameVersion(bot, query);
   const loader = resolveMinecraftAddonLoader(bot, type, query);
-
-  if (source === "curseforge") {
-    return listCurseForgeProjectVersions(projectId, {
-      type,
-      loader,
-      gameVersion
-    });
-  }
 
   return listModrinthProjectVersions(projectId, {
     type,
@@ -3094,22 +3075,11 @@ async function installMinecraftAddon(botId, actor, payload = {}) {
 
   const type = getInstallProfileKey(payload.type);
   const profile = getInstallProfile(type);
-  const source = sanitizeMinecraftAddonSource(payload.source);
   const gameVersion = resolveMinecraftAddonGameVersion(bot, payload);
   const loader = resolveMinecraftAddonLoader(bot, type, payload);
   let version = null;
 
-  if (source === "curseforge" && payload.version_id) {
-    version = await getCurseForgeVersion(payload.version_id);
-  } else if (source === "curseforge" && payload.project_id) {
-    const versionsPayload = await listCurseForgeProjectVersions(payload.project_id, {
-      loader,
-      gameVersion
-    });
-    version = versionsPayload.versions[0]
-      ? await getCurseForgeVersion(versionsPayload.versions[0].id)
-      : null;
-  } else if (payload.version_id) {
+  if (payload.version_id) {
     version = await getModrinthVersion(payload.version_id);
   } else if (payload.project_id) {
     const versionsPayload = await listModrinthProjectVersions(payload.project_id, {
@@ -3135,9 +3105,7 @@ async function installMinecraftAddon(botId, actor, payload = {}) {
   const targetRelativePath = normalizeRelativePath(path.posix.join(targetDirectory, fileName));
   const targetPath = resolveBotPath(bot.id, targetRelativePath);
   const tempPath = `${targetPath}.download-${Date.now()}`;
-  const buffer = source === "curseforge"
-    ? await downloadCurseForgeFile(primaryFile)
-    : await downloadModrinthFile(primaryFile);
+  const buffer = await downloadModrinthFile(primaryFile);
   let installedFile = null;
 
   if (type === "modpack" && fileName.toLowerCase().endsWith(".mrpack")) {
@@ -3173,14 +3141,14 @@ async function installMinecraftAddon(botId, actor, payload = {}) {
   return {
     ok: true,
     type,
-    source,
+    source: "modrinth",
     loader,
     label: profile.label,
     version: {
       id: version.id,
       name: version.name,
       version_number: version.version_number,
-      source: version.source || source,
+      source: version.source || "modrinth",
       game_versions: version.game_versions || [],
       loaders: version.loaders || []
     },

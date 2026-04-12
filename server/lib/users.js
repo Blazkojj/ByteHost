@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 
 const { DEFAULT_USER_PLAN, OWNER_EMAIL, OWNER_PASSWORD } = require("../config");
 const { getDb, mapUserRow } = require("./db");
+const { GAME_SERVICE_TYPES } = require("./gamePresets");
 const {
   createHttpError,
   coerceBoolean,
@@ -16,8 +17,15 @@ const PENDING_ACCOUNT_PLAN = {
   max_bots: 0,
   max_ram_mb: 0,
   max_cpu_percent: 0,
-  max_storage_mb: 0
+  max_storage_mb: 0,
+  allowed_service_types: []
 };
+const HOSTING_SERVICE_TYPES = new Set([
+  "discord_bot",
+  "minecraft_server",
+  "fivem_server",
+  ...GAME_SERVICE_TYPES
+]);
 
 function normalizeEmail(value) {
   const normalized = coerceNullableString(value, null);
@@ -34,6 +42,38 @@ function isValidEmail(value) {
 
 function isAdminUser(user) {
   return user?.role === "owner";
+}
+
+function normalizeAllowedServiceTypes(value, fallback = []) {
+  const rawValue = value === undefined ? fallback : value;
+  let entries = rawValue;
+
+  if (typeof rawValue === "string") {
+    try {
+      entries = JSON.parse(rawValue);
+    } catch (_error) {
+      entries = rawValue
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+  }
+
+  if (!Array.isArray(entries)) {
+    entries = [];
+  }
+
+  return [...new Set(entries)]
+    .map((entry) => String(entry || "").trim())
+    .filter((entry) => HOSTING_SERVICE_TYPES.has(entry));
+}
+
+function canUserCreateServiceType(user, serviceType) {
+  if (isAdminUser(user)) {
+    return true;
+  }
+
+  return normalizeAllowedServiceTypes(user?.allowed_service_types).includes(serviceType);
 }
 
 function isUserExpired(user) {
@@ -78,6 +118,10 @@ function hasProvisionedPlan(user) {
     return true;
   }
 
+  if (normalizeAllowedServiceTypes(user.allowed_service_types).length === 0) {
+    return false;
+  }
+
   const planFields = [
     user.max_bots,
     user.max_ram_mb,
@@ -95,8 +139,10 @@ function mapUserForClient(user) {
   }
 
   const { password_hash, ...safeUser } = mapped;
+  const allowedServiceTypes = normalizeAllowedServiceTypes(mapped.allowed_service_types);
   return {
     ...safeUser,
+    allowed_service_types: allowedServiceTypes,
     is_admin: isAdminUser(mapped),
     account_status: getUserAccountStatus(mapped),
     has_active_plan: hasProvisionedPlan(mapped),
@@ -104,7 +150,8 @@ function mapUserForClient(user) {
       max_bots: safeUser.max_bots,
       max_ram_mb: safeUser.max_ram_mb,
       max_cpu_percent: safeUser.max_cpu_percent,
-      max_storage_mb: safeUser.max_storage_mb
+      max_storage_mb: safeUser.max_storage_mb,
+      allowed_service_types: allowedServiceTypes
     }
   };
 }
@@ -238,6 +285,14 @@ async function createUserAccount(payload, options = {}) {
     max_storage_mb: role === "owner"
       ? null
       : normalizePlanValue(payload.max_storage_mb, defaultPlan.max_storage_mb),
+    allowed_service_types: role === "owner"
+      ? null
+      : JSON.stringify(
+          normalizeAllowedServiceTypes(
+            payload.allowed_service_types,
+            defaultPlan.allowed_service_types || []
+          )
+        ),
     expires_at: role === "owner" ? null : normalizeExpiresAt(payload.expires_at),
     is_active:
       role === "owner"
@@ -260,6 +315,7 @@ async function createUserAccount(payload, options = {}) {
           max_ram_mb,
           max_cpu_percent,
           max_storage_mb,
+          allowed_service_types,
           expires_at,
           is_active,
           pending_approval,
@@ -275,6 +331,7 @@ async function createUserAccount(payload, options = {}) {
           @max_ram_mb,
           @max_cpu_percent,
           @max_storage_mb,
+          @allowed_service_types,
           @expires_at,
           @is_active,
           @pending_approval,
@@ -329,6 +386,7 @@ async function updateUserAccount(userId, payload) {
     updates.max_ram_mb = null;
     updates.max_cpu_percent = null;
     updates.max_storage_mb = null;
+    updates.allowed_service_types = null;
     updates.expires_at = null;
     updates.is_active = 1;
     updates.pending_approval = 0;
@@ -349,6 +407,12 @@ async function updateUserAccount(userId, payload) {
       payload.max_storage_mb !== undefined
         ? normalizePlanValue(payload.max_storage_mb, existingUser.max_storage_mb)
         : existingUser.max_storage_mb;
+    updates.allowed_service_types = JSON.stringify(
+      normalizeAllowedServiceTypes(
+        payload.allowed_service_types,
+        existingUser.allowed_service_types || []
+      )
+    );
     updates.expires_at =
       payload.expires_at !== undefined
         ? normalizeExpiresAt(payload.expires_at, null)
@@ -380,6 +444,7 @@ async function updateUserAccount(userId, payload) {
             max_ram_mb = @max_ram_mb,
             max_cpu_percent = @max_cpu_percent,
             max_storage_mb = @max_storage_mb,
+            allowed_service_types = @allowed_service_types,
             expires_at = @expires_at,
             is_active = @is_active,
             pending_approval = @pending_approval,
@@ -459,6 +524,7 @@ module.exports = {
   getUserAccountStatus,
   canUserLogin,
   canUserManageServices,
+  canUserCreateServiceType,
   hasProvisionedPlan,
   mapUserForClient,
   getUserById,

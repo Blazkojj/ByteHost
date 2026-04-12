@@ -2831,6 +2831,32 @@ textarea:disabled {
   }
 }
 
+.service-access-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.service-access-panel small {
+  color: var(--text-muted);
+}
+
+.service-access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.65rem;
+}
+
+.service-access-option {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal-up,
   .marketing-hero-logo,

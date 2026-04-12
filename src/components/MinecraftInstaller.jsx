@@ -21,11 +21,6 @@ const SORT_OPTIONS = [
   { id: "relevance", label: "Trafnosc" }
 ];
 
-const ADDON_SOURCES = [
-  { id: "modrinth", label: "Modrinth" },
-  { id: "curseforge", label: "CurseForge" }
-];
-
 const LOADER_OPTIONS = {
   modpack: [
     { id: "auto", label: "Auto loader" },
@@ -70,17 +65,9 @@ function getTypeLabel(type) {
   return INSTALLER_TYPES.find((entry) => entry.id === type)?.label || "Dodatki";
 }
 
-function getSourceLabel(source) {
-  return ADDON_SOURCES.find((entry) => entry.id === source)?.label || "Modrinth";
-}
-
 function getProjectUrl(project, type) {
   if (project.project_url) {
     return project.project_url;
-  }
-
-  if (project.source === "curseforge") {
-    return `https://www.curseforge.com/minecraft/mc-mods/${project.slug || project.id}`;
   }
 
   return `https://modrinth.com/${project.project_type || type}/${project.slug}`;
@@ -154,7 +141,6 @@ function VersionLabel({ version }) {
 export function MinecraftInstaller({ botId, bot, onInstalled }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("modpack");
-  const [source, setSource] = useState("modrinth");
   const [loader, setLoader] = useState("auto");
   const [sort, setSort] = useState("downloads");
   const [page, setPage] = useState(1);
@@ -190,7 +176,6 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
         const nextPayload = await api.searchMinecraftAddons(botId, {
           query,
           type,
-          source,
           loader: requestLoader,
           sort,
           page,
@@ -217,7 +202,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [botId, gameVersion, matchVersion, page, query, refreshKey, requestLoader, sort, source, type]);
+  }, [botId, gameVersion, matchVersion, page, query, refreshKey, requestLoader, sort, type]);
 
   async function openProject(project) {
     setSelectedProject(project);
@@ -230,7 +215,6 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
     try {
       const nextVersions = await api.getMinecraftAddonVersions(botId, project.id, {
         type,
-        source: project.source || source,
         loader: requestLoader,
         game_version: matchVersion ? gameVersion : "",
         all_versions: matchVersion ? "" : "true"
@@ -258,7 +242,6 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
     try {
       const result = await api.installMinecraftAddon(botId, {
         type,
-        source: selectedProject.source || source,
         loader: requestLoader,
         project_id: selectedProject.id,
         version_id: selectedVersionId,
@@ -298,7 +281,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
           <p className="eyebrow">Instalator</p>
           <h3>Dodatki Minecraft</h3>
           <small>
-            Zrodlo: {getSourceLabel(source)}. Loader: {getLoaderLabel(loader, autoLoader)}.
+            Zrodlo: Modrinth. Loader: {getLoaderLabel(loader, autoLoader)}.
             Pliki trafiaja automatycznie do mods/, plugins/, resourcepacks/,
             shaderpacks/ albo modpacks/.
           </small>
@@ -320,19 +303,6 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
         </label>
         <select value={type} onChange={(event) => updateType(event.target.value)}>
           {INSTALLER_TYPES.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={source}
-          onChange={(event) => {
-            setSource(event.target.value);
-            setPage(1);
-          }}
-        >
-          {ADDON_SOURCES.map((entry) => (
             <option key={entry.id} value={entry.id}>
               {entry.label}
             </option>
@@ -382,13 +352,6 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
         </span>
       </label>
 
-      {source === "curseforge" ? (
-        <div className="banner info">
-          CurseForge dziala przez oficjalne API i wymaga CURSEFORGE_API_KEY w .env.
-          Bez klucza panel pokaze blad zamiast wynikow.
-        </div>
-      ) : null}
-
       {message ? <div className="banner success">{message}</div> : null}
       {error ? <div className="banner error">{error}</div> : null}
       {payload.warning ? <div className="banner info">{payload.warning}</div> : null}
@@ -401,7 +364,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
         ) : (
           payload.hits.map((project) => (
             <button
-              key={`${project.source || source}:${project.id}`}
+              key={project.id}
               className="installer-row"
               type="button"
               onClick={() => openProject(project)}
@@ -414,7 +377,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
                 <small>{project.description}</small>
               </span>
               <span className="installer-row-meta">
-                <span>{getSourceLabel(project.source || source)}</span>
+                <span>Modrinth</span>
                 <span>{formatNumber(project.downloads)} pobran</span>
                 <span>{project.latest_version || "auto"}</span>
               </span>
@@ -488,9 +451,6 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
               <span>
                 <strong>Pobrania:</strong> {formatNumber(selectedProject.downloads)}
               </span>
-              <span>
-                <strong>Zrodlo:</strong> {getSourceLabel(selectedProject.source || source)}
-              </span>
             </div>
 
             <label className="wide">
@@ -532,7 +492,7 @@ export function MinecraftInstaller({ botId, bot, onInstalled }) {
                 rel="noreferrer"
               >
                 <ExternalLink size={16} />
-                <span>{getSourceLabel(selectedProject.source || source)}</span>
+                <span>Modrinth</span>
               </a>
               <button className="danger-button" type="button" onClick={() => setSelectedProject(null)}>
                 Anuluj

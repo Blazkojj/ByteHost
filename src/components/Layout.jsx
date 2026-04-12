@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   Archive,
@@ -51,7 +52,9 @@ export function Layout({
   const serverMatch = location.pathname.match(/^\/bots\/([^/]+)/);
   const activeServerId = serverMatch ? decodeURIComponent(serverMatch[1]) : null;
   const activeServer = activeServerId ? bots?.find((bot) => bot.id === activeServerId) : null;
-  const activeServerTab = location.hash ? location.hash.slice(1) : "overview";
+  const [activeServerTab, setActiveServerTab] = useState(() =>
+    window.location.hash ? window.location.hash.slice(1) : "overview"
+  );
   const isServerWorkspace = Boolean(activeServerId);
   const isGameServer = activeServer
     ? activeServer.service_type !== "discord_bot"
@@ -79,6 +82,16 @@ export function Layout({
         { tab: "env", label: "Zmienne", icon: FileText }
       ]
     : [];
+
+  useEffect(() => {
+    function syncActiveServerTab() {
+      setActiveServerTab(window.location.hash ? window.location.hash.slice(1) : "overview");
+    }
+
+    syncActiveServerTab();
+    window.addEventListener("hashchange", syncActiveServerTab);
+    return () => window.removeEventListener("hashchange", syncActiveServerTab);
+  }, [location.pathname]);
 
   const sidebarTitle = activeServer
     ? "Aktywny serwer"
@@ -115,14 +128,14 @@ export function Layout({
               {serverNavItems.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <Link
+                  <a
                     key={item.tab}
-                    to={`${location.pathname}#${item.tab}`}
+                    href={`#${item.tab}`}
                     className={`nav-link ${activeServerTab === item.tab ? "active" : ""}`}
                   >
                     <Icon size={18} />
                     <span>{item.label}</span>
-                  </Link>
+                  </a>
                 );
               })}
             </>

@@ -12,7 +12,7 @@ import {
   Upload,
   Wrench
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import { MinecraftInstaller } from "./MinecraftInstaller";
@@ -83,8 +83,8 @@ const WORKSPACE_TAB_IDS = new Set([
   "env"
 ]);
 
-function readWorkspaceTabHash() {
-  const tabId = window.location.hash.replace(/^#/, "");
+function readWorkspaceTabHash(hashValue = window.location.hash) {
+  const tabId = String(hashValue || "").replace(/^#/, "");
   return WORKSPACE_TAB_IDS.has(tabId) ? tabId : "overview";
 }
 
@@ -186,6 +186,7 @@ function buildSettingsState(service) {
 
 export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefreshSystem }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const uploadInputRef = useRef(null);
   const archiveUpdateInputRef = useRef(null);
   const liveTerminalRef = useRef(null);
@@ -218,6 +219,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   const gamePreset = getGameServicePreset(serviceType);
   const isGameService = isGameServiceType(serviceType);
   const canManagePublicPort = Boolean(user?.is_admin);
+  const canEditProvisioning = Boolean(user?.is_admin);
 
   useEffect(() => {
     async function loadBot() {
@@ -240,14 +242,17 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   }, [botId]);
 
   useEffect(() => {
+    setActiveTab(readWorkspaceTabHash(location.hash));
+  }, [botId, location.hash]);
+
+  useEffect(() => {
     function syncActiveTabFromHash() {
       setActiveTab(readWorkspaceTabHash());
     }
 
-    syncActiveTabFromHash();
     window.addEventListener("hashchange", syncActiveTabFromHash);
     return () => window.removeEventListener("hashchange", syncActiveTabFromHash);
-  }, [botId]);
+  }, []);
 
   useEffect(() => {
     const shouldStreamLogs =
@@ -516,10 +521,15 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     setError("");
 
     try {
-      const payload = {
-        ...settings,
-        ram_limit_mb: gbInputToMb(settings.ram_limit_mb, settings.ram_limit_mb)
-      };
+      const payload = canEditProvisioning
+        ? {
+            ...settings,
+            ram_limit_mb: gbInputToMb(settings.ram_limit_mb, settings.ram_limit_mb)
+          }
+        : {
+            name: settings.name,
+            description: settings.description
+          };
 
       const updatedBot = await api.updateBot(botId, payload);
       setBot(updatedBot);
@@ -1207,237 +1217,239 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 }
               />
             </label>
-            <label>
-              Subdomena
-              <input
-                placeholder="np. mc.bytehost.online"
-                value={settings.subdomain}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, subdomain: event.target.value }))
-                }
-              />
-              <small>Panel zapisuje subdomene przy usludze. Rekord DNS ustawisz osobno.</small>
-            </label>
-            <label>
-              Tlo serwera
-              <input
-                placeholder="https://..."
-                value={settings.background_url}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, background_url: event.target.value }))
-                }
-              />
-              <small>URL obrazka widocznego na karcie serwera.</small>
-            </label>
-            <label>
-              Jezyk
-              <select
-                value={settings.language}
-                disabled={isMinecraft || isFiveM || Boolean(gamePreset)}
-                onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}
-              >
-                <option value="Node.js">Node.js</option>
-                <option value="TypeScript">TypeScript</option>
-                <option value="Python">Python</option>
-                <option value="Java">Java</option>
-                <option value="FiveM">FiveM</option>
-                <option value="SteamCMD">SteamCMD</option>
-                <option value="Terraria">Terraria</option>
-              </select>
-            </label>
-            {isMinecraft ? (
+            {canEditProvisioning ? (
               <>
                 <label>
-                  Silnik serwera
+                  Subdomena
+                  <input
+                    placeholder="np. mc.bytehost.online"
+                    value={settings.subdomain}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, subdomain: event.target.value }))
+                    }
+                  />
+                  <small>Panel zapisuje subdomene przy usludze. Rekord DNS ustawisz osobno.</small>
+                </label>
+                <label>
+                  Tlo serwera
+                  <input
+                    placeholder="https://..."
+                    value={settings.background_url}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, background_url: event.target.value }))
+                    }
+                  />
+                  <small>URL obrazka widocznego na karcie serwera.</small>
+                </label>
+                <label>
+                  Jezyk
                   <select
-                    value={settings.minecraft_server_type}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        minecraft_server_type: event.target.value
-                      }))
-                    }
+                    value={settings.language}
+                    disabled={isMinecraft || isFiveM || Boolean(gamePreset)}
+                    onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}
                   >
-                    {minecraftServerTypes.map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {type.label}
-                      </option>
-                    ))}
+                    <option value="Node.js">Node.js</option>
+                    <option value="TypeScript">TypeScript</option>
+                    <option value="Python">Python</option>
+                    <option value="Java">Java</option>
+                    <option value="FiveM">FiveM</option>
+                    <option value="SteamCMD">SteamCMD</option>
+                    <option value="Terraria">Terraria</option>
                   </select>
-                  <small>
-                    {minecraftServerTypes.find((type) => type.id === settings.minecraft_server_type)?.hint ||
-                      "ByteHost pobierze odpowiedni server.jar."}
-                  </small>
-                </label>
-                <label>
-                  Wersja Minecraft
-                  <input
-                    list="workspace-minecraft-version-list"
-                    placeholder={latestMinecraftRelease || "np. 1.21.5"}
-                    value={settings.minecraft_version}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, minecraft_version: event.target.value }))
-                    }
-                  />
-                  <datalist id="workspace-minecraft-version-list">
-                    {minecraftVersions.map((version) => (
-                      <option key={version.id} value={version.id}>
-                        {version.id}
-                      </option>
-                    ))}
-                  </datalist>
-                  <small>
-                    Po zapisaniu ByteHost pobierze oficjalny server.jar dla tej wersji. Puste pole
-                    oznacza, ze pozostawiasz wlasny JAR albo aktualnie pobrana wersje.
-                  </small>
-                </label>
-                <label>
-                  Sloty graczy
-                  <input
-                    type="number"
-                    min="1"
-                    max="1000"
-                    value={settings.minecraft_max_players}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        minecraft_max_players: event.target.value
-                      }))
-                    }
-                  />
-                  <small>Maksymalna liczba graczy online na serwerze Minecraft.</small>
-                </label>
-              </>
-            ) : null}
-            {gamePreset?.engineOptions?.length ? (
-              <label>
-                Silnik / wariant gry
-                <select
-                  value={settings.game_engine}
-                  onChange={(event) =>
-                    setSettings((current) => ({
-                      ...current,
-                      game_engine: event.target.value
-                    }))
-                  }
-                >
-                  {gamePreset.engineOptions.map((engine) => (
-                    <option key={engine.id} value={engine.id}>
-                      {engine.label}
-                    </option>
-                  ))}
-                </select>
-                <small>
-                  {gamePreset.engineOptions.find((engine) => engine.id === settings.game_engine)?.hint ||
-                    "ByteHost zapisze wariant w .bytehost/game.env."}
-                </small>
-              </label>
-            ) : null}
-            <label>
-              Plik startowy
-              <input
-                placeholder={isFiveM ? "run.sh" : gamePreset ? gamePreset.entryFile : undefined}
-                value={settings.entry_file}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, entry_file: event.target.value }))
-                }
-              />
-            </label>
-            <label className="wide">
-              Komenda startowa
-              <input
-                placeholder={
-                  isFiveM
-                    ? 'bash "run.sh" +exec "server.cfg"'
-                    : gamePreset
-                      ? gamePreset.startCommand
-                    : undefined
-                }
-                value={settings.start_command}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, start_command: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Restart delay
-              <input
-                type="number"
-                value={settings.restart_delay}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, restart_delay: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Max restarts
-              <input
-                type="number"
-                value={settings.max_restarts}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, max_restarts: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              RAM limit (GB)
-              <input
-                type="number"
-                step="0.25"
-                value={settings.ram_limit_mb}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, ram_limit_mb: event.target.value }))
-                }
-              />
-              <small>Wpisz w GB. ByteHost zapisze to jako MB po stronie backendu.</small>
-            </label>
-            <label>
-              CPU limit (%)
-              <input
-                type="number"
-                value={settings.cpu_limit_percent}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, cpu_limit_percent: event.target.value }))
-                }
-              />
-            </label>
-            {isGameService ? (
-              <>
-                <label>
-                  Adres publiczny
-                  <input
-                    placeholder="mc.twojadomena.pl"
-                    value={settings.public_host}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, public_host: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  Port publiczny
-                  <input
-                    type="number"
-                    value={settings.public_port}
-                    disabled={!canManagePublicPort}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, public_port: event.target.value }))
-                    }
-                  />
-                  <small>
-                    {canManagePublicPort
-                      ? "Jesli wybrany port jest zajety, ByteHost automatycznie przydzieli wolny."
-                      : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
-                  </small>
                 </label>
                 {isMinecraft ? (
-                  <div className="info-card wide">
-                    ByteHost akceptuje Minecraft EULA automatycznie przy starcie serwera.
-                  </div>
+                  <>
+                    <label>
+                      Silnik serwera
+                      <select
+                        value={settings.minecraft_server_type}
+                        onChange={(event) =>
+                          setSettings((current) => ({
+                            ...current,
+                            minecraft_server_type: event.target.value
+                          }))
+                        }
+                      >
+                        {minecraftServerTypes.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.label}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        {minecraftServerTypes.find((type) => type.id === settings.minecraft_server_type)?.hint ||
+                          "ByteHost pobierze odpowiedni server.jar."}
+                      </small>
+                    </label>
+                    <label>
+                      Wersja Minecraft
+                      <input
+                        list="workspace-minecraft-version-list"
+                        placeholder={latestMinecraftRelease || "np. 1.21.5"}
+                        value={settings.minecraft_version}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, minecraft_version: event.target.value }))
+                        }
+                      />
+                      <datalist id="workspace-minecraft-version-list">
+                        {minecraftVersions.map((version) => (
+                          <option key={version.id} value={version.id}>
+                            {version.id}
+                          </option>
+                        ))}
+                      </datalist>
+                      <small>
+                        Po zapisaniu ByteHost pobierze oficjalny server.jar dla tej wersji. Puste pole
+                        oznacza, ze pozostawiasz wlasny JAR albo aktualnie pobrana wersje.
+                      </small>
+                    </label>
+                    <label>
+                      Sloty graczy
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000"
+                        value={settings.minecraft_max_players}
+                        onChange={(event) =>
+                          setSettings((current) => ({
+                            ...current,
+                            minecraft_max_players: event.target.value
+                          }))
+                        }
+                      />
+                      <small>Maksymalna liczba graczy online na serwerze Minecraft.</small>
+                    </label>
+                  </>
                 ) : null}
-              </>
-            ) : null}
-            {isFiveM ? (
-              <>
+                {gamePreset?.engineOptions?.length ? (
+                  <label>
+                    Silnik / wariant gry
+                    <select
+                      value={settings.game_engine}
+                      onChange={(event) =>
+                        setSettings((current) => ({
+                          ...current,
+                          game_engine: event.target.value
+                        }))
+                      }
+                    >
+                      {gamePreset.engineOptions.map((engine) => (
+                        <option key={engine.id} value={engine.id}>
+                          {engine.label}
+                        </option>
+                      ))}
+                    </select>
+                    <small>
+                      {gamePreset.engineOptions.find((engine) => engine.id === settings.game_engine)?.hint ||
+                        "ByteHost zapisze wariant w .bytehost/game.env."}
+                    </small>
+                  </label>
+                ) : null}
+                <label>
+                  Plik startowy
+                  <input
+                    placeholder={isFiveM ? "run.sh" : gamePreset ? gamePreset.entryFile : undefined}
+                    value={settings.entry_file}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, entry_file: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="wide">
+                  Komenda startowa
+                  <input
+                    placeholder={
+                      isFiveM
+                        ? 'bash "run.sh" +exec "server.cfg"'
+                        : gamePreset
+                          ? gamePreset.startCommand
+                        : undefined
+                    }
+                    value={settings.start_command}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, start_command: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Restart delay
+                  <input
+                    type="number"
+                    value={settings.restart_delay}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, restart_delay: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Max restarts
+                  <input
+                    type="number"
+                    value={settings.max_restarts}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, max_restarts: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  RAM limit (GB)
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={settings.ram_limit_mb}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, ram_limit_mb: event.target.value }))
+                    }
+                  />
+                  <small>Wpisz w GB. ByteHost zapisze to jako MB po stronie backendu.</small>
+                </label>
+                <label>
+                  CPU limit (%)
+                  <input
+                    type="number"
+                    value={settings.cpu_limit_percent}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, cpu_limit_percent: event.target.value }))
+                    }
+                  />
+                </label>
+                {isGameService ? (
+                  <>
+                    <label>
+                      Adres publiczny
+                      <input
+                        placeholder="mc.twojadomena.pl"
+                        value={settings.public_host}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, public_host: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Port publiczny
+                      <input
+                        type="number"
+                        value={settings.public_port}
+                        disabled={!canManagePublicPort}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, public_port: event.target.value }))
+                        }
+                      />
+                      <small>
+                        {canManagePublicPort
+                          ? "Jesli wybrany port jest zajety, ByteHost automatycznie przydzieli wolny."
+                          : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
+                      </small>
+                    </label>
+                    {isMinecraft ? (
+                      <div className="info-card wide">
+                        ByteHost akceptuje Minecraft EULA automatycznie przy starcie serwera.
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+                {isFiveM ? (
+                  <>
                 <label>
                   Klucz FiveM
                   <input
@@ -1515,18 +1527,25 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                   />
                   <span>Wlacz OneSync</span>
                 </label>
+                  </>
+                ) : null}
+                <label className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={settings.auto_restart}
+                    onChange={(event) =>
+                      setSettings((current) => ({ ...current, auto_restart: event.target.checked }))
+                    }
+                  />
+                  <span>Auto restart aktywny</span>
+                </label>
               </>
-            ) : null}
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={settings.auto_restart}
-                onChange={(event) =>
-                  setSettings((current) => ({ ...current, auto_restart: event.target.checked }))
-                }
-              />
-              <span>Auto restart aktywny</span>
-            </label>
+            ) : (
+              <div className="info-card wide">
+                Parametry hostingu, RAM, CPU, port, silnik i komenda startowa sa ustawiane przez ownera.
+                Na tym koncie mozesz zmienic tylko nazwe oraz opis uslugi.
+              </div>
+            )}
             <div className="form-actions wide">
               <button className="primary-button" type="submit" disabled={actionState === "save-settings"}>
                 <Save size={16} />
