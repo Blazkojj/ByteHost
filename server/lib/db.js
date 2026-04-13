@@ -1,6 +1,6 @@
 const Database = require("better-sqlite3");
 
-const { DB_PATH, DEFAULT_SYSTEM_LIMITS } = require("../config");
+const { DB_PATH, DEFAULT_SYSTEM_LIMITS, PUBLIC_GAME_HOST } = require("../config");
 const { nowIso } = require("./utils");
 
 let database;
@@ -79,6 +79,38 @@ function ensureColumn(db, tableName, columnName, definition) {
   if (!columns.has(columnName)) {
     db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
   }
+}
+
+function normalizeConfiguredPublicGameHost() {
+  return String(PUBLIC_GAME_HOST || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "");
+}
+
+function syncConfiguredPublicGameHost(db) {
+  const configuredHost = normalizeConfiguredPublicGameHost();
+  if (!configuredHost) {
+    return;
+  }
+
+  db.prepare(
+    `
+      UPDATE bots
+      SET public_host = @configuredHost,
+          updated_at = @updatedAt
+      WHERE service_type != 'discord_bot'
+        AND (
+          public_host IS NULL
+          OR TRIM(public_host) = ''
+          OR public_host GLOB '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+        )
+    `
+  ).run({
+    configuredHost,
+    updatedAt: nowIso()
+  });
 }
 
 function initDatabase() {
@@ -185,6 +217,8 @@ function initDatabase() {
   ensureColumn(database, "bots", "fivem_onesync_enabled", "INTEGER NOT NULL DEFAULT 1");
   ensureColumn(database, "bots", "background_url", "TEXT");
   ensureColumn(database, "bots", "subdomain", "TEXT");
+
+  syncConfiguredPublicGameHost(database);
 
   const existingLimits = database.prepare("SELECT id FROM system_limits WHERE id = 1").get();
   if (!existingLimits) {
