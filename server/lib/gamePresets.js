@@ -142,7 +142,24 @@ if ! command -v unzip >/dev/null 2>&1; then
 fi
 rm -rf server server-source "$ARCHIVE"
 mkdir -p server-source server worlds tshock/plugins mods
-curl -fL "$DOWNLOAD_URL" -o "$ARCHIVE"
+echo "[bytehost] Pobieranie Terraria dedicated server: $DOWNLOAD_URL"
+for attempt in 1 2 3; do
+  rm -f "$ARCHIVE"
+  if curl -fL --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 30 "$DOWNLOAD_URL" -o "$ARCHIVE"; then
+    if unzip -tq "$ARCHIVE" >/dev/null 2>&1; then
+      break
+    fi
+    echo "[bytehost] Pobrany plik Terraria nie jest poprawnym ZIP-em, proba $attempt/3."
+  else
+    echo "[bytehost] Pobieranie Terraria nie powiodlo sie, proba $attempt/3."
+  fi
+
+  if [ "$attempt" = "3" ]; then
+    echo "[bytehost] Nie udalo sie pobrac poprawnej paczki Terraria. Sprobuj ponownie pozniej albo ustaw TERRARIA_SERVER_VERSION w .bytehost/game.env."
+    exit 1
+  fi
+  sleep 3
+done
 unzip -q "$ARCHIVE" -d server-source
 LINUX_DIR="$(find server-source -type d -path "*/Linux" | head -n 1)"
 if [ -z "$LINUX_DIR" ]; then
