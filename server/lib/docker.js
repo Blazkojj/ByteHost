@@ -7,6 +7,8 @@ const { GAME_SERVICE_TYPES, getGamePreset } = require("./gamePresets");
 const DOCKER_WORKDIR = "/home/container";
 const DOCKER_LOG_TAIL_LINES = 800;
 const DOCKER_STOP_TIMEOUT_SECONDS = 20;
+const DOCKER_PULL_TIMEOUT_MS = Number(process.env.BYTEHOST_DOCKER_PULL_TIMEOUT_MS || 900000);
+const DOCKER_START_TIMEOUT_MS = Number(process.env.BYTEHOST_DOCKER_START_TIMEOUT_MS || 180000);
 
 const DOCKER_SERVICE_TYPES = new Set([
   "minecraft_server",
@@ -145,6 +147,13 @@ async function removeDockerContainer(containerName) {
   });
 }
 
+async function pullDockerImage(dockerImage) {
+  return runDocker(["pull", dockerImage], {
+    timeoutMs: DOCKER_PULL_TIMEOUT_MS,
+    maxOutput: 1000000
+  });
+}
+
 async function stopDockerContainer(containerName) {
   if (!(await containerExists(containerName))) {
     return;
@@ -200,6 +209,7 @@ async function startDockerService(bot, startCommand) {
 
   await removeDockerContainer(containerName);
   await prepareDockerConsoleInput(bot.project_path);
+  await pullDockerImage(dockerImage);
 
   const args = [
     "run",
@@ -253,7 +263,7 @@ async function startDockerService(bot, startCommand) {
   args.push(dockerImage, "/bin/bash", "-lc", getContainerStartCommand());
 
   return runDocker(args, {
-    timeoutMs: 120000,
+    timeoutMs: DOCKER_START_TIMEOUT_MS,
     maxOutput: 500000
   });
 }
