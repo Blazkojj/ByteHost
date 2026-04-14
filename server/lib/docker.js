@@ -9,6 +9,7 @@ const DOCKER_LOG_TAIL_LINES = 800;
 const DOCKER_STOP_TIMEOUT_SECONDS = 20;
 const DOCKER_PULL_TIMEOUT_MS = Number(process.env.BYTEHOST_DOCKER_PULL_TIMEOUT_MS || 900000);
 const DOCKER_START_TIMEOUT_MS = Number(process.env.BYTEHOST_DOCKER_START_TIMEOUT_MS || 180000);
+const DOCKER_PULL_POLICY = String(process.env.BYTEHOST_DOCKER_PULL_POLICY || "missing").toLowerCase();
 
 const DOCKER_SERVICE_TYPES = new Set([
   "minecraft_server",
@@ -147,7 +148,32 @@ async function removeDockerContainer(containerName) {
   });
 }
 
+async function dockerImageExists(dockerImage) {
+  const result = await runDocker(["image", "inspect", dockerImage], {
+    allowFailure: true,
+    timeoutMs: 10000,
+    maxOutput: 2000
+  });
+  return result.code === 0;
+}
+
 async function pullDockerImage(dockerImage) {
+  if (DOCKER_PULL_POLICY === "never") {
+    return {
+      code: 0,
+      stdout: "",
+      stderr: ""
+    };
+  }
+
+  if (DOCKER_PULL_POLICY !== "always" && (await dockerImageExists(dockerImage))) {
+    return {
+      code: 0,
+      stdout: "",
+      stderr: ""
+    };
+  }
+
   return runDocker(["pull", dockerImage], {
     timeoutMs: DOCKER_PULL_TIMEOUT_MS,
     maxOutput: 1000000
@@ -215,6 +241,8 @@ async function startDockerService(bot, startCommand) {
     "run",
     "-d",
     "--interactive",
+    "--pull",
+    "never",
     "--name",
     containerName,
     "--label",
