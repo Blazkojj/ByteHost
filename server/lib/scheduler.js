@@ -1,6 +1,6 @@
 const { getDb, mapBotRow, mapUserRow } = require("./db");
-const { listBytehostProcesses, stopProcess } = require("./pm2");
 const { deriveBotRuntime } = require("./runtime");
+const { listServiceRuntimeMap, stopServiceRuntime } = require("./serviceRuntime");
 const { isUserExpired } = require("./users");
 const { nowIso } = require("./utils");
 const { SCHEDULER_INTERVAL_MS } = require("../config");
@@ -12,14 +12,13 @@ async function runSchedulerTick() {
   const bots = db.prepare("SELECT * FROM bots").all().map(mapBotRow);
   const users = db.prepare("SELECT * FROM users").all().map(mapUserRow);
   const userMap = new Map(users.map((user) => [user.id, user]));
-  const processList = await listBytehostProcesses().catch(() => []);
-  const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
+  const runtimeMap = await listServiceRuntimeMap(bots).catch(() => new Map());
 
   for (let bot of bots) {
     const owner = userMap.get(bot.owner_user_id) || null;
 
     if (owner && (!owner.is_active || isUserExpired(owner))) {
-      await stopProcess(bot.pm2_name);
+      await stopServiceRuntime(bot);
       db.prepare(
         `
           UPDATE bots
@@ -73,10 +72,10 @@ async function runSchedulerTick() {
       cpuViolations.delete(bot.id);
     }
 
-    const runtime = deriveBotRuntime(bot, processMap.get(bot.pm2_name));
+    const runtime = deriveBotRuntime(bot, runtimeMap.get(bot.pm2_name));
 
     if (runtime.status === "CRASH LOOP") {
-      await stopProcess(bot.pm2_name);
+      await stopServiceRuntime(bot);
       db.prepare(
         `
           UPDATE bots
@@ -108,7 +107,7 @@ async function runSchedulerTick() {
       cpuViolations.set(bot.id, nextViolationCount);
 
       if (nextViolationCount >= 3) {
-        await stopProcess(bot.pm2_name);
+        await stopServiceRuntime(bot);
         db.prepare(
           `
             UPDATE bots

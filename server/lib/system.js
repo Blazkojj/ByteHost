@@ -4,8 +4,8 @@ const si = require("systeminformation");
 
 const { BOTS_DIR, BACKUPS_DIR } = require("../config");
 const { getDb, mapBotRow, mapSystemLimitsRow } = require("./db");
-const { listBytehostProcesses } = require("./pm2");
 const { deriveBotRuntime } = require("./runtime");
+const { listServiceRuntimeMap } = require("./serviceRuntime");
 const { getDirectorySize } = require("./storage");
 const { getUserAccountStatus, hasProvisionedPlan, isAdminUser } = require("./users");
 const { nowIso, round, toMb } = require("./utils");
@@ -86,8 +86,7 @@ function buildRemaining(limits, usage) {
 
 async function collectSystemStats(actor) {
   const bots = getScopedBots(actor);
-  const processList = await listBytehostProcesses().catch(() => []);
-  const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
+  const runtimeMap = await listServiceRuntimeMap(bots).catch(() => new Map());
 
   let runningRamMb = 0;
   let runningCpuPercent = 0;
@@ -103,7 +102,7 @@ async function collectSystemStats(actor) {
   };
 
   for (const bot of bots) {
-    const runtime = deriveBotRuntime(bot, processMap.get(bot.pm2_name));
+    const runtime = deriveBotRuntime(bot, runtimeMap.get(bot.pm2_name));
     storageBytes += await getDirectorySize(bot.project_path);
     storageBytes += await getDirectorySize(path.join(BACKUPS_DIR, bot.id));
 

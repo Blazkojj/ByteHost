@@ -60,15 +60,19 @@ const {
 } = require("./storage");
 const {
   getBotProcessName,
-  listBytehostProcesses,
-  describeProcess,
-  deleteProcess,
-  stopProcess,
-  startBotProcess,
-  hasManagedServerConsole,
-  getManagedConsoleInputPath,
-  sendManagedConsoleCommand
+  getManagedConsoleInputPath
 } = require("./pm2");
+const {
+  deleteServiceRuntime,
+  describeServiceRuntime,
+  getRuntimeKind,
+  getServiceRuntimeLogs,
+  hasInteractiveConsole,
+  listServiceRuntimeMap,
+  sendServiceConsoleCommand,
+  startServiceRuntime,
+  stopServiceRuntime
+} = require("./serviceRuntime");
 const { getSystemLimits } = require("./system");
 const {
   readFileEntry,
@@ -816,20 +820,20 @@ function getReservedCpu(bot) {
 
 async function assertStartWithinLimits(bot, owner) {
   const limits = getSystemLimits();
-  const processList = await listBytehostProcesses().catch(() => []);
-  const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
+  const allBots = listBotRows(null);
+  const runtimeMap = await listServiceRuntimeMap(allBots).catch(() => new Map());
 
   let currentRamMb = 0;
   let currentCpuPercent = 0;
   let currentOwnerRamMb = 0;
   let currentOwnerCpuPercent = 0;
 
-  for (const currentBot of listBotRows(null)) {
+  for (const currentBot of allBots) {
     if (currentBot.id === bot.id) {
       continue;
     }
 
-    const runtime = deriveBotRuntime(currentBot, processMap.get(currentBot.pm2_name));
+    const runtime = deriveBotRuntime(currentBot, runtimeMap.get(currentBot.pm2_name));
     if (runtime.status !== "ONLINE") {
       continue;
     }
@@ -1317,8 +1321,8 @@ async function listBotBackups(botId, actor) {
 async function createBotBackup(botId, actor, payload = {}) {
   const bot = getBotRow(botId, actor);
   const owner = getBotOwner(bot);
-  const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
-  const runtime = deriveBotRuntime(bot, processInfo);
+  const runtimeInfo = await describeServiceRuntime(bot).catch(() => null);
+  const runtime = deriveBotRuntime(bot, runtimeInfo);
   const backupId = randomId();
   const backupDirectory = getBotBackupDirectory(botId, backupId);
   const filesDirectory = getBotBackupFilesDirectory(botId, backupId);
@@ -1366,14 +1370,14 @@ async function restoreBotBackup(botId, actor, backupId, payload = {}) {
   const bot = getBotRow(botId, actor);
   const owner = getBotOwner(bot);
   const backup = await readBotBackupRecord(botId, backupId);
-  const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
-  const runtime = deriveBotRuntime(bot, processInfo);
+  const runtimeInfo = await describeServiceRuntime(bot).catch(() => null);
+  const runtime = deriveBotRuntime(bot, runtimeInfo);
   const restartAfterRestore =
     payload.restart_after_restore !== undefined
       ? coerceBoolean(payload.restart_after_restore, runtime.status === "ONLINE")
       : runtime.status === "ONLINE";
 
-  await stopProcess(bot.pm2_name);
+  await stopServiceRuntime(bot);
   await clearDirectoryContents(bot.project_path);
   await copyDirectoryContents(backup.files_path, bot.project_path);
 
@@ -1520,21 +1524,23 @@ async function recordBotFailure(bot, message, options = {}) {
 
 async function getBotWithRuntime(botId, actor) {
   const bot = getBotRow(botId, actor);
-  const processInfo = await describeProcess(bot.pm2_name);
+  const runtimeInfo = await describeServiceRuntime(bot);
 
   return {
-    ...mergeBotWithRuntime(bot, processInfo),
+    ...mergeBotWithRuntime(bot, runtimeInfo),
+    runtime_kind: getRuntimeKind(bot),
     storage_usage_mb: round(toMb(await getDirectorySize(bot.project_path)))
   };
 }
 
 async function listBots(actor) {
-  const processList = await listBytehostProcesses().catch(() => []);
-  const processMap = new Map(processList.map((processInfo) => [processInfo.name, processInfo]));
+  const botRows = listBotRows(actor);
+  const runtimeMap = await listServiceRuntimeMap(botRows).catch(() => new Map());
 
   return Promise.all(
-    listBotRows(actor).map(async (bot) => ({
-      ...mergeBotWithRuntime(bot, processMap.get(bot.pm2_name)),
+    botRows.map(async (bot) => ({
+      ...mergeBotWithRuntime(bot, runtimeMap.get(bot.pm2_name)),
+      runtime_kind: getRuntimeKind(bot),
       storage_usage_mb: round(toMb(await getDirectorySize(bot.project_path)))
     }))
   );
@@ -2161,7 +2167,7 @@ async function updateBot(botId, actor, payload) {
 
 async function deleteBotById(botId, actor, options = {}) {
   const bot = getBotRow(botId, actor, options);
-  await deleteProcess(bot.pm2_name);
+  await deleteServiceRuntime(bot);
   await removeBotLogs(bot.id);
   await removePath(getBotBackupsDirectory(bot.id));
   await removePath(bot.project_path);
@@ -2448,11 +2454,11 @@ async function startBot(botId, actor) {
     }
 
     await assertStartWithinLimits(bot, owner);
-    await appendBytehostControlLog(bot.id, `Start uslugi: ${resolvedStartCommand}`);
-    await startBotProcess({
-      ...bot,
-      start_command: resolvedStartCommand
-    });
+    await appendBytehostControlLog(
+      bot.id,
+      `Start uslugi (${getRuntimeKind(bot)}): ${resolvedStartCommand}`
+    );
+    await startServiceRuntime(bot, resolvedStartCommand);
     updateBotRow(botId, {
       status: "ONLINE",
       status_message: null,
@@ -2471,7 +2477,7 @@ async function startBot(botId, actor) {
 async function stopBot(botId, actor) {
   const bot = getBotRow(botId, actor);
   await appendBytehostControlLog(bot.id, "Stop uslugi: zatrzymywanie procesu.");
-  await stopProcess(bot.pm2_name);
+  await stopServiceRuntime(bot);
   updateBotRow(botId, {
     status: "OFFLINE",
     status_message: null,
@@ -2484,7 +2490,7 @@ async function stopBot(botId, actor) {
 async function restartBot(botId, actor) {
   const bot = getBotRow(botId, actor);
   await appendBytehostControlLog(bot.id, "Restart uslugi: zamykanie procesu.");
-  await deleteProcess(bot.pm2_name);
+  await deleteServiceRuntime(bot);
   await appendBytehostControlLog(bot.id, "Restart uslugi: ponowne uruchamianie.");
   return startBot(botId, actor);
 }
@@ -2654,8 +2660,8 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
 
   const bot = getBotRow(botId, actor);
   const owner = getBotOwner(bot);
-  const processInfo = await describeProcess(bot.pm2_name);
-  const runtime = deriveBotRuntime(bot, processInfo);
+  const runtimeInfo = await describeServiceRuntime(bot);
+  const runtime = deriveBotRuntime(bot, runtimeInfo);
   const wasOnline = runtime.status === "ONLINE";
   const preserveEnv =
     payload.preserve_env !== undefined ? coerceBoolean(payload.preserve_env, true) : true;
@@ -2674,7 +2680,7 @@ async function updateBotArchive(botId, actor, artifactFile, payload = {}) {
   assertArtifactAllowed(bot.service_type, artifactKind);
 
   try {
-    await stopProcess(bot.pm2_name);
+    await stopServiceRuntime(bot);
 
     if (bot.service_type === "minecraft_server" && artifactKind === ".jar") {
       await replaceMinecraftServerJar(bot, artifactFile);
@@ -2828,9 +2834,9 @@ async function executeBotConsoleCommand(botId, actor, payload) {
     );
   }
 
-  if (hasManagedServerConsole(bot) && mode !== "shell") {
-    const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
-    const runtime = deriveBotRuntime(bot, processInfo);
+  if (hasInteractiveConsole(bot) && mode !== "shell") {
+    const runtimeInfo = await describeServiceRuntime(bot).catch(() => null);
+    const runtime = deriveBotRuntime(bot, runtimeInfo);
 
     if (runtime.status !== "ONLINE") {
       throw createHttpError(
@@ -2861,7 +2867,7 @@ async function executeBotConsoleCommand(botId, actor, payload) {
     }
 
     try {
-      await sendManagedConsoleCommand(bot.project_path, command);
+      await sendServiceConsoleCommand(bot, command);
       await appendBotLog(bot.id, "out", `[console] > ${command}\n`);
     } catch (error) {
       throw createHttpError(
@@ -2900,9 +2906,33 @@ async function executeBotConsoleCommand(botId, actor, payload) {
 async function getBotLogsPayload(botId, actor) {
   const bot = getBotRow(botId, actor);
   const logs = await getBotLogs(botId);
+  const runtimeLogs = await getServiceRuntimeLogs(bot).catch(() => "");
   const nativeServiceLogPath = await getNativeServiceLogPath(bot);
   const nativeServiceLog = nativeServiceLogPath ? await readLogTail(nativeServiceLogPath) : "";
   const controlLines = extractBytehostControlLines(logs.out);
+
+  if (runtimeLogs.trim()) {
+    const combined = [
+      controlLines.trim(),
+      runtimeLogs.trimEnd(),
+      nativeServiceLog.trim() && nativeServiceLog.trim() !== runtimeLogs.trim()
+        ? nativeServiceLog.trimEnd()
+        : "",
+      logs.error.trim()
+        ? `[bytehost stderr]\n${logs.error.trimEnd()}`
+        : ""
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    return {
+      ...logs,
+      native: nativeServiceLog,
+      runtime: runtimeLogs,
+      combined,
+      status_message: bot.status_message || null
+    };
+  }
 
   if (nativeServiceLog.trim()) {
     const combined = [
@@ -2930,27 +2960,41 @@ async function getBotLogsPayload(botId, actor) {
     };
   }
 
-  const processInfo = await describeProcess(bot.pm2_name).catch(() => null);
+  const runtimeInfo = await describeServiceRuntime(bot).catch(() => null);
   const diagnostics = [];
 
   if (bot.status_message) {
     diagnostics.push(`Status message: ${bot.status_message}`);
   }
 
-  if (processInfo?.pm2_env?.status) {
-    diagnostics.push(`PM2 status: ${processInfo.pm2_env.status}`);
+  if (runtimeInfo?.bytehost_runtime === "docker") {
+    diagnostics.push(`Runtime: Docker`);
+    diagnostics.push(`Container status: ${runtimeInfo.state?.Status || "missing"}`);
+    if (runtimeInfo.state?.ExitCode !== undefined) {
+      diagnostics.push(`Exit code: ${runtimeInfo.state.ExitCode}`);
+    }
+    if (runtimeInfo.restart_count !== undefined) {
+      diagnostics.push(`Restart count: ${runtimeInfo.restart_count}`);
+    }
+    if (runtimeInfo.image) {
+      diagnostics.push(`Image: ${runtimeInfo.image}`);
+    }
   }
 
-  if (processInfo?.pm2_env?.exit_code !== undefined) {
-    diagnostics.push(`Exit code: ${processInfo.pm2_env.exit_code}`);
+  if (runtimeInfo?.pm2_env?.status) {
+    diagnostics.push(`PM2 status: ${runtimeInfo.pm2_env.status}`);
   }
 
-  if (processInfo?.pm2_env?.unstable_restarts !== undefined) {
-    diagnostics.push(`Unstable restarts: ${processInfo.pm2_env.unstable_restarts}`);
+  if (runtimeInfo?.pm2_env?.exit_code !== undefined) {
+    diagnostics.push(`Exit code: ${runtimeInfo.pm2_env.exit_code}`);
   }
 
-  if (processInfo?.pm2_env?.restart_time !== undefined) {
-    diagnostics.push(`Restart count: ${processInfo.pm2_env.restart_time}`);
+  if (runtimeInfo?.pm2_env?.unstable_restarts !== undefined) {
+    diagnostics.push(`Unstable restarts: ${runtimeInfo.pm2_env.unstable_restarts}`);
+  }
+
+  if (runtimeInfo?.pm2_env?.restart_time !== undefined) {
+    diagnostics.push(`Restart count: ${runtimeInfo.pm2_env.restart_time}`);
   }
 
   const combined = diagnostics.length

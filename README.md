@@ -1,10 +1,10 @@
 # ByteHost
 
-ByteHost to realny panel webowy do hostowania botow Discord, serwerow Minecraft i serwerow FiveM. Aplikacja pracuje na prawdziwych plikach, procesach PM2 i SQLite, a nie na mockach. Panel ma logowanie JWT, role owner/user i publiczna rejestracje kont z aktywacja przez ownera.
+ByteHost to realny panel webowy do hostowania botow Discord i serwerow gier. Boty Discord dzialaja przez PM2, a serwery gier sa uruchamiane w izolowanych kontenerach Docker. Aplikacja pracuje na prawdziwych plikach, procesach i SQLite, a nie na mockach. Panel ma logowanie JWT, role owner/user i publiczna rejestracje kont z aktywacja przez ownera.
 
 ## Stack
 
-- Backend: Node.js, Express, SQLite (`better-sqlite3`), PM2, Multer
+- Backend: Node.js, Express, SQLite (`better-sqlite3`), PM2, Docker, Multer
 - Frontend: React + Vite
 - Storage:
   - `storage/bots/{botId}`
@@ -18,6 +18,10 @@ ByteHost to realny panel webowy do hostowania botow Discord, serwerow Minecraft 
   - upload `ZIP` albo `RAR`
   - auto-detekcja jezyka, pliku startowego i komendy
   - start/stop/restart przez PM2
+- serwery gier:
+  - uruchamianie przez Docker
+  - osobny kontener, port, limity RAM/CPU i logi dla kazdej uslugi
+  - PM2 nie jest uzywany do gier
 - serwery Minecraft:
   - upload `JAR`, `ZIP` albo `RAR`
   - mozliwosc utworzenia pustego workspace bez pliku
@@ -66,6 +70,8 @@ ByteHost to realny panel webowy do hostowania botow Discord, serwerow Minecraft 
 ```bash
 sudo apt update
 sudo apt install -y curl unzip unrar xz-utils python3 python3-pip build-essential openjdk-21-jre-headless
+curl -fsSL https://get.docker.com | sudo sh
+sudo systemctl enable --now docker
 ```
 
 Zainstaluj Node.js LTS, najlepiej `20.x` albo `22.x`.
@@ -75,6 +81,8 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 sudo npm install -g pm2
 ```
+
+PM2 jest wymagane dla botow Discord, a Docker dla Minecraft/FiveM/CS2/Terraria/Unturned/Project Zomboid.
 
 ### 2. Konfiguracja projektu
 
@@ -101,6 +109,9 @@ Najwazniejsze pola w `.env`:
 - `OWNER_EMAIL`
 - `OWNER_PASSWORD`
   - dane pierwszego ownera
+- `BYTEHOST_DOCKER_IMAGE_*`
+  - obrazy Docker uzywane do uruchamiania serwerow gier
+  - domyslnie ByteHost uzywa obrazow `ghcr.io/pterodactyl/yolks`
 
 ### 3. Development
 
@@ -139,7 +150,7 @@ pm2 save
 
 - `RAR` wymaga polecenia `unrar`.
 - FiveM wymaga `tar` i `xz-utils`.
-- Minecraft wymaga zainstalowanej Javy.
+- Minecraft i serwery gier uruchamiane sa w Dockerze. Java na hoscie jest nadal przydatna do lokalnych narzedzi, ale runtime gry dziala w kontenerze.
 - `.env` jest traktowany jak zwykly plik tekstowy. Panel go nie parsuje i nie przechowuje tokenow.
 - Dla Node/TypeScript uzywany jest `npm`, `yarn` albo `pnpm`, zaleznosci od lockfile.
 - Dla projektow Python instalacja korzysta z `requirements.txt`, jesli istnieje.

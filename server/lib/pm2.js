@@ -3,15 +3,11 @@ const path = require("path");
 const pm2 = require("pm2");
 
 const { getShellInvocation, runShellCommand } = require("./commands");
-const { GAME_SERVICE_TYPES } = require("./gamePresets");
 const { getBotLogPaths } = require("./logs");
 
 let connectionPromise;
 const MANAGED_SERVER_SERVICE_TYPES = new Set([
-  "discord_bot",
-  "minecraft_server",
-  "fivem_server",
-  ...GAME_SERVICE_TYPES
+  "discord_bot"
 ]);
 const MANAGED_CONSOLE_WRITE_TIMEOUT_MS = 3000;
 
