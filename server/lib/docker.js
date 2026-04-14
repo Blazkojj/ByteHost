@@ -20,10 +20,10 @@ const DOCKER_SERVICE_TYPES = new Set([
 const DEFAULT_DOCKER_IMAGES = {
   minecraft_server: "ghcr.io/pterodactyl/yolks:java_21",
   fivem_server: "ghcr.io/pterodactyl/yolks:debian",
-  project_zomboid: "ghcr.io/pterodactyl/yolks:steamcmd",
-  cs2: "ghcr.io/pterodactyl/yolks:steamcmd",
-  csgo: "ghcr.io/pterodactyl/yolks:steamcmd",
-  unturned: "ghcr.io/pterodactyl/yolks:steamcmd",
+  project_zomboid: "steamcmd/steamcmd:ubuntu-24",
+  cs2: "steamcmd/steamcmd:ubuntu-24",
+  csgo: "steamcmd/steamcmd:ubuntu-24",
+  unturned: "steamcmd/steamcmd:ubuntu-24",
   terraria: "ghcr.io/pterodactyl/yolks:debian"
 };
 
@@ -243,6 +243,8 @@ async function startDockerService(bot, startCommand) {
     "--interactive",
     "--pull",
     "never",
+    "--entrypoint",
+    "/bin/bash",
     "--name",
     containerName,
     "--label",
@@ -288,7 +290,7 @@ async function startDockerService(bot, startCommand) {
     args.push("--env-file", envFile);
   }
 
-  args.push(dockerImage, "/bin/bash", "-lc", getContainerStartCommand());
+  args.push(dockerImage, "-lc", getContainerStartCommand());
 
   return runDocker(args, {
     timeoutMs: DOCKER_START_TIMEOUT_MS,
