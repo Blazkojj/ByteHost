@@ -240,12 +240,25 @@ exec ./TerrariaServer.bin.x86_64 -port "$PORT" -players "$MAX_PLAYERS" -world "$
     installScript: (preset) => `#!/usr/bin/env bash
 set -euo pipefail
 INSTALL_DIR="\${BYTEHOST_INSTALL_DIR:-$PWD/server}"
+REQUIRED_FREE_MB="\${CS2_REQUIRED_FREE_MB:-45000}"
 if ! command -v steamcmd >/dev/null 2>&1; then
   echo "[bytehost] Brakuje steamcmd. Zainstaluj: sudo apt install steamcmd"
   exit 127
 fi
 mkdir -p "$INSTALL_DIR"
-steamcmd +force_install_dir "$INSTALL_DIR" +login anonymous +app_update ${preset.appId} validate +quit
+AVAILABLE_MB="$(df -Pm "$PWD" | awk 'NR==2 {print $4}')"
+if [ -n "$AVAILABLE_MB" ] && [ "$AVAILABLE_MB" -lt "$REQUIRED_FREE_MB" ]; then
+  echo "[bytehost] CS2 potrzebuje okolo 33 GB pobierania i bezpiecznie min. $REQUIRED_FREE_MB MB wolnego miejsca. Dostepne: $AVAILABLE_MB MB."
+  echo "[bytehost] Zwieksz dysk VM albo limit storage dla tej uslugi i uruchom instalacje ponownie."
+  exit 1
+fi
+LOWER_INSTALL_LINK="/tmp/bytehost-cs2-\$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
+rm -f "$LOWER_INSTALL_LINK"
+ln -s "$INSTALL_DIR" "$LOWER_INSTALL_LINK"
+trap 'rm -f "$LOWER_INSTALL_LINK"' EXIT
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+steamcmd +force_install_dir "$LOWER_INSTALL_LINK" +login anonymous +app_update ${preset.appId} validate +quit
 echo "[bytehost] CS2 server zostal pobrany do $INSTALL_DIR"
 `,
     startScript: () => `#!/usr/bin/env bash
