@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Copy,
+  FileText,
+  Folder,
   FolderOpen,
+  Home,
   Play,
   RefreshCw,
   RotateCcw,
@@ -42,6 +45,37 @@ function SummaryTile({ label, value, hint }) {
       <small>{hint}</small>
     </article>
   );
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes || 0);
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  const units = ["KB", "MB", "GB"];
+  let value = size / 1024;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function fileKindLabel(entry) {
+  if (entry.type === "directory") {
+    return "Folder";
+  }
+
+  const extension = String(entry.name || "").split(".").pop();
+  if (!extension || extension === entry.name) {
+    return "Plik";
+  }
+
+  return extension.toUpperCase();
 }
 
 const TERMINAL_EMPTY_TEXT = "Brak logow do wyswietlenia.";
@@ -926,14 +960,20 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     { id: "env", label: ".env" }
   ];
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Przeglad";
+  const isCompactWorkspace = activeTab !== "overview";
 
   return (
     <div className="workspace-stack">
-      <section className="panel-card">
+      <section className={`panel-card ${isCompactWorkspace ? "workspace-compact-card" : ""}`}>
         <div className="section-header">
           <div>
-            <p className="eyebrow">Workspace</p>
+            <p className="eyebrow">{isCompactWorkspace ? activeTabLabel : "Workspace"}</p>
             <h3>{bot.name}</h3>
+            {isCompactWorkspace ? (
+              <small className="workspace-context">
+                Czysty widok zakladki z podstawowym sterowaniem usluga.
+              </small>
+            ) : null}
           </div>
 
           <div className="workspace-actions">
@@ -951,22 +991,24 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               onChange={handleArchiveUpdate}
             />
             <StatusBadge status={bot.status} />
-            {isGameService && joinAddress !== "Brak" ? (
+            {!isCompactWorkspace && isGameService && joinAddress !== "Brak" ? (
               <button className="ghost-button" onClick={copyJoinAddress} disabled={actionState}>
                 <Copy size={16} />
                 <span>Kopiuj IP</span>
               </button>
             ) : null}
-            <button
-              className="ghost-button"
-              onClick={() => archiveUpdateInputRef.current?.click()}
-              disabled={actionState}
-            >
-              <Upload size={16} />
-              <span>
-                {isMinecraft ? "Aktualizuj JAR/ZIP/RAR" : "Aktualizuj ZIP/RAR"}
-              </span>
-            </button>
+            {!isCompactWorkspace ? (
+              <button
+                className="ghost-button"
+                onClick={() => archiveUpdateInputRef.current?.click()}
+                disabled={actionState}
+              >
+                <Upload size={16} />
+                <span>
+                  {isMinecraft ? "Aktualizuj JAR/ZIP/RAR" : "Aktualizuj ZIP/RAR"}
+                </span>
+              </button>
+            ) : null}
             <button className="ghost-button" onClick={() => runAction("start")} disabled={actionState}>
               <Play size={16} />
               <span>{actionState === "start" ? "Startuje..." : "Start"}</span>
@@ -979,28 +1021,33 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               <RotateCcw size={16} />
               <span>{actionState === "restart" ? "Restartuje..." : "Restart"}</span>
             </button>
-            <button className="ghost-button" onClick={() => runAction("install")} disabled={actionState}>
-              <Wrench size={16} />
-              <span>
-                {actionState === "install"
-                  ? "Instaluje..."
-                  : isMinecraft
-                  ? "Przygotuj"
-                  : isFiveM
-                    ? "Napraw runtime"
-                    : gamePreset
-                      ? gamePreset.installLabel
-                  : "Dependencies"}
-              </span>
-            </button>
-            <button className="danger-button" onClick={() => runAction("delete")} disabled={actionState}>
-              <Trash2 size={16} />
-              <span>{actionState === "delete" ? "Usuwam..." : "Usun"}</span>
-            </button>
+            {!isCompactWorkspace ? (
+              <>
+                <button className="ghost-button" onClick={() => runAction("install")} disabled={actionState}>
+                  <Wrench size={16} />
+                  <span>
+                    {actionState === "install"
+                      ? "Instaluje..."
+                      : isMinecraft
+                        ? "Przygotuj"
+                        : isFiveM
+                          ? "Napraw runtime"
+                          : gamePreset
+                            ? gamePreset.installLabel
+                            : "Dependencies"}
+                  </span>
+                </button>
+                <button className="danger-button" onClick={() => runAction("delete")} disabled={actionState}>
+                  <Trash2 size={16} />
+                  <span>{actionState === "delete" ? "Usuwam..." : "Usun"}</span>
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
-        <div className="summary-grid">
+        {!isCompactWorkspace ? (
+          <div className="summary-grid">
           <SummaryTile
             label="Typ"
             value={serviceTypeLabel(bot.service_type)}
@@ -1154,16 +1201,17 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               hint="Rozmiar plikow uslugi"
             />
           ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {message ? <div className={`banner ${actionState ? "info" : "success"}`}>{message}</div> : null}
         {error ? <div className="banner error">{error}</div> : null}
       </section>
 
-      <section className="panel-card">
+      <section className={`panel-card ${activeTab === "files" ? "files-panel-card" : ""}`}>
         <div className="server-section-bar">
           <div>
-            <p className="eyebrow">Panel serwera</p>
+            <p className="eyebrow">{activeTab === "files" ? "File manager" : "Panel serwera"}</p>
             <h3>{activeTabLabel}</h3>
           </div>
           <button className="ghost-button compact" onClick={refreshDetail}>
@@ -1982,19 +2030,48 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             ) : null}
 
             {filesData?.kind === "directory" ? (
-              <div className="directory-grid">
-                <div className="directory-path">/{filesData.path || ""}</div>
+              <div className="directory-grid file-browser">
+                <div className="file-browser-header">
+                  <div>
+                    <p className="eyebrow">Biezacy folder</p>
+                    <div className="directory-path">
+                      <Home size={15} />
+                      <span>/{filesData.path || "home/container"}</span>
+                    </div>
+                  </div>
+                  <span className="file-count">
+                    {(filesData.entries || []).length} elementow
+                  </span>
+                </div>
                 <div className="directory-list">
-                  {filesData.entries.length === 0 ? (
+                  {(filesData.entries || []).length === 0 ? (
                     <div className="empty-block">Folder jest pusty.</div>
                   ) : (
-                    filesData.entries.map((entry) => (
-                      <div key={entry.path} className="file-row">
+                    (filesData.entries || []).map((entry) => (
+                      <div
+                        key={entry.path}
+                        className={`file-row ${entry.type === "directory" ? "is-folder" : "is-file"}`}
+                      >
                         <button className="file-link" onClick={() => openPath(entry.path)}>
-                          {entry.type === "directory" ? "DIR" : "FILE"} {entry.name}
+                          <span
+                            className={`file-icon ${entry.type === "directory" ? "folder" : "file"}`}
+                          >
+                            {entry.type === "directory" ? (
+                              <Folder size={18} />
+                            ) : (
+                              <FileText size={18} />
+                            )}
+                          </span>
+                          <span className="file-name-stack">
+                            <strong>{entry.name}</strong>
+                            <small>{entry.type === "directory" ? "Folder projektu" : entry.path}</small>
+                          </span>
                         </button>
                         <div className="file-row-actions">
-                          <span>{formatNumber(entry.size, " B")}</span>
+                          <span className="file-kind-pill">{fileKindLabel(entry)}</span>
+                          <span className="file-size">
+                            {entry.type === "directory" ? "-" : formatFileSize(entry.size)}
+                          </span>
                           <button className="icon-button" onClick={() => removeEntry(entry.path)}>
                             <Trash2 size={14} />
                           </button>

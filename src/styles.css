@@ -1001,8 +1001,85 @@ textarea:disabled {
   flex-wrap: wrap;
 }
 
+.workspace-compact-card {
+  padding: 18px 22px;
+}
+
+.workspace-compact-card .section-header {
+  margin-bottom: 0;
+}
+
+.workspace-context {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.files-panel-card {
+  overflow: hidden;
+}
+
+.file-manager {
+  gap: 16px;
+}
+
+.file-manager .file-actions {
+  padding: 12px;
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(36, 99, 235, 0.06), transparent 55%),
+    var(--panel-soft);
+  border: 1px solid var(--border);
+}
+
+.file-manager .info-card {
+  border-radius: 20px;
+}
+
+.file-browser {
+  padding: 18px;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 251, 255, 0.96)),
+    radial-gradient(circle at top right, rgba(36, 99, 235, 0.12), transparent 36%);
+  border: 1px solid var(--border);
+}
+
+.file-browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
 .directory-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
   color: var(--accent);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.file-count,
+.file-kind-pill {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .directory-list {
@@ -1012,20 +1089,83 @@ textarea:disabled {
 
 .file-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 14px 16px;
-  border-radius: 18px;
+  padding: 12px;
+  border-radius: 20px;
   background: var(--list-item-bg);
   border: 1px solid var(--border);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.file-row:hover {
+  transform: translateY(-1px);
+  border-color: #aecaef;
+  box-shadow: 0 14px 28px rgba(36, 99, 235, 0.08);
 }
 
 .file-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
   background: transparent;
   border: none;
   padding: 0;
   color: var(--text);
   text-align: left;
+}
+
+.file-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 14px;
+}
+
+.file-icon.folder {
+  color: #1d4ed8;
+  background: #e8f0ff;
+}
+
+.file-icon.file {
+  color: #0f766e;
+  background: #e6fffb;
+}
+
+.file-name-stack {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.file-name-stack strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.file-name-stack small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.file-row-actions {
+  flex: 0 0 auto;
+}
+
+.file-size {
+  min-width: 82px;
+  color: var(--muted);
+  text-align: right;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .editor-toolbar {
@@ -2271,6 +2411,11 @@ textarea:disabled {
   border-bottom: 1px solid rgba(255, 255, 255, 0.045);
 }
 
+:root[data-theme="dark"] .workspace-compact-card .section-header {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 :root[data-theme="dark"] .summary-tile {
   min-height: 92px;
   padding: 18px 20px;
@@ -2368,6 +2513,44 @@ textarea:disabled {
 :root[data-theme="dark"] .file-row {
   border-radius: 10px;
   background: #181820;
+}
+
+:root[data-theme="dark"] .file-manager .file-actions,
+:root[data-theme="dark"] .file-browser {
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.14), transparent 48%),
+    #101117;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .file-browser-header {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .directory-path {
+  background: rgba(59, 130, 246, 0.16);
+  color: #93c5fd;
+}
+
+:root[data-theme="dark"] .file-count,
+:root[data-theme="dark"] .file-kind-pill {
+  background: #15151d;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="dark"] .file-row:hover {
+  border-color: rgba(96, 165, 250, 0.44);
+  box-shadow: 0 16px 28px rgba(2, 8, 23, 0.3);
+}
+
+:root[data-theme="dark"] .file-icon.folder {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+:root[data-theme="dark"] .file-icon.file {
+  color: #5eead4;
+  background: rgba(20, 184, 166, 0.14);
 }
 
 .installer-shell {
