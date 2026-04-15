@@ -531,6 +531,11 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             description: settings.description
           };
 
+      if (canEditProvisioning && !isGameService) {
+        payload.background_url = "";
+        payload.subdomain = "";
+      }
+
       const updatedBot = await api.updateBot(botId, payload);
       setBot(updatedBot);
       setSettings(buildSettingsState(updatedBot));
@@ -1139,7 +1144,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 : bot.status_message || "Brak alertow"
             }
           />
-          {bot.subdomain ? (
+          {isGameService && bot.subdomain ? (
             <SummaryTile label="Subdomena" value={bot.subdomain} hint="Zapisana w ByteHost" />
           ) : null}
           {isGameService ? (
@@ -1219,28 +1224,32 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             </label>
             {canEditProvisioning ? (
               <>
-                <label>
-                  Subdomena
-                  <input
-                    placeholder="np. mc.bytehost.online"
-                    value={settings.subdomain}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, subdomain: event.target.value }))
-                    }
-                  />
-                  <small>Panel zapisuje subdomene przy usludze. Rekord DNS ustawisz osobno.</small>
-                </label>
-                <label>
-                  Tlo serwera
-                  <input
-                    placeholder="https://..."
-                    value={settings.background_url}
-                    onChange={(event) =>
-                      setSettings((current) => ({ ...current, background_url: event.target.value }))
-                    }
-                  />
-                  <small>URL obrazka widocznego na karcie serwera.</small>
-                </label>
+                {isGameService ? (
+                  <>
+                    <label>
+                      Subdomena
+                      <input
+                        placeholder="np. mc.bytehost.online"
+                        value={settings.subdomain}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, subdomain: event.target.value }))
+                        }
+                      />
+                      <small>Panel zapisuje subdomene przy usludze. Rekord DNS ustawisz osobno.</small>
+                    </label>
+                    <label>
+                      Tlo serwera
+                      <input
+                        placeholder="https://..."
+                        value={settings.background_url}
+                        onChange={(event) =>
+                          setSettings((current) => ({ ...current, background_url: event.target.value }))
+                        }
+                      />
+                      <small>URL obrazka widocznego na karcie serwera.</small>
+                    </label>
+                  </>
+                ) : null}
                 <label>
                   Jezyk
                   <select

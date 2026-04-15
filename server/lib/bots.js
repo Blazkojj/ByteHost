@@ -2022,14 +2022,16 @@ async function updateBot(botId, actor, payload) {
       payload.description !== undefined
         ? coerceNullableString(payload.description, "") || ""
         : existingBot.description,
-    background_url:
-      provisioningPayload.background_url !== undefined
+    background_url: isGameService(existingBot.service_type)
+      ? provisioningPayload.background_url !== undefined
         ? normalizeBackgroundUrl(provisioningPayload.background_url)
-        : existingBot.background_url,
-    subdomain:
-      provisioningPayload.subdomain !== undefined
+        : existingBot.background_url
+      : null,
+    subdomain: isGameService(existingBot.service_type)
+      ? provisioningPayload.subdomain !== undefined
         ? normalizeSubdomain(provisioningPayload.subdomain)
-        : existingBot.subdomain,
+        : existingBot.subdomain
+      : null,
     language: sanitizeLanguage(
       provisioningPayload.language,
       existingBot.language,
@@ -2056,8 +2058,8 @@ async function updateBot(botId, actor, payload) {
     ram_limit_mb: nextRamLimit,
     cpu_limit_percent: nextCpuLimit,
     accept_eula: existingBot.service_type === "minecraft_server" ? true : existingBot.accept_eula,
-    public_host: nextPublicHost,
-    public_port: nextPublicPort,
+    public_host: isGameService(existingBot.service_type) ? nextPublicHost : null,
+    public_port: isGameService(existingBot.service_type) ? nextPublicPort : null,
     minecraft_version:
       existingBot.service_type === "minecraft_server"
         ? nextMinecraftVersion

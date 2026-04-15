@@ -242,7 +242,9 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         start_command: "",
         install_on_create: false,
         public_host: "",
-        public_port: 25565
+        public_port: 25565,
+        background_url: "",
+        subdomain: ""
       };
     });
   }
@@ -892,7 +894,7 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
                   className={`bot-list-item server-list-card ${selectedBot?.id === bot.id ? "active" : ""}`}
                   to={`/bots/${bot.id}`}
                   style={
-                    bot.background_url
+                    isGameServiceType(bot.service_type) && bot.background_url
                       ? { "--server-bg": `url("${bot.background_url}")` }
                       : undefined
                   }
