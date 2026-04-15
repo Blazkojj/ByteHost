@@ -14,6 +14,8 @@ function envLine(key, value) {
   return `${key}=${shellQuote(value)}\n`;
 }
 
+const TERRARIA_DEFAULT_SERVER_VERSION = process.env.TERRARIA_SERVER_VERSION || "1456";
+
 const GAME_PRESETS = {
   project_zomboid: {
     serviceType: "project_zomboid",
@@ -123,13 +125,14 @@ exec bash start-server.sh -servername "$SERVER_NAME"
       "",
       "1. Kliknij Reinstall dependencies, zeby pobrac oficjalny dedicated server z terraria.org.",
       "2. Standardowy port to 7777, ale ByteHost przydzieli wolny port automatycznie.",
-      "3. Pluginy TShock wrzucaj do tshock/plugins, jesli podmienisz silnik na TShock.",
+      "3. Wersje serwera ustawisz w .bytehost/game.env przez TERRARIA_SERVER_VERSION, np. 1456.",
+      "4. Pluginy TShock wrzucaj do tshock/plugins, jesli podmienisz silnik na TShock.",
       "",
       "Wymagane na Ubuntu: curl oraz unzip."
     ],
     installScript: () => `#!/usr/bin/env bash
 set -euo pipefail
-VERSION="\${TERRARIA_SERVER_VERSION:-1449}"
+VERSION="\${TERRARIA_SERVER_VERSION:-${TERRARIA_DEFAULT_SERVER_VERSION}}"
 ARCHIVE="terraria-server-$VERSION.zip"
 DOWNLOAD_URL="https://terraria.org/api/download/pc-dedicated-server/$ARCHIVE"
 if ! command -v curl >/dev/null 2>&1; then
@@ -556,6 +559,7 @@ async function writeGameServerEnv(projectPath, serviceType, options = {}) {
       envLine("PZ_SERVER_NAME", serviceName),
       envLine("UNTURNED_SERVER_NAME", serviceName),
       envLine("TERRARIA_WORLD_NAME", serviceName.replace(/[^a-zA-Z0-9_-]+/g, "_")),
+      serviceType === "terraria" ? envLine("TERRARIA_SERVER_VERSION", TERRARIA_DEFAULT_SERVER_VERSION) : "",
       ""
     ].join("\n"),
     "utf8"

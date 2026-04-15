@@ -30,7 +30,7 @@ export const GAME_SERVICE_PRESETS = {
     artifactLabel: "Pakiet Terraria / TShock (ZIP / RAR)",
     installLabel: "Pobierz dedicated server",
     hint:
-      "Tworzy workspace dla oficjalnego Terraria dedicated server, z folderami worlds, mods i tshock/plugins.",
+      "Tworzy workspace dla oficjalnego Terraria dedicated server. Jesli gra pokazuje blad wersji, ustaw TERRARIA_SERVER_VERSION w .bytehost/game.env i pobierz dedicated server ponownie.",
     engineOptions: [
       { id: "vanilla", label: "Vanilla dedicated server", hint: "Oficjalny dedicated server Terraria" },
       { id: "tshock", label: "TShock", hint: "Pluginy TShock, runtime wrzucasz w plikach" },

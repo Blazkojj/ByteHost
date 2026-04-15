@@ -970,6 +970,124 @@ textarea:disabled {
   resize: vertical;
 }
 
+.syntax-editor {
+  position: relative;
+  min-height: 420px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at top right, rgba(36, 99, 235, 0.08), transparent 30%),
+    var(--input-bg);
+  overflow: hidden;
+}
+
+.syntax-highlight,
+.syntax-textarea {
+  margin: 0;
+  min-height: 420px;
+  width: 100%;
+  padding: 20px;
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.syntax-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border: 0;
+  color: var(--text);
+}
+
+.syntax-highlight code {
+  display: block;
+  min-height: 100%;
+}
+
+.syntax-textarea {
+  position: relative;
+  z-index: 2;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--accent);
+  resize: vertical;
+}
+
+.syntax-textarea:focus {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 2px rgba(36, 99, 235, 0.2);
+}
+
+.syntax-textarea::selection {
+  background: rgba(36, 99, 235, 0.24);
+}
+
+.syntax-textarea::placeholder {
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
+}
+
+.editor-language-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.syntax-token.keyword {
+  color: #7c3aed;
+  font-weight: 800;
+}
+
+.syntax-token.string {
+  color: #0f8f6f;
+}
+
+.syntax-token.attr {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.syntax-token.comment {
+  color: #8a9ab0;
+  font-style: italic;
+}
+
+.syntax-token.number {
+  color: #d97706;
+}
+
+.syntax-token.constant {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.syntax-token.function {
+  color: #0369a1;
+  font-weight: 700;
+}
+
+.syntax-token.variable {
+  color: #be185d;
+}
+
+.syntax-token.operator {
+  color: #64748b;
+}
+
 .user-admin-card {
   display: grid;
   gap: 16px;
@@ -2502,6 +2620,58 @@ textarea:disabled {
 
 :root[data-theme="dark"] .terminal-header {
   background: #101117;
+}
+
+:root[data-theme="dark"] .syntax-editor {
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.16), transparent 32%),
+    #090a0f;
+  border-color: rgba(255, 255, 255, 0.055);
+}
+
+:root[data-theme="dark"] .syntax-textarea:focus {
+  box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.24);
+}
+
+:root[data-theme="dark"] .editor-language-pill {
+  background: rgba(59, 130, 246, 0.16);
+  color: #93c5fd;
+}
+
+:root[data-theme="dark"] .syntax-token.keyword {
+  color: #c4b5fd;
+}
+
+:root[data-theme="dark"] .syntax-token.string {
+  color: #86efac;
+}
+
+:root[data-theme="dark"] .syntax-token.attr {
+  color: #93c5fd;
+}
+
+:root[data-theme="dark"] .syntax-token.comment {
+  color: #7f8ea3;
+}
+
+:root[data-theme="dark"] .syntax-token.number {
+  color: #fbbf24;
+}
+
+:root[data-theme="dark"] .syntax-token.constant {
+  color: #fca5a5;
+}
+
+:root[data-theme="dark"] .syntax-token.function {
+  color: #67e8f9;
+}
+
+:root[data-theme="dark"] .syntax-token.variable {
+  color: #f9a8d4;
+}
+
+:root[data-theme="dark"] .syntax-token.operator {
+  color: #94a3b8;
 }
 
 :root[data-theme="dark"] .banner.info {

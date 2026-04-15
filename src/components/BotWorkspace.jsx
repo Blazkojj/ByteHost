@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   FileText,
@@ -76,6 +76,382 @@ function fileKindLabel(entry) {
   }
 
   return extension.toUpperCase();
+}
+
+const LANGUAGE_LABELS = {
+  javascript: "JavaScript",
+  typescript: "TypeScript",
+  python: "Python",
+  json: "JSON",
+  yaml: "YAML",
+  shell: "Shell",
+  env: "ENV",
+  css: "CSS",
+  html: "HTML",
+  properties: "Properties",
+  lua: "Lua",
+  toml: "TOML",
+  text: "Text"
+};
+
+const KEYWORDS = {
+  javascript: new Set([
+    "async",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "let",
+    "new",
+    "return",
+    "switch",
+    "throw",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "yield"
+  ]),
+  typescript: new Set([
+    "abstract",
+    "as",
+    "async",
+    "await",
+    "boolean",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "interface",
+    "let",
+    "namespace",
+    "new",
+    "number",
+    "private",
+    "protected",
+    "public",
+    "readonly",
+    "return",
+    "string",
+    "type",
+    "typeof",
+    "var",
+    "void"
+  ]),
+  python: new Set([
+    "and",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "finally",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "in",
+    "is",
+    "lambda",
+    "nonlocal",
+    "not",
+    "or",
+    "pass",
+    "raise",
+    "return",
+    "try",
+    "while",
+    "with",
+    "yield"
+  ]),
+  shell: new Set([
+    "case",
+    "cd",
+    "do",
+    "done",
+    "elif",
+    "else",
+    "esac",
+    "export",
+    "fi",
+    "for",
+    "function",
+    "if",
+    "in",
+    "local",
+    "then",
+    "while"
+  ]),
+  lua: new Set([
+    "and",
+    "break",
+    "do",
+    "else",
+    "elseif",
+    "end",
+    "for",
+    "function",
+    "if",
+    "in",
+    "local",
+    "not",
+    "or",
+    "repeat",
+    "return",
+    "then",
+    "until",
+    "while"
+  ])
+};
+
+const CONSTANTS = new Set(["true", "false", "null", "undefined", "None", "True", "False", "nil"]);
+
+function detectEditorLanguage(filePath = "") {
+  const name = String(filePath).split("/").pop().toLowerCase();
+  const extension = name.includes(".") ? name.split(".").pop() : "";
+
+  if (name === ".env" || name.endsWith(".env") || name.includes(".env.")) return "env";
+  if (["js", "jsx", "mjs", "cjs"].includes(extension)) return "javascript";
+  if (["ts", "tsx"].includes(extension)) return "typescript";
+  if (["py", "pyw"].includes(extension)) return "python";
+  if (["json", "jsonc", "lock"].includes(extension)) return "json";
+  if (["yaml", "yml"].includes(extension)) return "yaml";
+  if (["sh", "bash", "zsh", "command"].includes(extension)) return "shell";
+  if (["css", "scss", "sass"].includes(extension)) return "css";
+  if (["html", "htm", "xml", "svg"].includes(extension)) return "html";
+  if (["properties", "cfg", "conf", "ini"].includes(extension)) return "properties";
+  if (["lua"].includes(extension)) return "lua";
+  if (["toml"].includes(extension)) return "toml";
+  return "text";
+}
+
+function tokenClass(type) {
+  return `syntax-token ${type}`;
+}
+
+function getCommentMarkers(language) {
+  if (["python", "shell", "yaml", "env"].includes(language)) return ["#"];
+  if (["properties", "toml"].includes(language)) return ["#", ";"];
+  if (language === "lua") return ["--"];
+  if (language === "css") return ["/*"];
+  if (language === "html") return ["<!--"];
+  return ["//"];
+}
+
+function findStringEnd(line, startIndex, quote) {
+  let index = startIndex + 1;
+  while (index < line.length) {
+    if (line[index] === "\\" && quote !== "`") {
+      index += 2;
+      continue;
+    }
+
+    if (line[index] === quote) {
+      return index + 1;
+    }
+
+    index += 1;
+  }
+
+  return line.length;
+}
+
+function readPattern(line, index, pattern) {
+  const match = line.slice(index).match(pattern);
+  return match ? match[0] : "";
+}
+
+function pushSegment(segments, text, type, key) {
+  if (!text) return;
+  segments.push(type ? <span className={tokenClass(type)} key={key}>{text}</span> : text);
+}
+
+function tokenizeConfigLine(line, language, lineIndex) {
+  const keyMatch = line.match(/^(\s*[\w.-]+)(\s*[:=])/);
+  if (!keyMatch) {
+    return tokenizeCodeLine(line, language, lineIndex, 0, false);
+  }
+
+  const key = keyMatch[1];
+  const separator = keyMatch[2];
+  const rest = line.slice(key.length + separator.length);
+  return [
+    <span className={tokenClass("attr")} key={`${lineIndex}-key`}>{key}</span>,
+    <span className={tokenClass("operator")} key={`${lineIndex}-sep`}>{separator}</span>,
+    ...tokenizeCodeLine(rest, language, lineIndex, 2, false)
+  ];
+}
+
+function tokenizeCodeLine(line, language, lineIndex, keyOffset = 0, allowConfig = true) {
+  if (allowConfig && ["yaml", "env", "properties", "toml"].includes(language)) {
+    return tokenizeConfigLine(line, language, lineIndex);
+  }
+
+  const segments = [];
+  const commentMarkers = getCommentMarkers(language);
+  const keywords = KEYWORDS[language] || KEYWORDS.javascript;
+  let index = 0;
+  let key = keyOffset;
+
+  while (index < line.length) {
+    const commentMarker = commentMarkers.find((marker) => line.startsWith(marker, index));
+    if (commentMarker) {
+      const commentEnd =
+        commentMarker === "/*"
+          ? line.indexOf("*/", index + 2)
+          : commentMarker === "<!--"
+            ? line.indexOf("-->", index + 4)
+            : -1;
+      const endIndex = commentEnd >= 0 ? commentEnd + commentMarker.length : line.length;
+      pushSegment(segments, line.slice(index, endIndex), "comment", `${lineIndex}-${key++}`);
+      index = endIndex;
+      continue;
+    }
+
+    const char = line[index];
+
+    if (/\s/.test(char)) {
+      const whitespace = readPattern(line, index, /^\s+/);
+      pushSegment(segments, whitespace, null, `${lineIndex}-${key++}`);
+      index += whitespace.length;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      const endIndex = findStringEnd(line, index, char);
+      const text = line.slice(index, endIndex);
+      const nextChar = line.slice(endIndex).trimStart()[0];
+      pushSegment(
+        segments,
+        text,
+        language === "json" && nextChar === ":" ? "attr" : "string",
+        `${lineIndex}-${key++}`
+      );
+      index = endIndex;
+      continue;
+    }
+
+    const number = readPattern(line, index, /^-?(?:0x[\da-f]+|\d+(?:\.\d+)?)/i);
+    if (number) {
+      pushSegment(segments, number, "number", `${lineIndex}-${key++}`);
+      index += number.length;
+      continue;
+    }
+
+    const variable = readPattern(line, index, /^\$[A-Za-z_][\w]*/);
+    if (variable) {
+      pushSegment(segments, variable, "variable", `${lineIndex}-${key++}`);
+      index += variable.length;
+      continue;
+    }
+
+    const identifier = readPattern(line, index, /^[A-Za-z_$][\w$-]*/);
+    if (identifier) {
+      const nextChar = line.slice(index + identifier.length).trimStart()[0];
+      const type = keywords.has(identifier)
+        ? "keyword"
+        : CONSTANTS.has(identifier)
+          ? "constant"
+          : nextChar === "("
+            ? "function"
+            : null;
+      pushSegment(segments, identifier, type, `${lineIndex}-${key++}`);
+      index += identifier.length;
+      continue;
+    }
+
+    if (/[{}()[\].,;:+\-*/%=<>!&|?]/.test(char)) {
+      pushSegment(segments, char, "operator", `${lineIndex}-${key++}`);
+      index += 1;
+      continue;
+    }
+
+    pushSegment(segments, char, null, `${lineIndex}-${key++}`);
+    index += 1;
+  }
+
+  return segments;
+}
+
+function highlightCode(value, language) {
+  const lines = String(value || " ").split("\n");
+  return lines.flatMap((line, lineIndex) => [
+    ...tokenizeCodeLine(line, language, lineIndex),
+    lineIndex < lines.length - 1 ? "\n" : null
+  ]);
+}
+
+function SyntaxCodeEditor({ value, onChange, path, placeholder = "" }) {
+  const textareaRef = useRef(null);
+  const highlightRef = useRef(null);
+  const language = detectEditorLanguage(path);
+  const highlightedCode = useMemo(() => highlightCode(value, language), [language, value]);
+
+  function syncScroll() {
+    if (!textareaRef.current || !highlightRef.current) {
+      return;
+    }
+
+    highlightRef.current.scrollTop = textareaRef.current.scrollTop;
+    highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
+  }
+
+  return (
+    <div className={`syntax-editor language-${language}`}>
+      <pre ref={highlightRef} className="syntax-highlight" aria-hidden="true">
+        <code>{highlightedCode}</code>
+      </pre>
+      <textarea
+        ref={textareaRef}
+        className="code-editor syntax-textarea"
+        value={value}
+        onChange={onChange}
+        onScroll={syncScroll}
+        placeholder={placeholder}
+        spellCheck="false"
+      />
+    </div>
+  );
 }
 
 const TERMINAL_EMPTY_TEXT = "Brak logow do wyswietlenia.";
@@ -2094,6 +2470,9 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                     <span>Powrot</span>
                   </button>
                   <strong>{filesData.path}</strong>
+                  <span className="editor-language-pill">
+                    {LANGUAGE_LABELS[detectEditorLanguage(filesData.path)] || "Text"}
+                  </span>
                   <div className="editor-toolbar-actions">
                     <button className="ghost-button compact" onClick={() => removeEntry(filesData.path)}>
                       <Trash2 size={14} />
@@ -2106,8 +2485,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                   </div>
                 </div>
                 {filesData.is_text ? (
-                  <textarea
-                    className="code-editor"
+                  <SyntaxCodeEditor
+                    path={filesData.path}
                     value={editorContent}
                     onChange={(event) => setEditorContent(event.target.value)}
                   />
@@ -2123,13 +2502,14 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
           <div className="editor-shell">
             <div className="editor-toolbar">
               <strong>.env</strong>
+              <span className="editor-language-pill">ENV</span>
               <button className="primary-button compact" onClick={saveEnv} disabled={actionState === "save-env"}>
                 <Save size={14} />
                 <span>Zapisz .env</span>
               </button>
             </div>
-            <textarea
-              className="code-editor"
+            <SyntaxCodeEditor
+              path=".env"
               value={envContent}
               onChange={(event) => setEnvContent(event.target.value)}
               placeholder="TOKEN=..."
