@@ -107,6 +107,20 @@ export function Layout({
     ? "Uslugi online i zarzadzanie kontami"
     : `Wygasa: ${formatDate(system?.account?.expires_at)}`;
   const sidebarDisplayValue = activeServer ? activeServer.name : sidebarValue;
+  const pageTitle = activeServer
+    ? activeServer.name
+    : location.pathname.startsWith("/admin/users")
+      ? "Uzytkownicy"
+      : location.pathname.startsWith("/system")
+        ? "System"
+        : location.pathname.startsWith("/bots")
+          ? "Uslugi"
+          : "Dashboard";
+  const pageKicker = activeServer
+    ? serviceTypeLabel(activeServer.service_type)
+    : user?.is_admin
+      ? "ByteHost Owner Console"
+      : "ByteHost Client Panel";
 
   return (
     <div className="app-shell">
@@ -115,9 +129,11 @@ export function Layout({
           <img className="brand-logo" src={logoUrl} alt="ByteHost" />
           <div className="brand-copy">
             <strong>ByteHost</strong>
+            <span>Control panel</span>
           </div>
         </Link>
 
+        <span className="nav-section-label">{isServerWorkspace ? "Serwer" : "Nawigacja"}</span>
         <nav className="nav-stack">
           {isServerWorkspace ? (
             <>
@@ -158,6 +174,7 @@ export function Layout({
         </nav>
 
         <div className="sidebar-card">
+          <span className="sidebar-card-dot" />
           <p>{sidebarTitle}</p>
           <strong>{sidebarDisplayValue}</strong>
           <small>{sidebarHint}</small>
@@ -170,9 +187,12 @@ export function Layout({
 
       <div className="main-shell">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">{user?.is_admin ? "Panel ownera" : "Panel uzytkownika"}</p>
-            <h1>ByteHost</h1>
+          <div className="topbar-title">
+            <p className="eyebrow">{pageKicker}</p>
+            <div className="topbar-title-row">
+              <span className="topbar-status-dot" />
+              <h1>{pageTitle}</h1>
+            </div>
             <span className="topbar-meta">
               Ostatnie odswiezenie: {lastUpdated ? lastUpdated.toLocaleTimeString("pl-PL") : "brak"}
             </span>

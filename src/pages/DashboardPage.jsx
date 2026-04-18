@@ -47,22 +47,22 @@ export function DashboardPage({ user, bots, system, loading }) {
 
       <section className="hero-card">
         <div>
-          <p className="eyebrow">{user.is_admin ? "Owner workspace" : "Panel uzytkownika"}</p>
+          <p className="eyebrow">{user.is_admin ? "Centrum zarzadzania" : "Twoj pulpit"}</p>
           <h2>
             {user.is_admin
-              ? "Zarzadzaj kontami, limitami i uslugami z jednego panelu."
-              : "Widzisz tylko swoje uslugi, zuzycie zasobow i pozostaly limit planu."}
+              ? "Wszystkie uslugi, konta i limity w jednym spokojnym widoku."
+              : "Twoje serwery, boty i zasoby bez terminalowego balaganu."}
           </h2>
           <p className="hero-copy">
             {user.is_admin
-              ? "ByteHost laczy realne procesy PM2 z systemem kont, limitow planu, schedulerem wygasniec i administracja uzytkownikami."
-              : "Twoj panel pokazuje realne procesy PM2, file manager, logi i limity zasobow przypisane do konta przez ownera."}
+              ? "Panel pokazuje realne procesy, pliki, uzycie zasobow oraz konta uzytkownikow w stylu prawdziwego hostingu, nie demonstracyjnej makiety."
+              : "Masz pod reka konsole, pliki, logi, backupy i czytelne limity planu przypisane przez ownera."}
           </p>
           <div className="hero-pills">
-            <span>JWT auth</span>
-            <span>Bcrypt</span>
-            <span>PM2</span>
-            <span>{user.is_admin ? "Admin + user ACL" : "Prywatny workspace"}</span>
+            <span>Live console</span>
+            <span>File manager</span>
+            <span>Resource limits</span>
+            <span>{user.is_admin ? "Owner tools" : "Private workspace"}</span>
           </div>
         </div>
 
