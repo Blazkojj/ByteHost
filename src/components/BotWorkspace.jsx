@@ -34,7 +34,12 @@ import {
 } from "../utils";
 
 function StatusBadge({ status }) {
-  return <span className={`status-pill ${statusTheme[status] || "muted"}`}>{status}</span>;
+  return (
+    <span className={`status-pill ${statusTheme[status] || "muted"}`}>
+      <span className={`server-status-dot mini ${statusTheme[status] || "muted"}`} />
+      {status}
+    </span>
+  );
 }
 
 function SummaryTile({ label, value, hint }) {
@@ -454,32 +459,32 @@ function SyntaxCodeEditor({ value, onChange, path, placeholder = "" }) {
   );
 }
 
-const TERMINAL_EMPTY_TEXT = "Brak logow do wyswietlenia.";
+const TERMINAL_EMPTY_TEXT = "Brak logów do wyświetlenia.";
 
 const ACTION_PROGRESS_MESSAGES = {
-  start: "Startowanie uslugi... ByteHost uruchamia proces.",
-  stop: "Zatrzymywanie uslugi... ByteHost wysyla stop do procesu.",
-  restart: "Restartowanie uslugi... ByteHost przeladowuje proces.",
-  install: "Przygotowanie uslugi... ByteHost instaluje wymagane pliki.",
-  delete: "Usuwanie uslugi... ByteHost sprzata proces i pliki.",
-  console: "Wysylanie komendy do konsoli..."
+  start: "Startowanie usługi... ByteHost uruchamia proces.",
+  stop: "Zatrzymywanie usługi... ByteHost wysyła stop do procesu.",
+  restart: "Restartowanie usługi... ByteHost przeładowuje proces.",
+  install: "Przygotowanie usługi... ByteHost instaluje wymagane pliki.",
+  delete: "Usuwanie usługi... ByteHost sprząta proces i pliki.",
+  console: "Wysyłanie komendy do konsoli..."
 };
 
 const ACTION_SUCCESS_MESSAGES = {
-  start: "Usluga zostala uruchomiona.",
-  stop: "Usluga zostala zatrzymana.",
-  restart: "Usluga zostala zrestartowana.",
-  install: "Instalacja/przygotowanie zostalo zakonczone.",
-  delete: "Usluga zostala usunieta.",
-  console: "Komenda zostala wyslana."
+  start: "Usługa została uruchomiona.",
+  stop: "Usługa została zatrzymana.",
+  restart: "Usługa została zrestartowana.",
+  install: "Instalacja/przygotowanie zostało zakończone.",
+  delete: "Usługa została usunięta.",
+  console: "Komenda została wysłana."
 };
 
 const TERMINAL_STATUS_LABELS = {
   idle: "Offline",
-  connecting: "Laczenie...",
+  connecting: "Łączenie...",
   online: "Live",
   polling: "Fallback",
-  error: "Blad"
+  error: "Błąd"
 };
 
 const WORKSPACE_TAB_IDS = new Set([
@@ -726,7 +731,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
       if (payload.type === "command-result") {
         setConsoleResult(payload.result);
-        setMessage("Polecenie zostalo wyslane do dzialajacej uslugi.");
+        setMessage("Polecenie zostało wysłane do działającej usługi.");
         setActionState("");
         return;
       }
@@ -734,7 +739,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       if (payload.type === "command-error" || payload.type === "error") {
         setMessage("");
         setActionState("");
-        setError(payload.message || "Terminal zwrocil blad.");
+        setError(payload.message || "Terminal zwrócił błąd.");
       }
     });
 
@@ -889,7 +894,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
     try {
       if (type === "delete") {
-        if (!window.confirm("Usunac te usluge razem z plikami i procesem PM2?")) {
+        if (!window.confirm("Usunąć tę usługę razem z plikami i procesem?")) {
           setMessage("");
           return;
         }
@@ -915,7 +920,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       }
 
       await onRefreshAll();
-      setMessage(ACTION_SUCCESS_MESSAGES[type] || "Akcja zostala wykonana.");
+      setMessage(ACTION_SUCCESS_MESSAGES[type] || "Akcja została wykonana.");
     } catch (runError) {
       setMessage("");
       setError(runError.message);
@@ -950,7 +955,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       setBot(updatedBot);
       setSettings(buildSettingsState(updatedBot));
       await onRefreshAll();
-      setMessage("Ustawienia uslugi zostaly zapisane.");
+      setMessage("Ustawienia usługi zostały zapisane.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -1031,7 +1036,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
         content: editorContent
       });
       setFilesData(updated);
-      setMessage("Plik zostal zapisany.");
+      setMessage("Plik został zapisany.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -1056,21 +1061,21 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
         content: type === "file" ? "" : undefined
       });
       await openPath(type === "folder" ? nextPath : currentPath);
-      setMessage(type === "folder" ? "Folder zostal utworzony." : "Plik zostal utworzony.");
+      setMessage(type === "folder" ? "Folder został utworzony." : "Plik został utworzony.");
     } catch (createError) {
       setError(createError.message);
     }
   }
 
   async function removeEntry(relativePath) {
-    if (!window.confirm(`Usunac ${relativePath}?`)) {
+    if (!window.confirm(`Usunąć ${relativePath}?`)) {
       return;
     }
 
     try {
       const nextState = await api.deleteFile(botId, relativePath);
       setFilesData(nextState);
-      setMessage("Element zostal usuniety.");
+      setMessage("Element został usunięty.");
     } catch (removeError) {
       setError(removeError.message);
     }
@@ -1091,7 +1096,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     try {
       const nextState = await api.uploadFiles(botId, formData);
       setFilesData(nextState);
-      setMessage("Pliki zostaly wyslane.");
+      setMessage("Pliki zostały wysłane.");
     } catch (uploadError) {
       setError(uploadError.message);
     } finally {
@@ -1105,7 +1110,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
     try {
       await api.updateEnv(botId, envContent);
-      setMessage("Plik .env zostal zapisany.");
+      setMessage("Plik .env został zapisany.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -1121,7 +1126,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   async function sendConsoleText(command) {
     const normalizedCommand = String(command || "").trim();
     if (!normalizedCommand) {
-      setError("Podaj polecenie do wyslania.");
+      setError("Podaj polecenie do wysłania.");
       return;
     }
 
@@ -1172,7 +1177,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
       setConsoleResult(result);
       setConsoleCommand("");
-      setMessage("Polecenie zostalo wyslane do dzialajacej uslugi.");
+      setMessage("Polecenie zostało wysłane do działającej usługi.");
     } catch (consoleError) {
       setMessage("");
       setError(consoleError.message);
@@ -1195,10 +1200,10 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       const copyAddress = `${host}:${bot.public_port || defaultPort}`;
 
       await navigator.clipboard.writeText(copyAddress);
-      setMessage("Adres serwera zostal skopiowany.");
+      setMessage("Adres serwera został skopiowany.");
       setError("");
     } catch (_error) {
-      setError("Nie udalo sie skopiowac adresu serwera.");
+      setError("Nie udało się skopiować adresu serwera.");
     }
   }
 
@@ -1231,10 +1236,10 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       await onRefreshAll();
       setMessage(
         bot?.service_type === "minecraft_server"
-          ? "Serwer Minecraft zostal zaktualizowany. Sam JAR podmienia silnik bez czyszczenia swiata, a ZIP/RAR podmienia caly katalog uslugi."
+          ? "Serwer Minecraft został zaktualizowany. Sam JAR podmienia silnik bez czyszczenia świata, a ZIP/RAR podmienia cały katalog usługi."
           : bot?.service_type === "fivem_server"
-            ? "Serwer FiveM zostal odswiezony. ByteHost zachowal oficjalny runtime FXServer i nalozyl nowy pakiet ZIP/RAR z resources/modami/pluginami na swiezy workspace."
-          : "Bot zostal zaktualizowany z nowego archiwum. .env zostal zachowany."
+            ? "Serwer FiveM został odświeżony. ByteHost zachował oficjalny runtime FXServer i nałożył nowy pakiet ZIP/RAR z resources/modami/pluginami na świeży workspace."
+          : "Bot został zaktualizowany z nowego archiwum. .env został zachowany."
       );
     } catch (updateError) {
       setError(updateError.message);
@@ -1256,7 +1261,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       });
       setBackups(result.backups || []);
       setBackupName("");
-      setMessage("Backup zostal utworzony.");
+      setMessage("Backup został utworzony.");
       await onRefreshSystem();
     } catch (backupError) {
       setError(backupError.message);
@@ -1266,7 +1271,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   }
 
   async function handleRestoreBackup(backup) {
-    if (!window.confirm(`Przywroc backup "${backup.name}"?`)) {
+    if (!window.confirm(`Przywrócić backup "${backup.name}"?`)) {
       return;
     }
 
@@ -1284,7 +1289,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       setConsoleResult(null);
       setInstallResult(null);
       await onRefreshAll();
-      setMessage(`Backup "${backup.name}" zostal przywrocony.`);
+      setMessage(`Backup "${backup.name}" został przywrócony.`);
     } catch (restoreError) {
       setError(restoreError.message);
     } finally {
@@ -1293,7 +1298,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   }
 
   async function handleDeleteBackup(backup) {
-    if (!window.confirm(`Usunac backup "${backup.name}"?`)) {
+    if (!window.confirm(`Usunąć backup "${backup.name}"?`)) {
       return;
     }
 
@@ -1304,7 +1309,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     try {
       const result = await api.deleteBotBackup(botId, backup.id);
       setBackups(result.backups || []);
-      setMessage("Backup zostal usuniety.");
+      setMessage("Backup został usunięty.");
       await onRefreshSystem();
     } catch (deleteError) {
       setError(deleteError.message);
@@ -1314,7 +1319,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   }
 
   if (!bot || !settings) {
-    return <div className="panel-card">Ladowanie workspace...</div>;
+    return <div className="panel-card">Ładowanie workspace...</div>;
   }
 
   const joinAddress = serviceJoinAddress(bot);
@@ -1326,7 +1331,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
         ? ["status", "players", "list"]
         : [];
   const tabs = [
-    { id: "overview", label: "Przeglad" },
+    { id: "overview", label: "Przegląd" },
     { id: "logs", label: "Logi" },
     { id: "console", label: "Konsola" },
     ...(isGameService ? [{ id: "players", label: "Gracze" }] : []),
@@ -1335,7 +1340,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     { id: "files", label: "Pliki" },
     { id: "env", label: ".env" }
   ];
-  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Przeglad";
+  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Przegląd";
   const isCompactWorkspace = activeTab !== "overview";
 
   return (
@@ -1347,7 +1352,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             <h3>{bot.name}</h3>
             {isCompactWorkspace ? (
               <small className="workspace-context">
-                Czysty widok zakladki z podstawowym sterowaniem usluga.
+                Czysty widok zakładki z podstawowym sterowaniem usługą.
               </small>
             ) : null}
           </div>
@@ -1429,12 +1434,12 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             value={serviceTypeLabel(bot.service_type)}
             hint={
               isMinecraft
-                ? "Java + PM2"
+                ? "Java"
                 : isFiveM
-                  ? "FXServer + PM2"
+                  ? "FXServer"
                   : gamePreset
-                    ? `${gamePreset.language} + PM2`
-                : "Discord + PM2"
+                    ? gamePreset.language
+                : "Discord"
             }
           />
           {isMinecraft ? (
@@ -1546,14 +1551,14 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             hint={
               isGameService
                 ? `Limit: ${formatNumber(bot.cpu_limit_percent, "%")}`
-                : "Rozmiar plikow uslugi"
+                : "Rozmiar plików usługi"
             }
           />
           {isFiveM ? (
             <SummaryTile
               label="OneSync"
               value={bot.fivem_onesync_enabled ? "Wlaczone" : "Wylaczone"}
-              hint={bot.fivem_project_name || "Panel zarzadza blokiem server.cfg"}
+              hint={bot.fivem_project_name || "Panel zarządza blokiem server.cfg"}
             />
           ) : null}
           <SummaryTile
@@ -1574,7 +1579,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             <SummaryTile
               label="Storage"
               value={formatMemoryFromMb(bot.storage_usage_mb || 0)}
-              hint="Rozmiar plikow uslugi"
+              hint="Rozmiar plików usługi"
             />
           ) : null}
           </div>
@@ -1600,29 +1605,29 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
           <form className="form-grid" onSubmit={saveSettings}>
             <div className="info-card wide">
               {isMinecraft
-                ? "ByteHost moze sam pobrac oficjalny server.jar dla wybranej wersji Minecraft, ustawic port w server.properties i zbudowac komende startowa dla Javy. Pola ponizej pozwalaja nadpisac wykrycie, jesli chcesz recznie wskazac launcher lub inna komende."
+                ? "ByteHost może sam pobrać oficjalny server.jar dla wybranej wersji Minecraft, ustawić port w server.properties i zbudować komendę startową dla Javy. Pola poniżej pozwalają nadpisać wykrycie, jeśli chcesz ręcznie wskazać launcher lub inną komendę."
                 : isFiveM
-                  ? "ByteHost pobiera oficjalny artefakt FXServer dla Linuxa, generuje zarzadzany blok server.cfg i ustawia podstawowe komendy startowe. Ponizej mozesz ustawic sloty, OneSync, licencje i publiczny port."
+                  ? "ByteHost pobiera oficjalny artefakt FXServer dla Linuxa, generuje zarządzany blok server.cfg i ustawia podstawowe komendy startowe. Poniżej możesz ustawić sloty, OneSync, licencję i publiczny port."
                   : gamePreset
-                    ? `${gamePreset.label} ma wlasny workspace z install-server.sh, start-server.sh i folderami pod mody/pluginy. Kliknij Reinstall dependencies, zeby pobrac lub naprawic pliki serwera.`
-                : "ByteHost automatycznie wykrywa jezyk projektu, plik startowy i komende startowa po wrzuceniu ZIP lub RAR. Pola nizszej sekcji sa recznymi nadpisaniami, jesli auto-detect sie pomyli."}
+                    ? `${gamePreset.label} ma własny workspace z install-server.sh, start-server.sh i folderami pod mody/pluginy. Kliknij Reinstall dependencies, żeby pobrać lub naprawić pliki serwera.`
+                : "ByteHost automatycznie wykrywa język projektu, plik startowy i komendę startową po wrzuceniu ZIP lub RAR. Pola niższej sekcji są ręcznymi nadpisaniami, jeśli auto-detect się pomyli."}
             </div>
 
             <div className="info-card wide">
               {isMinecraft
-                ? "Aktualizacja samym JAR-em podmienia silnik serwera bez czyszczenia swiata i pluginow. Wrzucenie ZIP lub RAR zastapi caly katalog uslugi, wiec traktuj to jak pelny reinstall serwera."
+                ? "Aktualizacja samym JAR-em podmienia silnik serwera bez czyszczenia świata i pluginów. Wrzucenie ZIP lub RAR zastąpi cały katalog usługi, więc traktuj to jak pełny reinstall serwera."
                 : isFiveM
                   ? "ZIP lub RAR dla FiveM traktuj jako pakiet serwera albo resources. Panel zachowuje oficjalny runtime FXServer, a resources, pluginy i skrypty wgrywasz wygodnie przez File Manager do folderu resources/."
                   : gamePreset
-                    ? "ZIP lub RAR dla tej gry moze zawierac dodatki, pluginy, konfiguracje albo gotowe pliki serwera. Wgrywanie przez File Manager jest najbezpieczniejsze dla pojedynczych modow."
-                : "Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje .env, odswieza auto-detekcje i moze automatycznie przeinstalowac zaleznosci oraz wznowic proces."}
+                    ? "ZIP lub RAR dla tej gry może zawierać dodatki, pluginy, konfigurację albo gotowe pliki serwera. Wgrywanie przez File Manager jest najbezpieczniejsze dla pojedynczych modów."
+                : "Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje .env, odświeża auto-detekcję i może automatycznie przeinstalować zależności oraz wznowić proces."}
             </div>
 
             {isGameService ? (
               <div className="info-card wide">
                 {isMinecraft
                   ? "Kazdy gracz wejdzie dopiero wtedy, gdy publiczny host i port gry rzeczywiscie beda wystawione na zewnatrz. Panel zapisuje ten adres dla operatora, ale nie zastapi przekierowania portu lub tunelu TCP do Minecrafta."
-                  : "Serwer gry dostaje automatyczny adres publiczny `IP:port`, ale port nadal musi byc przekierowany na routerze do VM z ByteHost. Panel nie moze sam skonfigurowac przekierowania w Twoim routerze."}
+                  : "Serwer gry dostaje automatyczny adres publiczny `IP:port`, ale port nadal musi być przekierowany na routerze do VM z ByteHost. Panel nie może sam skonfigurować przekierowania w Twoim routerze."}
               </div>
             ) : null}
 
@@ -1634,7 +1639,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
               />
             </label>
             <label>
-              Typ uslugi
+              Typ usługi
               <input value={serviceTypeLabel(bot.service_type)} disabled />
             </label>
             <label className="wide">
@@ -1733,7 +1738,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                       </datalist>
                       <small>
                         Po zapisaniu ByteHost pobierze oficjalny server.jar dla tej wersji. Puste pole
-                        oznacza, ze pozostawiasz wlasny JAR albo aktualnie pobrana wersje.
+                        oznacza, że pozostawiasz własny JAR albo aktualnie pobraną wersję.
                       </small>
                     </label>
                     <label>
@@ -1871,7 +1876,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                       <small>
                         {canManagePublicPort
                           ? "Jesli wybrany port jest zajety, ByteHost automatycznie przydzieli wolny."
-                          : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
+                          : "Port jest przydzielany automatycznie. Zmienić go ręcznie może tylko owner."}
                       </small>
                     </label>
                     {isMinecraft ? (
@@ -1976,7 +1981,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
             ) : (
               <div className="info-card wide">
                 Parametry hostingu, RAM, CPU, port, silnik i komenda startowa sa ustawiane przez ownera.
-                Na tym koncie mozesz zmienic tylko nazwe oraz opis uslugi.
+                Na tym koncie możesz zmienić tylko nazwę oraz opis usługi.
               </div>
             )}
             <div className="form-actions wide">
@@ -2030,7 +2035,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
             <div className="info-card">
               Ta konsola laczy sie z dzialajacym procesem przez live terminal. Output ponizej
-              pokazuje stdout/stderr PM2, a pole komendy wysyla tekst do stdin procesu. Dla botow
+              pokazuje logi procesu, a pole komendy wysyła tekst do stdin procesu. Dla botów
               Discord komenda zadziala wtedy, gdy sam bot czyta stdin, ale logi sa live tak samo
               jak przy serwerach gier.
             </div>
@@ -2125,8 +2130,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
           <div className="workspace-stack">
             <form className="form-grid" onSubmit={handleCreateBackup}>
               <div className="info-card wide">
-                Backup tworzy realny snapshot katalogu uslugi w `storage/backups`. Backupy licza
-                sie do storage i mozesz je potem przywrocic albo usunac z panelu.
+                Backup tworzy realny snapshot katalogu usługi w `storage/backups`. Backupy liczą
+                się do storage i możesz je potem przywrócić albo usunąć z panelu.
               </div>
               <label className="wide">
                 Nazwa backupu
@@ -2144,7 +2149,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                   disabled={Boolean(actionState)}
                 >
                   <RefreshCw size={16} />
-                  <span>Odswiez liste</span>
+                  <span>Odśwież listę</span>
                 </button>
                 <button
                   className="primary-button"
@@ -2172,7 +2177,7 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                   {backups.length === 0 ? (
                     <tr>
                       <td colSpan="5" className="empty-state">
-                        Brak backupow dla tej uslugi.
+                        Brak backupów dla tej usługi.
                       </td>
                     </tr>
                   ) : (

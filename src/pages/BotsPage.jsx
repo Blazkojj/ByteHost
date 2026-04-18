@@ -18,7 +18,8 @@ import {
   formatNumber,
   gbInputToMb,
   serviceArtifactLabel,
-  serviceTypeLabel
+  serviceTypeLabel,
+  statusTheme
 } from "../utils";
 
 const FALLBACK_MINECRAFT_SERVER_TYPES = [
@@ -335,7 +336,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
       <div className="modal-card large">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Nowa usluga</p>
+            <p className="eyebrow">Nowa usługa</p>
             <h3>
               {isMinecraft
                 ? "Dodaj serwer Minecraft"
@@ -353,25 +354,25 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
 
         <div className="info-card">
           {isMinecraft
-            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komende startowa dla Javy. Plik jest opcjonalny przy tworzeniu: panel moze najpierw utworzyc pusty workspace Minecraft, a JAR dodasz pozniej. Publiczny host moze ustawic sie automatycznie na Twoje IP, a EULA jest akceptowana automatycznie."
+            ? "ByteHost wykrywa plik JAR serwera i przygotowuje komendę startową dla Javy. Plik jest opcjonalny przy tworzeniu: panel może najpierw utworzyć pusty workspace Minecraft, a JAR dodasz później. Publiczny host może ustawić się automatycznie na Twoje IP, a EULA jest akceptowana automatycznie."
             : isFiveM
-              ? "ByteHost sam pobiera oficjalny artefakt FXServer oraz bazowe cfx-server-data. ZIP albo RAR jest opcjonalny i sluzy do nalozenia gotowego pakietu resources/modow/pluginow na swiezy serwer."
+              ? "ByteHost sam pobiera oficjalny artefakt FXServer oraz bazowe cfx-server-data. ZIP albo RAR jest opcjonalny i służy do nałożenia gotowego pakietu resources/modów/pluginów na świeży serwer."
               : selectedGamePreset
                 ? selectedGamePreset.hint
-            : "ByteHost automatycznie wykrywa plik startowy i komende startowa po wrzuceniu archiwum. Pola ponizej sa opcjonalne i sluza do recznego poprawienia wykrycia."}
+            : "ByteHost automatycznie wykrywa plik startowy i komendę startową po wrzuceniu archiwum. Pola poniżej są opcjonalne i służą do ręcznego poprawienia wykrycia."}
         </div>
 
         {isGameService ? (
           <div className="info-card">
             {isMinecraft
-              ? "Panel moze sam ustawic adres publiczny jako `publiczne_IP[:port]`. Jesli port Minecraft jest zajety, ByteHost sam dobierze wolny. Owner moze go zmienic recznie, a zwykly uzytkownik dostaje port automatycznie."
-              : "Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Jesli port gry jest zajety, ByteHost sam dobierze wolny. Owner moze go zmienic recznie, a zwykly uzytkownik dostaje port automatycznie."}
+              ? "Panel może sam ustawić adres publiczny jako `publiczne_IP[:port]`. Jeśli port Minecraft jest zajęty, ByteHost sam dobierze wolny. Owner może go zmienić ręcznie, a zwykły użytkownik dostaje port automatycznie."
+              : "Panel automatycznie generuje adres publiczny jako `publiczne_IP:port`. Jeśli port gry jest zajęty, ByteHost sam dobierze wolny. Owner może go zmienić ręcznie, a zwykły użytkownik dostaje port automatycznie."}
           </div>
         ) : null}
 
         {!user?.is_admin ? (
           <div className="info-card">
-            Twoj plan: {system?.usage?.bots || 0}/{formatLimitValue(system?.limits?.max_bots)} uslug, RAM{" "}
+            Twój plan: {system?.usage?.bots || 0}/{formatLimitValue(system?.limits?.max_bots)} usług, RAM{" "}
             {formatMemoryFromMb(system?.usage?.ram_mb || 0)}/
             {formatMemoryLimit(system?.limits?.ram_limit_mb || 0)}, CPU{" "}
             {system?.usage?.cpu_percent || 0}/{formatLimitValue(system?.limits?.cpu_limit_percent, "%")},
@@ -382,12 +383,12 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
         <form className="form-grid" onSubmit={handleSubmit}>
           {!canCreateAnyService ? (
             <div className="banner warning wide">
-              Nie masz jeszcze wlaczonego zadnego typu hostingu. Mozesz ogladac panel, ale owner
+              Nie masz jeszcze włączonego żadnego typu hostingu. Możesz oglądać panel, ale owner
               musi zaznaczyc np. Bot Discord, Minecraft albo CS2 w Twoim koncie.
             </div>
           ) : null}
           <label>
-            Typ uslugi
+            Typ usługi
             <select
               value={form.service_type}
               disabled={!canCreateAnyService}
@@ -438,12 +439,12 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
               {archive
                 ? archive.name
                 : isMinecraft
-                  ? "Opcjonalne. Mozesz utworzyc pusty serwer i dodac JAR pozniej albo od razu wrzucic JAR/ZIP/RAR."
+                  ? "Opcjonalne. Możesz utworzyć pusty serwer i dodać JAR później albo od razu wrzucić JAR/ZIP/RAR."
                   : isFiveM
                     ? "Opcjonalne. Bez pliku ByteHost postawi czysty FiveM z oficjalnym FXServerem i cfx-server-data. ZIP/RAR nalozy Twoje resources/mods/pluginy na gotowy runtime."
                     : selectedGamePreset
                       ? "Opcjonalne. Bez pliku ByteHost utworzy workspace i skrypty instalacji, a dodatki wrzucisz pozniej przez manager plikow."
-                  : "Mozesz dodac plik teraz lub utworzyc pusty workspace."}
+                  : "Możesz dodać plik teraz lub utworzyć pusty workspace."}
             </small>
           </label>
           <label>
@@ -619,8 +620,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
             />
             <small>
               {user?.is_admin
-                ? "Wpisz wartosc w GB, np. `1` = 1024 MB."
-                : "Limit ustawia owner. Nie mozesz zmienic RAM dla uslugi."}
+                ? "Wpisz wartość w GB, np. `1` = 1024 MB."
+                : "Limit ustawia owner. Nie możesz zmienić RAM dla usługi."}
             </small>
           </label>
           <label>
@@ -661,7 +662,7 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                 <small>
                   {user?.is_admin
                     ? "Jesli wybrany port jest zajety, ByteHost automatycznie znajdzie wolny."
-                    : "Port jest przydzielany automatycznie. Zmienic go recznie moze tylko owner."}
+                    : "Port jest przydzielany automatycznie. Zmienić go ręcznie może tylko owner."}
                 </small>
               </label>
               {isMinecraft ? (
@@ -678,10 +679,10 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                     setForm((current) => ({ ...current, subdomain: event.target.value }))
                   }
                 />
-                <small>Opcjonalne pole dla serwerow gier. DNS w Cloudflare ustawisz osobno.</small>
+                <small>Opcjonalne pole dla serwerów gier. DNS w Cloudflare ustawisz osobno.</small>
               </label>
               <label>
-                Tlo serwera
+                Tło serwera
                 <input
                   placeholder="https://..."
                   value={form.background_url}
@@ -843,7 +844,7 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
         <section className="panel-card bot-list-panel">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Uslugi</p>
+              <p className="eyebrow">Usługi</p>
               <h3>Workspace</h3>
             </div>
             <button
@@ -857,14 +858,14 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
               }
             >
               <Plus size={16} />
-              <span>Nowa usluga</span>
+              <span>Nowa usługa</span>
             </button>
           </div>
 
           {accountLocked ? (
             <div className="info-card">
-              Konto nie ma jeszcze aktywnego planu. Mozesz obejrzec panel, ale tworzenie i
-              uruchamianie uslug jest zablokowane, dopoki owner nie aktywuje konta, nie ustawi
+              Konto nie ma jeszcze aktywnego planu. Możesz obejrzeć panel, ale tworzenie i
+              uruchamianie usług jest zablokowane, dopóki owner nie aktywuje konta, nie ustawi
               limitow i nie wlaczy konkretnych typow hostingu.
             </div>
           ) : null}
@@ -875,16 +876,16 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
             <span>
               {user?.is_admin
                 ? `CRASH LOOP: ${formatNumber(system?.statuses?.crash_loop)}`
-                : `Pozostalo limitu: ${formatNumber(system?.remaining?.bots)}`}
+                : `Pozostało limitu: ${formatNumber(system?.remaining?.bots)}`}
             </span>
           </div>
 
           <div className="bot-list">
             {bots.length === 0 ? (
               <div className="empty-block">
-                <p>Nie masz jeszcze zadnych uslug.</p>
+                <p>Nie masz jeszcze żadnych usług.</p>
                 <button className="ghost-button" onClick={() => setCreateOpen(true)}>
-                  Dodaj pierwsza usluge
+                  Dodaj pierwszą usługę
                 </button>
               </div>
             ) : (
@@ -899,7 +900,11 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
                       : undefined
                   }
                 >
-                  <div>
+                  <div className="server-card-heading">
+                    <span
+                      className={`server-status-dot ${statusTheme[bot.status] || "muted"}`}
+                      aria-label={`Status: ${bot.status}`}
+                    />
                     <strong>{bot.name}</strong>
                     <span>{serviceTypeLabel(bot.service_type)}</span>
                   </div>
@@ -925,12 +930,12 @@ export function BotsPage({ user, bots, system, onRefreshAll, onRefreshBots, onRe
             />
           ) : (
             <div className="panel-card empty-workspace">
-              <p className="eyebrow">Wybierz usluge</p>
-              <h3>Panel zarzadzania</h3>
+              <p className="eyebrow">Wybierz usługę</p>
+              <h3>Panel zarządzania</h3>
               <p>
-                Po lewej stronie wybierz istniejaca usluge albo utworz nowa. ByteHost obsluguje
+                Po lewej stronie wybierz istniejącą usługę albo utwórz nową. ByteHost obsługuje
                 boty Discord, serwery Minecraft i serwery FiveM, z auto-detekcja startu,
-                limitami per konto oraz recznymi nadpisaniami dla operatora.
+                limitami per konto oraz ręcznymi nadpisaniami dla operatora.
               </p>
             </div>
           )}

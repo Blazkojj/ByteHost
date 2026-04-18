@@ -30,7 +30,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
     setForm({
       ram_limit_mb: mbToGbInput(system.limits.ram_limit_mb, ""),
       cpu_limit_percent: String(system.limits.cpu_limit_percent ?? ""),
-      storage_limit_mb: String(system.limits.storage_limit_mb ?? ""),
+      storage_limit_mb: mbToGbInput(system.limits.storage_limit_mb, ""),
       max_bots: String(system.limits.max_bots ?? "")
     });
   }, [system]);
@@ -44,9 +44,10 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
     try {
       await api.updateSystemLimits({
         ...form,
-        ram_limit_mb: gbInputToMb(form.ram_limit_mb, "")
+        ram_limit_mb: gbInputToMb(form.ram_limit_mb, ""),
+        storage_limit_mb: gbInputToMb(form.storage_limit_mb, "")
       });
-      setMessage("Limity systemowe zostaly zapisane.");
+      setMessage("Limity systemowe zostały zapisane.");
       await onRefreshSystem();
       await onRefresh();
     } catch (submitError) {
@@ -62,7 +63,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">Limity globalne</p>
-            <h3>Polityka zasobow</h3>
+            <h3>Polityka zasobów</h3>
           </div>
           <ShieldCheck size={18} />
         </div>
@@ -90,16 +91,19 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
             />
           </label>
           <label>
-            Storage globalny (MB)
+            Storage globalny (GB)
             <input
+              type="number"
+              step="1"
               value={form.storage_limit_mb}
               onChange={(event) =>
                 setForm((current) => ({ ...current, storage_limit_mb: event.target.value }))
               }
             />
+            <small>Wpisz w GB, np. 260 = 266240 MB.</small>
           </label>
           <label>
-            Maksymalna liczba uslug
+            Maksymalna liczba usług
             <input
               value={form.max_bots}
               onChange={(event) => setForm((current) => ({ ...current, max_bots: event.target.value }))}
@@ -121,7 +125,7 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
       <section className="panel-card">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Zuzycie</p>
+            <p className="eyebrow">Zużycie</p>
             <h3>Aktualny stan</h3>
           </div>
         </div>
@@ -129,14 +133,14 @@ export function SystemPage({ system, onRefresh, onRefreshSystem }) {
         <div className="stats-grid compact">
           <article className="metric-card">
             <div>
-              <p>RAM uslug</p>
+              <p>RAM usług</p>
               <strong>{formatMemoryFromMb(system?.usage?.ram_mb)}</strong>
               <span>Limit: {formatMemoryLimit(system?.limits?.ram_limit_mb)}</span>
             </div>
           </article>
           <article className="metric-card">
             <div>
-              <p>CPU uslug</p>
+              <p>CPU usług</p>
               <strong>{formatNumber(system?.usage?.cpu_percent, "%")}</strong>
               <span>Limit: {formatNumber(system?.limits?.cpu_limit_percent, "%")}</span>
             </div>

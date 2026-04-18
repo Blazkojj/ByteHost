@@ -39,24 +39,24 @@ export function DashboardPage({ user, bots, system, loading }) {
     <div className="page-grid">
       {previewAccount ? (
         <div className="info-card">
-          Konto jest w trybie podgladu. Mozesz obejrzec panel, ale nie utworzysz ani nie uruchomisz
-          zadnej uslugi, dopoki owner nie aktywuje konta i nie przypisze Ci planu. Obecnie nie masz
-          jeszcze wykupionych zasobow.
+          Konto jest w trybie podglądu. Możesz obejrzeć panel, ale nie utworzysz ani nie uruchomisz
+          żadnej usługi, dopóki owner nie aktywuje konta i nie przypisze Ci planu. Obecnie nie masz
+          jeszcze wykupionych zasobów.
         </div>
       ) : null}
 
       <section className="hero-card">
         <div>
-          <p className="eyebrow">{user.is_admin ? "Centrum zarzadzania" : "Twoj pulpit"}</p>
+          <p className="eyebrow">{user.is_admin ? "Centrum zarządzania" : "Twój pulpit"}</p>
           <h2>
             {user.is_admin
-              ? "Wszystkie uslugi, konta i limity w jednym spokojnym widoku."
-              : "Twoje serwery, boty i zasoby bez terminalowego balaganu."}
+              ? "Wszystkie usługi, konta i limity w jednym spokojnym widoku."
+              : "Twoje serwery, boty i zasoby bez terminalowego bałaganu."}
           </h2>
           <p className="hero-copy">
             {user.is_admin
-              ? "Panel pokazuje realne procesy, pliki, uzycie zasobow oraz konta uzytkownikow w stylu prawdziwego hostingu, nie demonstracyjnej makiety."
-              : "Masz pod reka konsole, pliki, logi, backupy i czytelne limity planu przypisane przez ownera."}
+              ? "Panel pokazuje realne usługi, pliki, użycie zasobów oraz konta użytkowników w stylu prawdziwego hostingu, nie demonstracyjnej makiety."
+              : "Masz pod ręką konsolę, pliki, logi, backupy i czytelne limity planu przypisane przez ownera."}
           </p>
           <div className="hero-pills">
             <span>Live console</span>
@@ -98,13 +98,13 @@ export function DashboardPage({ user, bots, system, loading }) {
       <section className="stats-grid">
         <MetricCard
           icon={Server}
-          label={user.is_admin ? "Wszystkie uslugi" : "Twoje uslugi"}
+          label={user.is_admin ? "Wszystkie usługi" : "Twoje usługi"}
           value={formatNumber(system?.statuses?.total)}
           hint={`Limit: ${formatLimitValue(limits.max_bots)}`}
         />
         <MetricCard
           icon={Activity}
-          label={user.is_admin ? "ONLINE" : "Pozostalo botow"}
+          label={user.is_admin ? "ONLINE" : "Pozostało botów"}
           value={user.is_admin ? formatNumber(system?.statuses?.online) : formatLimitValue(remaining.bots)}
           hint={user.is_admin ? "Procesy aktualnie uruchomione" : `Wykorzystane: ${formatNumber(system?.usage?.bots)}`}
         />
@@ -115,25 +115,25 @@ export function DashboardPage({ user, bots, system, loading }) {
           hint={
             user.is_admin
               ? `Host: ${formatNumber(system?.host?.cpu_load_percent, "%")}`
-              : `Pozostalo: ${formatNumber(remaining.cpu_percent, "%")}`
+              : `Pozostało: ${formatNumber(remaining.cpu_percent, "%")}`
           }
         />
         <MetricCard
           icon={HardDrive}
           label="Storage"
           value={formatNumber(system?.usage?.storage_mb, " MB")}
-          hint={`Pozostalo: ${formatLimitValue(remaining.storage_mb, " MB")}`}
+          hint={`Pozostało: ${formatLimitValue(remaining.storage_mb, " MB")}`}
         />
       </section>
 
       <section className="panel-card">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Uslugi</p>
-            <h3>{user.is_admin ? "Ostatnio dodane" : "Twoje ostatnie uslugi"}</h3>
+            <p className="eyebrow">Usługi</p>
+            <h3>{user.is_admin ? "Ostatnio dodane" : "Twoje ostatnie usługi"}</h3>
           </div>
           <Link className="inline-link" to="/bots">
-            Otworz workspace
+            Otwórz workspace
           </Link>
         </div>
 
@@ -152,7 +152,7 @@ export function DashboardPage({ user, bots, system, loading }) {
               {featuredBots.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="empty-state">
-                    Brak uslug. Przejdz do sekcji Uslugi i dodaj pierwszy projekt.
+                    Brak usług. Przejdź do sekcji Usługi i dodaj pierwszy projekt.
                   </td>
                 </tr>
               ) : (
@@ -179,7 +179,7 @@ export function DashboardPage({ user, bots, system, loading }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">{user.is_admin ? "Stan hosta" : "Plan konta"}</p>
-            <h3>{user.is_admin ? "Monitoring serwera" : "Status konta i wygasniecie"}</h3>
+            <h3>{user.is_admin ? "Monitoring serwera" : "Status konta i wygaśnięcie"}</h3>
           </div>
         </div>
 
@@ -209,7 +209,7 @@ export function DashboardPage({ user, bots, system, loading }) {
           <div className="host-stat">
             <Activity size={18} />
             <div>
-              <span>{user.is_admin ? "Ostatni sync" : "Pozostaly RAM"}</span>
+              <span>{user.is_admin ? "Ostatni sync" : "Pozostały RAM"}</span>
               <strong>
                 {user.is_admin
                   ? formatDate(new Date())

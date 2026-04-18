@@ -37,7 +37,7 @@ function buildUserForm(user) {
     max_bots: user.max_bots ?? "",
     max_ram_mb: mbToGbInput(user.max_ram_mb, ""),
     max_cpu_percent: user.max_cpu_percent ?? "",
-    max_storage_mb: user.max_storage_mb ?? "",
+    max_storage_mb: mbToGbInput(user.max_storage_mb, ""),
     expires_at: toDatetimeLocal(user.expires_at),
     is_active: Boolean(user.is_active),
     pending_approval: Boolean(user.pending_approval),
@@ -84,7 +84,7 @@ export function AdminUsersPage() {
     max_bots: 3,
     max_ram_mb: 2,
     max_cpu_percent: 100,
-    max_storage_mb: 2048,
+    max_storage_mb: 2,
     expires_at: "",
     is_active: true,
     allowed_service_types: []
@@ -125,6 +125,7 @@ export function AdminUsersPage() {
       await api.createUser({
         ...createForm,
         max_ram_mb: gbInputToMb(createForm.max_ram_mb, createForm.max_ram_mb),
+        max_storage_mb: gbInputToMb(createForm.max_storage_mb, createForm.max_storage_mb),
         expires_at: fromDatetimeLocal(createForm.expires_at)
       });
       setCreateForm({
@@ -133,7 +134,7 @@ export function AdminUsersPage() {
         max_bots: 3,
         max_ram_mb: 2,
         max_cpu_percent: 100,
-        max_storage_mb: 2048,
+        max_storage_mb: 2,
         expires_at: "",
         is_active: true,
         allowed_service_types: []
@@ -157,6 +158,7 @@ export function AdminUsersPage() {
       const payload = {
         ...form,
         max_ram_mb: gbInputToMb(form.max_ram_mb, form.max_ram_mb),
+        max_storage_mb: gbInputToMb(form.max_storage_mb, form.max_storage_mb),
         expires_at: fromDatetimeLocal(form.expires_at)
       };
 
@@ -186,6 +188,7 @@ export function AdminUsersPage() {
         is_active: true,
         pending_approval: false,
         max_ram_mb: gbInputToMb(form.max_ram_mb, form.max_ram_mb),
+        max_storage_mb: gbInputToMb(form.max_storage_mb, form.max_storage_mb),
         expires_at: fromDatetimeLocal(form.expires_at)
       };
 
@@ -229,7 +232,7 @@ export function AdminUsersPage() {
         <div className="section-header">
           <div>
             <p className="eyebrow">Owner</p>
-            <h3>Tworzenie uzytkownika</h3>
+            <h3>Tworzenie użytkownika</h3>
           </div>
           <UserPlus size={18} />
         </div>
@@ -246,7 +249,7 @@ export function AdminUsersPage() {
             />
           </label>
           <label>
-            Haslo
+            Hasło
             <input
               type="password"
               value={createForm.password}
@@ -256,7 +259,7 @@ export function AdminUsersPage() {
             />
           </label>
           <label>
-            Maksymalna liczba botow
+            Maksymalna liczba botów
             <input
               type="number"
               value={createForm.max_bots}
@@ -288,14 +291,16 @@ export function AdminUsersPage() {
             />
           </label>
           <label>
-            Limit storage (MB)
+            Limit storage (GB)
             <input
               type="number"
+              step="1"
               value={createForm.max_storage_mb}
               onChange={(event) =>
                 setCreateForm((current) => ({ ...current, max_storage_mb: event.target.value }))
               }
             />
+            <small>Wpisz w GB, np. 260 = 266240 MB.</small>
           </label>
           <label>
             Konto wygasa
@@ -321,7 +326,7 @@ export function AdminUsersPage() {
           <div className="wide service-access-panel">
             <strong>Dozwolony hosting</strong>
             <small>
-              Jesli nic nie zaznaczysz, konto moze sie zalogowac i obejrzec panel, ale nie utworzy zadnej uslugi.
+              Jeśli nic nie zaznaczysz, konto może się zalogować i obejrzeć panel, ale nie utworzy żadnej usługi.
             </small>
             <ServiceAccessPicker
               value={createForm.allowed_service_types}
@@ -337,7 +342,7 @@ export function AdminUsersPage() {
           <div className="form-actions wide">
             <button className="primary-button" type="submit" disabled={creating}>
               <Plus size={16} />
-              <span>{creating ? "Tworzenie..." : "Utworz konto"}</span>
+              <span>{creating ? "Tworzenie..." : "Utwórz konto"}</span>
             </button>
           </div>
         </form>
@@ -349,21 +354,21 @@ export function AdminUsersPage() {
       <section className="panel-card">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Uzytkownicy</p>
-            <h3>Konta i plany zasobow</h3>
+            <p className="eyebrow">Użytkownicy</p>
+            <h3>Konta i plany zasobów</h3>
           </div>
           <ShieldCheck size={18} />
         </div>
 
         {loading ? (
-          <div className="empty-block">Ladowanie kont...</div>
+          <div className="empty-block">Ładowanie kont...</div>
         ) : users.length === 0 ? (
-          <div className="empty-block">Brak kont do wyswietlenia.</div>
+          <div className="empty-block">Brak kont do wyświetlenia.</div>
         ) : (
           <div className="user-admin-grid">
             {pendingUsers.length > 0 ? (
               <div className="info-card wide">
-                {`Konta oczekujace na aktywacje: ${pendingUsers.length}. Ustaw limity i kliknij "Aktywuj konto".`}
+                {`Konta oczekujące na aktywację: ${pendingUsers.length}. Ustaw limity i kliknij "Aktywuj konto".`}
               </div>
             ) : null}
 
@@ -389,7 +394,7 @@ export function AdminUsersPage() {
                           disabled={savingId === user.id}
                         >
                           <Trash2 size={14} />
-                          <span>Usun</span>
+                          <span>Usuń</span>
                         </button>
                       ) : null}
                     </div>
@@ -425,7 +430,7 @@ export function AdminUsersPage() {
                       />
                     </label>
                     <label>
-                      Nowe haslo
+                      Nowe hasło
                       <input
                         type="password"
                         placeholder={isOwner ? "Opcjonalna zmiana ownera" : "Opcjonalne"}
@@ -439,7 +444,7 @@ export function AdminUsersPage() {
                       />
                     </label>
                     <label>
-                      Maksymalna liczba botow
+                      Maksymalna liczba botów
                       <input
                         type="number"
                         disabled={isOwner}
@@ -483,10 +488,11 @@ export function AdminUsersPage() {
                       />
                     </label>
                     <label>
-                      Limit storage (MB)
+                      Limit storage (GB)
                       <input
                         type="number"
                         disabled={isOwner}
+                        step="1"
                         value={form.max_storage_mb}
                         onChange={(event) =>
                           setUserForms((current) => ({
@@ -495,6 +501,7 @@ export function AdminUsersPage() {
                           }))
                         }
                       />
+                      <small>Wpisz w GB. ByteHost zapisze to jako MB.</small>
                     </label>
                     <label>
                       Konto wygasa
@@ -527,7 +534,7 @@ export function AdminUsersPage() {
                     <div className="wide service-access-panel">
                       <strong>Dozwolony hosting</strong>
                       <small>
-                        Zaznacz typy uslug, ktore ten uzytkownik moze sam tworzyc. Limity RAM/CPU/storage nadal ustawiasz tylko tutaj.
+                        Zaznacz typy usług, które ten użytkownik może sam tworzyć. Limity RAM/CPU/storage nadal ustawiasz tylko tutaj.
                       </small>
                       <ServiceAccessPicker
                         disabled={isOwner}

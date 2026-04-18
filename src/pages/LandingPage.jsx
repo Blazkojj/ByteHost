@@ -22,53 +22,53 @@ const offerCards = [
   {
     icon: Bot,
     title: "Discord bot hosting",
-    text: "Upload ZIP lub RAR, automatyczne wykrywanie jezyka, pliku startowego i realne odpalanie przez PM2."
+    text: "Wgrywasz projekt, a panel prowadzi Cię przez konfigurację, pliki, logi i uruchamianie bota."
   },
   {
     icon: Gamepad2,
     title: "Minecraft Java",
-    text: "Serwer z wersja, JAR-em, EULA, limitem zasobow i dalszym zarzadzaniem juz z poziomu panelu."
+    text: "Serwer z wyborem wersji, własnymi plikami, konsolą, backupami i wygodnym zarządzaniem."
   },
   {
     icon: Users,
     title: "FiveM hosting",
-    text: "FXServer pobiera sie automatycznie, panel generuje port i adres do polaczenia, a resources wrzucasz przez File Manager."
+    text: "Panel przygotowuje środowisko pod serwer, resources, konfigurację i publiczny adres połączenia."
   }
 ];
 
 const workflowSteps = [
   {
     step: "01",
-    title: "Zakladasz konto albo logujesz sie",
-    text: "Nowe konto trafia do ownera i czeka na aktywacje przed pierwszym wejsciem."
+    title: "Zakładasz konto albo logujesz się",
+    text: "Nowe konto trafia do ownera, który aktywuje dostęp i przypisuje odpowiedni plan."
   },
   {
     step: "02",
-    title: "Dodajesz usluge",
-    text: "Discord, Minecraft albo FiveM trafia do panelu z limitem RAM, CPU, storage i statusem."
+    title: "Dostajesz usługę",
+    text: "Owner nadaje plan, a Ty widzisz swoje serwery, limity, pliki i statusy w panelu."
   },
   {
     step: "03",
     title: "Konfigurujesz i startujesz",
-    text: "Pliki, .env, logi, komenda startowa i restart sa gotowe bez skakania po terminalu."
+    text: "Konfigurujesz pliki, konsolę, logi, backupy i start usługi z jednego miejsca."
   }
 ];
 
 const faqItems = [
   {
-    question: "Czy ByteHost to prawdziwy panel hostingowy?",
+    question: "Czy ByteHost to profesjonalny panel hostingowy?",
     answer:
-      "Tak. To nie jest sama makieta. Panel pracuje na plikach, PM2, logach, limitach i schedulerze wygasniec."
+      "Tak. ByteHost działa jak własny panel hostingowy z kontami, limitami, usługami, plikami, logami i konsolą."
   },
   {
-    question: "Czy moge hostowac Discord, Minecraft i FiveM?",
+    question: "Czy mogę hostować Discord, Minecraft i FiveM?",
     answer:
-      "Tak. ByteHost obsluguje wszystkie trzy typy uslug i rozdziela ich konfiguracje, wykrywanie oraz ustawienia startu."
+      "Tak. Każdy typ usługi ma oddzielne ustawienia, własne pliki, limity i widok zarządzania."
   },
   {
-    question: "Czy uzytkownik moze sam zalozyc konto?",
+    question: "Czy użytkownik może sam założyć konto?",
     answer:
-      "Tak. Rejestracja tworzy konto oczekujace, a owner aktywuje je w panelu admina i ustawia limity."
+      "Tak. Rejestracja tworzy konto oczekujące, a owner aktywuje je w panelu admina i ustawia limity."
   }
 ];
 
@@ -94,20 +94,20 @@ export function LandingPage({ theme, onToggleTheme }) {
           <img className="brand-logo" src={logoUrl} alt="ByteHost" />
           <div className="brand-copy">
             <strong>ByteHost</strong>
-            <span>Prywatny panel do hostowania botow i serwerow</span>
+            <span>Profesjonalny hosting z własnym panelem</span>
           </div>
         </Link>
 
         <nav className="marketing-nav">
           <a href="#offer">Oferta</a>
-          <a href="#workflow">Jak to dziala</a>
+          <a href="#workflow">Jak to działa</a>
           <a href="#faq">FAQ</a>
         </nav>
 
         <div className="marketing-header-actions">
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <Link className="ghost-button" to="/register">
-            Zaloz konto
+            Załóż konto
           </Link>
           <a className="ghost-button" href={PANEL_URL}>
             Logowanie
@@ -122,27 +122,27 @@ export function LandingPage({ theme, onToggleTheme }) {
               <Sparkles size={16} />
               ByteHost hosting panel
             </p>
-            <h1>Nowoczesny hosting dla botow Discord, Minecraft i FiveM.</h1>
+            <h1>Profesjonalny hosting z własnym panelem ByteHost.</h1>
             <p className="marketing-hero-text">
-              Jeden panel do uruchamiania projektow, zarzadzania plikami, logami, limitami i
-              kontami uzytkownikow. Discord boty, serwery Minecraft i FiveM dzialaja na realnych
-              plikach i procesach, bez udawania i bez atrap.
+              ByteHost to nowoczesna strona hostingowa z autorskim panelem do usług Discord,
+              Minecraft, FiveM i innych serwerów gier. Wszystko jest ułożone prosto: konto,
+              plan, usługa, pliki, konsola, backupy i szybkie zarządzanie.
             </p>
 
             <div className="marketing-hero-actions">
               <a className="primary-button" href={PANEL_URL}>
-                <span>Wejdz do panelu</span>
+                <span>Wejdź do panelu</span>
                 <ArrowRight size={16} />
               </a>
               <Link className="ghost-button" to="/register">
-                Zaloz konto
+                Załóż konto
               </Link>
             </div>
 
             <div className="marketing-pill-row">
-              <span>PM2 + logi live</span>
-              <span>ZIP / RAR / JAR / FXServer</span>
-              <span>JWT + bcrypt</span>
+              <span>Własny panel klienta</span>
+              <span>Serwery gier i boty</span>
+              <span>Konta i plany</span>
               <span>Light / dark mode</span>
             </div>
           </div>
@@ -156,7 +156,7 @@ export function LandingPage({ theme, onToggleTheme }) {
               <Bot size={16} />
               <div>
                 <strong>Discord bots</strong>
-                <span>Auto-detect + PM2</span>
+                <span>Pliki, logi i konsola</span>
               </div>
             </article>
 
@@ -164,7 +164,7 @@ export function LandingPage({ theme, onToggleTheme }) {
               <Gamepad2 size={16} />
               <div>
                 <strong>Minecraft + FiveM</strong>
-                <span>Auto runtime + publiczny port</span>
+                <span>Panel + publiczny adres</span>
               </div>
             </article>
           </div>
@@ -173,7 +173,7 @@ export function LandingPage({ theme, onToggleTheme }) {
         <section className="marketing-section" id="offer">
           <div className="marketing-section-heading centered reveal-up">
             <p className="eyebrow">Oferta</p>
-            <h2>Najwazniejsze funkcje bez przeladowanej strony glownej.</h2>
+            <h2>Najważniejsze funkcje bez przeładowanej strony głównej.</h2>
           </div>
 
           <div className="marketing-card-grid three compact-grid">
@@ -194,8 +194,8 @@ export function LandingPage({ theme, onToggleTheme }) {
 
         <section className="marketing-section" id="workflow">
           <div className="marketing-section-heading centered reveal-up">
-            <p className="eyebrow">Jak to dziala</p>
-            <h2>Prosty workflow od konta do dzialajacej uslugi.</h2>
+            <p className="eyebrow">Jak to działa</p>
+            <h2>Prosty workflow od konta do działającej usługi.</h2>
           </div>
 
           <div className="marketing-card-grid three compact-grid">
@@ -213,7 +213,7 @@ export function LandingPage({ theme, onToggleTheme }) {
           <div className="marketing-band-card">
             <div>
               <p className="eyebrow">W panelu dostajesz</p>
-              <h2>Mniej chaosu, wiecej kontroli.</h2>
+              <h2>Mniej chaosu, więcej kontroli.</h2>
             </div>
 
             <div className="marketing-band-points">
@@ -231,7 +231,7 @@ export function LandingPage({ theme, onToggleTheme }) {
               </span>
               <span>
                 <Clock3 size={16} />
-                Expire i restart scheduler
+                Backupy i zarządzanie
               </span>
             </div>
           </div>
@@ -262,13 +262,13 @@ export function LandingPage({ theme, onToggleTheme }) {
           <img className="brand-logo" src={logoUrl} alt="ByteHost" />
           <div>
             <strong>ByteHost</strong>
-            <span>Prywatny hosting botow i serwerow z jednym panelem administracyjnym.</span>
+            <span>Profesjonalny hosting botów i serwerów z własnym panelem administracyjnym.</span>
           </div>
         </div>
 
         <div className="marketing-footer-links">
           <a href="#offer">Oferta</a>
-          <a href="#workflow">Jak to dziala</a>
+          <a href="#workflow">Jak to działa</a>
           <a href="#faq">FAQ</a>
           <a href={PANEL_URL}>Logowanie</a>
         </div>

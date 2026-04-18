@@ -57,7 +57,7 @@ export function LoginPage({ onLogin, onRegister, loading, theme, onToggleTheme, 
         password: "",
         confirmPassword: ""
       });
-      setSuccess("Konto zostalo utworzone. Owner musi je teraz aktywowac i ustawic limity.");
+      setSuccess("Konto zostało utworzone. Owner musi je teraz aktywować i ustawić limity.");
     } catch (registerError) {
       setError(registerError.message);
     } finally {
@@ -70,7 +70,7 @@ export function LoginPage({ onLogin, onRegister, loading, theme, onToggleTheme, 
       <div className="login-card">
         <div className="login-topbar">
           <Link className="ghost-button compact" to="/">
-            Wroc na start
+            Wróć na start
           </Link>
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
@@ -87,7 +87,7 @@ export function LoginPage({ onLogin, onRegister, loading, theme, onToggleTheme, 
             Logowanie
           </Link>
           <Link className={`tab-button ${isRegisterMode ? "active" : ""}`} to="/register">
-            Zaloz konto
+            Załóż konto
           </Link>
         </div>
 
@@ -96,12 +96,12 @@ export function LoginPage({ onLogin, onRegister, loading, theme, onToggleTheme, 
           <h1>
             {isRegisterMode
               ? "Utworz konto i poczekaj na aktywacje ownera."
-              : "Wejdz do swojego panelu ByteHost."}
+              : "Wejdź do swojego panelu ByteHost."}
           </h1>
           <p>
             {isRegisterMode
-              ? "Uzytkownik moze zalozyc konto sam, ale owner musi je zatwierdzic w panelu admina i ustawic limity."
-              : "Jesli Twoje konto nie jest jeszcze aktywne, owner musi je zatwierdzic i ustawic plan zasobow."}
+              ? "Użytkownik może założyć konto sam, ale owner musi je zatwierdzić w panelu admina i ustawić limity."
+              : "Jeśli Twoje konto nie jest jeszcze aktywne, owner musi je zatwierdzić i ustawić plan zasobów."}
           </p>
         </div>
 
@@ -135,7 +135,7 @@ export function LoginPage({ onLogin, onRegister, loading, theme, onToggleTheme, 
 
             <div className="info-card info-card-inline wide">
               <LockKeyhole size={18} />
-              <span>Sesja dziala na JWT, a hasla sa przechowywane jako hash bcrypt.</span>
+              <span>Sesja jest bezpieczna, a hasła są przechowywane jako zaszyfrowany hash.</span>
             </div>
 
             <div className="form-actions wide">
@@ -193,7 +193,7 @@ export function LoginPage({ onLogin, onRegister, loading, theme, onToggleTheme, 
               <UserPlus size={18} />
               <span>
                 Po rejestracji konto trafi do panelu ownera jako oczekujace. Owner aktywuje je i
-                ustawi RAM, CPU, storage oraz liczbe botow.
+                ustawi RAM, CPU, storage oraz liczbę botów.
               </span>
             </div>
 

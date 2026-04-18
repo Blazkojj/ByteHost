@@ -62,17 +62,17 @@ export function Layout({
   const isMinecraftServer = activeServer?.service_type === "minecraft_server";
   const navItems = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/bots", label: "Uslugi", icon: Server }
+    { to: "/bots", label: "Usługi", icon: Server }
   ];
 
   if (user?.is_admin) {
-    navItems.push({ to: "/admin/users", label: "Uzytkownicy", icon: Users });
+    navItems.push({ to: "/admin/users", label: "Użytkownicy", icon: Users });
     navItems.push({ to: "/system", label: "System", icon: ShieldCheck });
   }
 
   const serverNavItems = activeServerId
     ? [
-        { tab: "overview", label: "Przeglad", icon: ListChecks },
+        { tab: "overview", label: "Przegląd", icon: ListChecks },
         { tab: "logs", label: "Logi", icon: FileText },
         { tab: "console", label: "Konsola", icon: Terminal },
         ...(isGameServer ? [{ tab: "players", label: "Gracze", icon: Users }] : []),
@@ -104,17 +104,17 @@ export function Layout({
   const sidebarHint = activeServer
     ? serviceTypeLabel(activeServer.service_type)
     : user?.is_admin
-    ? "Uslugi online i zarzadzanie kontami"
+    ? "Usługi online i zarządzanie kontami"
     : `Wygasa: ${formatDate(system?.account?.expires_at)}`;
   const sidebarDisplayValue = activeServer ? activeServer.name : sidebarValue;
   const pageTitle = activeServer
     ? activeServer.name
     : location.pathname.startsWith("/admin/users")
-      ? "Uzytkownicy"
+      ? "Użytkownicy"
       : location.pathname.startsWith("/system")
         ? "System"
         : location.pathname.startsWith("/bots")
-          ? "Uslugi"
+          ? "Usługi"
           : "Dashboard";
   const pageKicker = activeServer
     ? serviceTypeLabel(activeServer.service_type)
@@ -139,7 +139,7 @@ export function Layout({
             <>
               <Link className="nav-link muted" to="/bots">
                 <ChevronLeft size={18} />
-                <span>Wroc do uslug</span>
+                <span>Wróć do usług</span>
               </Link>
               {serverNavItems.map((item) => {
                 const Icon = item.icon;
@@ -190,22 +190,21 @@ export function Layout({
           <div className="topbar-title">
             <p className="eyebrow">{pageKicker}</p>
             <div className="topbar-title-row">
-              <span className="topbar-status-dot" />
               <h1>{pageTitle}</h1>
             </div>
             <span className="topbar-meta">
-              Ostatnie odswiezenie: {lastUpdated ? lastUpdated.toLocaleTimeString("pl-PL") : "brak"}
+              Ostatnie odświeżenie: {lastUpdated ? lastUpdated.toLocaleTimeString("pl-PL") : "brak"}
             </span>
           </div>
 
           <div className="topbar-actions">
-            <StatChip label="Uslugi" value={formatNumber(system?.usage?.bots)} />
+            <StatChip label="Usługi" value={formatNumber(system?.usage?.bots)} />
             <StatChip label="RAM" value={formatMemoryFromMb(system?.usage?.ram_mb)} />
             <StatChip label="Storage" value={formatNumber(system?.usage?.storage_mb, " MB")} />
             <ThemeToggle theme={theme} onToggle={onToggleTheme} />
             <button className="ghost-button" onClick={onRefresh} disabled={loading}>
               <RefreshCw size={16} className={loading ? "spin" : ""} />
-              <span>Odswiez</span>
+              <span>Odśwież</span>
             </button>
             <button className="ghost-button" onClick={onLogout}>
               <LogOut size={16} />

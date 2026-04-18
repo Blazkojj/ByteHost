@@ -2,7 +2,7 @@ import { getGameServicePreset, isGameServiceType } from "./gameServices";
 
 export const statusTheme = {
   ONLINE: "success",
-  OFFLINE: "muted",
+  OFFLINE: "danger",
   ERROR: "danger",
   EXPIRED: "warning",
   "CRASH LOOP": "danger"
@@ -58,7 +58,7 @@ export function formatCountdown(value) {
 
   const diff = new Date(value).getTime() - Date.now();
   if (diff <= 0) {
-    return "Wygasl";
+    return "Wygasł";
   }
 
   return formatDuration(Math.floor(diff / 1000));
@@ -153,9 +153,9 @@ export function accountStatusLabel(status) {
     case "ACTIVE":
       return "Aktywne";
     case "PENDING_APPROVAL":
-      return "Czeka na aktywacje";
+      return "Czeka na aktywację";
     case "EXPIRED":
-      return "Wygasle";
+      return "Wygasłe";
     case "INACTIVE":
       return "Nieaktywne";
     default:
@@ -164,7 +164,7 @@ export function accountStatusLabel(status) {
 }
 
 export function userRoleLabel(role) {
-  return role === "owner" ? "Owner" : "Uzytkownik";
+  return role === "owner" ? "Owner" : "Użytkownik";
 }
 
 export function formatLimitValue(value, suffix = "") {
