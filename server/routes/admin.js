@@ -52,7 +52,26 @@ function mergeAllowedServiceTypes(currentValue, serviceType) {
   return [...new Set([...current, serviceType])];
 }
 
-function buildProvisionedUserPatch(user, plan) {
+function sanitizeProvisionDays(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3650) {
+    throw createHttpError(400, "Podaj czas trwania planu w dniach od 1 do 3650.");
+  }
+
+  return parsed;
+}
+
+function addDaysToAccount(user, days) {
+  const currentExpiry = user.expires_at ? new Date(user.expires_at) : null;
+  const startTime =
+    currentExpiry && !Number.isNaN(currentExpiry.getTime()) && currentExpiry.getTime() > Date.now()
+      ? currentExpiry.getTime()
+      : Date.now();
+
+  return new Date(startTime + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function buildProvisionedUserPatch(user, plan, days) {
   return {
     max_bots: numberOrZero(user.max_bots) + plan.serviceSlots,
     max_ram_mb: numberOrZero(user.max_ram_mb) + plan.ramMb,
@@ -62,6 +81,7 @@ function buildProvisionedUserPatch(user, plan) {
       user.allowed_service_types,
       plan.serviceType
     ),
+    expires_at: addDaysToAccount(user, days),
     is_active: true,
     pending_approval: false
   };
@@ -102,6 +122,7 @@ router.post("/provision-service", async (request, response, next) => {
       request.body.service_type || request.body.typ_servera || request.body.type,
       request.body.plan
     );
+    const days = sanitizeProvisionDays(request.body.days || request.body.dni);
 
     if (!email) {
       throw createHttpError(400, "Podaj email uzytkownika.");
@@ -116,13 +137,15 @@ router.post("/provision-service", async (request, response, next) => {
       throw createHttpError(404, `Nie znaleziono uzytkownika ${email}.`);
     }
 
-    const updatedUser = await updateUserAccount(user.id, buildProvisionedUserPatch(user, plan));
+    const updatedUser = await updateUserAccount(user.id, buildProvisionedUserPatch(user, plan, days));
+    const updatedOwner = getUserById(user.id);
     const service = await createBot(
       request.user,
       buildProvisionedServicePayload(request.body, plan),
       null,
       {
-        owner: updatedUser,
+        owner: updatedOwner,
+        skipOwnerProvisionCheck: true,
         skipManagedDownload: true
       }
     );
@@ -131,7 +154,9 @@ router.post("/provision-service", async (request, response, next) => {
       ok: true,
       user: updatedUser,
       service,
-      plan
+      plan,
+      days,
+      expires_at: updatedUser.expires_at
     });
   } catch (error) {
     next(error);

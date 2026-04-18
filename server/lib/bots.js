@@ -2075,7 +2075,13 @@ async function createBot(actor, payload, artifactFile, options = {}) {
     throw createHttpError(403, "Tylko owner moze tworzyc uslugi na cudzym koncie.");
   }
 
-  assertOwnerCanProvisionServices(targetOwner);
+  if (options.skipOwnerProvisionCheck) {
+    if (!targetOwner) {
+      throw createHttpError(400, "Usluga nie ma przypisanego wlasciciela.");
+    }
+  } else {
+    assertOwnerCanProvisionServices(targetOwner);
+  }
 
   const limits = getSystemLimits();
   const currentBotCount = getDb().prepare("SELECT COUNT(*) AS total FROM bots").get().total;
