@@ -41,7 +41,7 @@ function updateSystemLimits(payload) {
 }
 
 function getScopedBots(actor) {
-  const rows = !actor || isAdminUser(actor)
+  const rows = !actor
     ? getDb().prepare("SELECT * FROM bots ORDER BY created_at DESC").all()
     : getDb()
         .prepare("SELECT * FROM bots WHERE owner_user_id = ? ORDER BY created_at DESC")
@@ -176,21 +176,12 @@ async function collectSystemStats(actor) {
 
   return {
     ...payload,
-    usage: {
-      ...usage,
-      storage_mb: round(toMb(totalStorageBytes)),
-      bots: botStatuses.total
-    },
-    remaining: buildRemaining(limits, {
-      ...usage,
-      storage_mb: round(toMb(totalStorageBytes)),
-      bots: botStatuses.total
-    }),
     host: {
       cpu_load_percent: round(currentLoad.currentLoad),
       total_ram_mb: round(toMb(memory.total)),
       used_ram_mb: round(toMb(memory.active)),
       free_ram_mb: round(toMb(memory.available)),
+      used_storage_mb: round(toMb(totalStorageBytes)),
       uptime_seconds: Math.floor(os.uptime())
     }
   };

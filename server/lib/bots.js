@@ -860,11 +860,12 @@ function allocateServicePort(serviceType, preferredPort = null, options = {}) {
   return null;
 }
 
-function listBotRows(actor = null) {
-  const query = !actor || isAdminUser(actor)
+function listBotRows(actor = null, options = {}) {
+  const includeAll = Boolean(options.includeAll);
+  const query = !actor || includeAll
     ? getDb().prepare("SELECT * FROM bots ORDER BY created_at DESC")
     : getDb().prepare("SELECT * FROM bots WHERE owner_user_id = ? ORDER BY created_at DESC");
-  const rows = !actor || isAdminUser(actor) ? query.all() : query.all(actor.id);
+  const rows = !actor || includeAll ? query.all() : query.all(actor.id);
   return rows.map(mapBotRow);
 }
 
@@ -2056,8 +2057,10 @@ async function getBotWithRuntime(botId, actor) {
   };
 }
 
-async function listBots(actor) {
-  const botRows = listBotRows(actor);
+async function listBots(actor, options = {}) {
+  const botRows = listBotRows(actor, {
+    includeAll: isAdminUser(actor) && Boolean(options.includeAll)
+  });
   const runtimeMap = await listServiceRuntimeMap(botRows).catch(() => new Map());
 
   return Promise.all(

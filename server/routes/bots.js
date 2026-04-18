@@ -54,7 +54,11 @@ async function cleanupFiles(files) {
 
 router.get("/", async (request, response, next) => {
   try {
-    response.json(await listBots(request.user));
+    response.json(
+      await listBots(request.user, {
+        includeAll: request.query.scope === "all" || request.query.all === "1"
+      })
+    );
   } catch (error) {
     next(error);
   }

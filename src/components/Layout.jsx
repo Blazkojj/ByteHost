@@ -104,7 +104,7 @@ export function Layout({
   const sidebarHint = activeServer
     ? serviceTypeLabel(activeServer.service_type)
     : user?.is_admin
-    ? "Usługi online i zarządzanie kontami"
+    ? "Twoje usługi online"
     : `Wygasa: ${formatDate(system?.account?.expires_at)}`;
   const sidebarDisplayValue = activeServer ? activeServer.name : sidebarValue;
   const pageTitle = activeServer

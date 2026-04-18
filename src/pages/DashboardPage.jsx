@@ -98,15 +98,15 @@ export function DashboardPage({ user, bots, system, loading }) {
       <section className="stats-grid">
         <MetricCard
           icon={Server}
-          label={user.is_admin ? "Wszystkie usługi" : "Twoje usługi"}
+          label="Twoje usługi"
           value={formatNumber(system?.statuses?.total)}
           hint={`Limit: ${formatLimitValue(limits.max_bots)}`}
         />
         <MetricCard
           icon={Activity}
-          label={user.is_admin ? "ONLINE" : "Pozostało botów"}
+          label={user.is_admin ? "Twoje ONLINE" : "Pozostało botów"}
           value={user.is_admin ? formatNumber(system?.statuses?.online) : formatLimitValue(remaining.bots)}
-          hint={user.is_admin ? "Procesy aktualnie uruchomione" : `Wykorzystane: ${formatNumber(system?.usage?.bots)}`}
+          hint={user.is_admin ? "Twoje uruchomione procesy" : `Wykorzystane: ${formatNumber(system?.usage?.bots)}`}
         />
         <MetricCard
           icon={Cpu}
@@ -130,7 +130,7 @@ export function DashboardPage({ user, bots, system, loading }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">Usługi</p>
-            <h3>{user.is_admin ? "Ostatnio dodane" : "Twoje ostatnie usługi"}</h3>
+            <h3>Twoje ostatnie usługi</h3>
           </div>
           <Link className="inline-link" to="/bots">
             Otwórz workspace
