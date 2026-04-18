@@ -21,7 +21,7 @@ const TEXT_FILE_MAX_BYTES = 1024 * 1024;
 const DEFAULT_SYSTEM_LIMITS = {
   ram_limit_mb: Number(process.env.DEFAULT_GLOBAL_RAM_MB || 32768),
   cpu_limit_percent: Number(process.env.DEFAULT_GLOBAL_CPU_PERCENT || 400),
-  storage_limit_mb: Number(process.env.DEFAULT_GLOBAL_STORAGE_MB || 266240),
+  storage_limit_mb: Number(process.env.DEFAULT_GLOBAL_STORAGE_MB || 368640),
   max_bots: Number(process.env.DEFAULT_MAX_BOTS || 10)
 };
 
