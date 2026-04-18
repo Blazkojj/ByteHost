@@ -3740,7 +3740,7 @@ strong,
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 3px 11px;
+  gap: 3px 14px;
   align-items: center;
 }
 
@@ -3751,22 +3751,22 @@ strong,
 .server-status-dot {
   position: relative;
   grid-row: 1 / span 2;
-  width: 12px;
-  height: 12px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
   background: #8796ab;
-  box-shadow: 0 0 0 4px rgba(135, 150, 171, 0.12);
+  box-shadow: 0 0 0 3px rgba(135, 150, 171, 0.1);
 }
 
 .server-status-dot.success {
   background: var(--success);
-  box-shadow: 0 0 0 5px rgba(53, 211, 145, 0.12);
+  box-shadow: 0 0 0 3px rgba(53, 211, 145, 0.12);
 }
 
 .server-status-dot.success::after {
   content: "";
   position: absolute;
-  inset: -7px;
+  inset: -4px;
   border-radius: inherit;
   border: 1px solid rgba(53, 211, 145, 0.42);
   animation: statusPulse 1.55s ease-out infinite;
@@ -3774,13 +3774,13 @@ strong,
 
 .server-status-dot.danger {
   background: var(--danger);
-  box-shadow: 0 0 0 5px rgba(255, 111, 123, 0.12);
+  box-shadow: 0 0 0 3px rgba(255, 111, 123, 0.12);
 }
 
 .server-status-dot.danger::after {
   content: "";
   position: absolute;
-  inset: -7px;
+  inset: -4px;
   border-radius: inherit;
   border: 1px solid rgba(255, 111, 123, 0.36);
   animation: statusPulse 1.85s ease-out infinite;
@@ -3788,12 +3788,12 @@ strong,
 
 .server-status-dot.warning {
   background: var(--warning);
-  box-shadow: 0 0 0 5px rgba(241, 185, 93, 0.12);
+  box-shadow: 0 0 0 3px rgba(241, 185, 93, 0.12);
 }
 
 .server-status-dot.muted {
   background: #68788d;
-  box-shadow: 0 0 0 5px rgba(104, 120, 141, 0.1);
+  box-shadow: 0 0 0 3px rgba(104, 120, 141, 0.1);
 }
 
 .server-status-dot.mini {
