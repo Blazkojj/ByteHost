@@ -20,6 +20,8 @@ const {
   installDependencies,
   updateBotArchive,
   executeBotConsoleCommand,
+  listBotPlayers,
+  executeBotPlayerAction,
   searchMinecraftAddons,
   listMinecraftAddonVersions,
   installMinecraftAddon,
@@ -128,6 +130,22 @@ router.get("/:id/logs", async (request, response, next) => {
 router.post("/:id/console", async (request, response, next) => {
   try {
     response.json(await executeBotConsoleCommand(request.params.id, request.user, request.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id/players", async (request, response, next) => {
+  try {
+    response.json(await listBotPlayers(request.params.id, request.user, request.query));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/players/action", async (request, response, next) => {
+  try {
+    response.json(await executeBotPlayerAction(request.params.id, request.user, request.body));
   } catch (error) {
     next(error);
   }

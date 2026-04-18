@@ -118,6 +118,148 @@ const ALLOWED_SERVICE_TYPES = new Set([
 ]);
 const DEFAULT_CONSOLE_TIMEOUT_MS = 20000;
 const MAX_CONSOLE_COMMAND_LENGTH = 2000;
+const PLAYER_REFRESH_DELAY_MS = 700;
+
+const PLAYER_REFRESH_COMMANDS = {
+  minecraft_server: ["list"],
+  fivem_server: ["status"],
+  project_zomboid: ["players"],
+  terraria: ["playing"],
+  cs2: ["status"],
+  csgo: ["status"],
+  unturned: ["players"]
+};
+
+const PLAYER_ACTIONS = {
+  minecraft_server: [
+    { id: "kill", label: "Zabij", tone: "danger", description: "Wykonuje kill na graczu." },
+    {
+      id: "hunger",
+      label: "Zagłodź",
+      tone: "danger",
+      description: "Nakłada efekt głodu na wybranego gracza."
+    },
+    {
+      id: "feed",
+      label: "Nakarm",
+      tone: "success",
+      description: "Daje krótką saturację, żeby uzupełnić głód."
+    },
+    {
+      id: "heal",
+      label: "Ulecz",
+      tone: "success",
+      description: "Daje natychmiastowe leczenie."
+    },
+    {
+      id: "give",
+      label: "Daj item",
+      description: "Daje graczowi wybrany item.",
+      fields: [
+        { name: "item", label: "Item", placeholder: "minecraft:diamond", default: "minecraft:diamond" },
+        { name: "amount", label: "Ilość", placeholder: "1", default: "1" }
+      ]
+    },
+    {
+      id: "sound",
+      label: "Zagraj dźwięk",
+      description: "Odtwarza dźwięk tylko temu graczowi.",
+      fields: [
+        {
+          name: "sound",
+          label: "Dźwięk",
+          placeholder: "minecraft:entity.experience_orb.pickup",
+          default: "minecraft:entity.experience_orb.pickup"
+        }
+      ]
+    },
+    {
+      id: "message",
+      label: "Wyślij wiadomość",
+      fields: [{ name: "message", label: "Wiadomość", placeholder: "Hej!", default: "Hej!" }]
+    },
+    {
+      id: "kick",
+      label: "Kick",
+      tone: "warning",
+      fields: [{ name: "reason", label: "Powód", placeholder: "Wyrzucony przez administrację" }]
+    },
+    {
+      id: "ban",
+      label: "Ban",
+      tone: "danger",
+      confirm: true,
+      fields: [{ name: "reason", label: "Powód", placeholder: "Zbanowany przez administrację" }]
+    },
+    { id: "op", label: "Nadaj OP", tone: "warning", confirm: true },
+    { id: "deop", label: "Zabierz OP", tone: "warning" },
+    { id: "clear", label: "Wyczyść eq", tone: "warning", confirm: true },
+    { id: "creative", label: "Creative" },
+    { id: "survival", label: "Survival" }
+  ],
+  fivem_server: [
+    {
+      id: "kick",
+      label: "Kick",
+      tone: "warning",
+      fields: [{ name: "reason", label: "Powód", placeholder: "Wyrzucony przez administrację" }]
+    },
+    {
+      id: "say",
+      label: "Napisz na czacie",
+      fields: [{ name: "message", label: "Wiadomość", placeholder: "Wiadomość z panelu" }]
+    },
+    { id: "status", label: "Odśwież status" }
+  ],
+  terraria: [
+    { id: "kick", label: "Kick", tone: "warning" },
+    { id: "ban", label: "Ban", tone: "danger", confirm: true },
+    {
+      id: "say",
+      label: "Napisz na czacie",
+      fields: [{ name: "message", label: "Wiadomość", placeholder: "Wiadomość z panelu" }]
+    }
+  ],
+  cs2: [
+    { id: "kick", label: "Kick", tone: "warning" },
+    {
+      id: "say",
+      label: "Napisz na czacie",
+      fields: [{ name: "message", label: "Wiadomość", placeholder: "Wiadomość z panelu" }]
+    },
+    { id: "status", label: "Odśwież status" }
+  ],
+  csgo: [
+    { id: "kick", label: "Kick", tone: "warning" },
+    {
+      id: "say",
+      label: "Napisz na czacie",
+      fields: [{ name: "message", label: "Wiadomość", placeholder: "Wiadomość z panelu" }]
+    },
+    { id: "status", label: "Odśwież status" }
+  ],
+  unturned: [
+    { id: "kick", label: "Kick", tone: "warning" },
+    { id: "ban", label: "Ban", tone: "danger", confirm: true },
+    {
+      id: "give",
+      label: "Daj item",
+      fields: [
+        { name: "item", label: "ID itemu", placeholder: "363", default: "363" },
+        { name: "amount", label: "Ilość", placeholder: "1", default: "1" }
+      ]
+    }
+  ],
+  project_zomboid: [
+    { id: "kick", label: "Kick", tone: "warning" },
+    { id: "ban", label: "Ban", tone: "danger", confirm: true },
+    {
+      id: "say",
+      label: "Napisz na czacie",
+      fields: [{ name: "message", label: "Wiadomość", placeholder: "Wiadomość z panelu" }]
+    }
+  ]
+};
 
 function sanitizeServiceType(value, fallback = "discord_bot") {
   if (!value) {
@@ -131,6 +273,387 @@ function normalizeConsoleCommand(value) {
   return String(value || "")
     .replace(/\r?\n+/g, " ")
     .trim();
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function stripAnsi(value) {
+  return String(value || "").replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function clampInteger(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function sanitizeShortText(value, fallback = "") {
+  return String(value || fallback)
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/["`$\\]/g, "")
+    .trim()
+    .slice(0, 120);
+}
+
+function sanitizeMinecraftName(value) {
+  const name = String(value || "").trim();
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) {
+    throw createHttpError(400, "Nieprawidłowy nick Minecraft.");
+  }
+
+  return name;
+}
+
+function sanitizeMinecraftResource(value, fallback) {
+  const resource = String(value || fallback).trim().toLowerCase();
+  if (!/^[a-z0-9_.:-]+$/.test(resource)) {
+    throw createHttpError(400, "Nieprawidłowy identyfikator itemu albo dźwięku.");
+  }
+
+  return resource;
+}
+
+function sanitizeGenericPlayerName(value) {
+  const name = sanitizeShortText(value);
+  if (!name) {
+    throw createHttpError(400, "Nie wybrano gracza.");
+  }
+
+  return name;
+}
+
+function quoteConsoleValue(value) {
+  return `"${sanitizeShortText(value).replace(/"/g, "")}"`;
+}
+
+function getPlayerAvatarUrl(serviceType, name) {
+  const seed = encodeURIComponent(String(name || "player"));
+
+  if (serviceType === "minecraft_server") {
+    return `https://mc-heads.net/avatar/${seed}/96`;
+  }
+
+  return `https://api.dicebear.com/9.x/initials/svg?seed=${seed}&backgroundColor=0f172a,0ea5e9,1d4ed8&fontFamily=Arial`;
+}
+
+function makePlayer(serviceType, name, extra = {}) {
+  const playerName = String(name || "").trim();
+  if (!playerName) {
+    return null;
+  }
+
+  return {
+    id: extra.id || null,
+    name: playerName,
+    avatar_url: getPlayerAvatarUrl(serviceType, playerName),
+    address: extra.address || null,
+    ping: extra.ping ?? null,
+    score: extra.score ?? null,
+    connected_for: extra.connected_for || null,
+    source: extra.source || "logs",
+    online: extra.online !== false
+  };
+}
+
+function uniquePlayers(players) {
+  const byKey = new Map();
+
+  for (const player of players) {
+    if (!player?.name) {
+      continue;
+    }
+
+    const key = String(player.id || player.name).toLowerCase();
+    byKey.set(key, {
+      ...(byKey.get(key) || {}),
+      ...player
+    });
+  }
+
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "pl"));
+}
+
+function parseMinecraftPlayers(logContent, bot) {
+  const lines = stripAnsi(logContent).split(/\r?\n/);
+  const latestListLine = [...lines]
+    .reverse()
+    .find((line) => /There are\s+\d+\s+of\s+(?:a\s+)?max/i.test(line));
+  const listedPlayers = [];
+  let maxPlayers = bot.minecraft_max_players || null;
+
+  if (latestListLine) {
+    const match = latestListLine.match(
+      /There are\s+(\d+)\s+of\s+(?:a\s+)?max(?:imum)?\s+of\s+(\d+)\s+players online:?\s*(.*)$/i
+    );
+
+    if (match) {
+      maxPlayers = Number(match[2]) || maxPlayers;
+      const names = String(match[3] || "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      for (const name of names) {
+        listedPlayers.push(makePlayer("minecraft_server", name, { source: "list" }));
+      }
+
+      return {
+        players: uniquePlayers(listedPlayers),
+        online_count: Number(match[1]) || listedPlayers.length,
+        max_players: maxPlayers,
+        source: "list"
+      };
+    }
+  }
+
+  const inferred = new Map();
+  for (const line of lines.slice(-1200)) {
+    const loginMatch = line.match(/\b([A-Za-z0-9_]{3,16})\[/);
+    const joinedMatch = line.match(/\b([A-Za-z0-9_]{3,16}) joined the game\b/i);
+    const leftMatch = line.match(/\b([A-Za-z0-9_]{3,16}) left the game\b/i);
+
+    if (loginMatch) {
+      const addressMatch = line.match(/\[\/?([^:\]\s]+)(?::\d+)?\]/);
+      inferred.set(loginMatch[1].toLowerCase(), {
+        name: loginMatch[1],
+        address: addressMatch?.[1] || null
+      });
+    }
+
+    if (joinedMatch) {
+      inferred.set(joinedMatch[1].toLowerCase(), { name: joinedMatch[1] });
+    }
+
+    if (leftMatch) {
+      inferred.delete(leftMatch[1].toLowerCase());
+    }
+  }
+
+  const players = uniquePlayers(
+    [...inferred.values()].map((player) =>
+      makePlayer("minecraft_server", player.name, {
+        address: player.address,
+        source: "join-log"
+      })
+    )
+  );
+
+  return {
+    players,
+    online_count: players.length,
+    max_players: maxPlayers,
+    source: players.length ? "join-log" : "logs"
+  };
+}
+
+function parseSourceStatusPlayers(logContent, serviceType) {
+  const players = [];
+  const lines = stripAnsi(logContent).split(/\r?\n/);
+
+  for (const line of lines.slice(-1000)) {
+    const quotedMatch = line.match(
+      /^#\s*\d+\s+\d+\s+"([^"]+)"\s+(\S+)\s+([0-9:]+)?\s*(\d+)?/i
+    );
+
+    if (quotedMatch) {
+      players.push(
+        makePlayer(serviceType, quotedMatch[1], {
+          id: quotedMatch[2],
+          connected_for: quotedMatch[3] || null,
+          ping: quotedMatch[4] ? Number(quotedMatch[4]) : null,
+          source: "status"
+        })
+      );
+    }
+  }
+
+  return players;
+}
+
+function parseGenericPlayers(logContent, serviceType) {
+  const lines = stripAnsi(logContent).split(/\r?\n/);
+  const players = [];
+  const onlineState = new Map();
+
+  for (const line of lines.slice(-1200)) {
+    const compactLine = line.trim();
+    const inlineMatch = compactLine.match(
+      /(?:players online|online players|players|gracze)\s*:?\s+(.+)$/i
+    );
+    const fivemMatch = compactLine.match(/^\s*(\d+)\s+(.+?)\s+(?:steam:|license:|discord:|ip:)/i);
+    const joinedMatch = compactLine.match(/(?:player\s+)?["']?([^"']{2,32})["']?\s+(?:joined|connected|has joined)/i);
+    const leftMatch = compactLine.match(/(?:player\s+)?["']?([^"']{2,32})["']?\s+(?:left|disconnected|has left)/i);
+
+    if (fivemMatch) {
+      players.push(
+        makePlayer(serviceType, fivemMatch[2].trim(), {
+          id: fivemMatch[1],
+          source: "status"
+        })
+      );
+      continue;
+    }
+
+    if (inlineMatch && !/^\d+\/\d+/.test(inlineMatch[1])) {
+      const names = inlineMatch[1]
+        .split(/,\s*|\s{2,}/)
+        .map((name) => name.replace(/^[-#]\s*/, "").trim())
+        .filter((name) => name && !/^(none|brak|0)$/i.test(name));
+      for (const name of names) {
+        players.push(makePlayer(serviceType, name, { source: "players-command" }));
+      }
+    }
+
+    if (joinedMatch) {
+      const name = joinedMatch[1].trim();
+      if (name && !/\[|bytehost|server/i.test(name)) {
+        onlineState.set(name.toLowerCase(), name);
+      }
+    }
+
+    if (leftMatch) {
+      onlineState.delete(leftMatch[1].trim().toLowerCase());
+    }
+  }
+
+  for (const name of onlineState.values()) {
+    players.push(makePlayer(serviceType, name, { source: "join-log" }));
+  }
+
+  return uniquePlayers(players);
+}
+
+function parsePlayersFromLogs(bot, logPayload) {
+  const serviceType = bot.service_type;
+  const content = [logPayload?.combined, logPayload?.runtime, logPayload?.native]
+    .filter(Boolean)
+    .join("\n");
+
+  if (serviceType === "minecraft_server") {
+    return parseMinecraftPlayers(content, bot);
+  }
+
+  const sourcePlayers =
+    serviceType === "cs2" || serviceType === "csgo"
+      ? parseSourceStatusPlayers(content, serviceType)
+      : [];
+  const genericPlayers = parseGenericPlayers(content, serviceType);
+  const players = uniquePlayers([...sourcePlayers, ...genericPlayers]);
+
+  return {
+    players,
+    online_count: players.length,
+    max_players: bot.fivem_max_clients || getGamePreset(serviceType)?.maxPlayers || null,
+    source: players.length ? "logs" : "unknown"
+  };
+}
+
+function getPlayerActions(serviceType) {
+  return PLAYER_ACTIONS[serviceType] || [
+    { id: "status", label: "Odśwież status" },
+    { id: "kick", label: "Kick", tone: "warning" }
+  ];
+}
+
+function buildMinecraftPlayerCommand(actionId, playerName, params = {}) {
+  const name = sanitizeMinecraftName(playerName);
+  const reason = sanitizeShortText(params.reason, "Administracja ByteHost");
+  const message = sanitizeShortText(params.message, "Wiadomość z panelu");
+  const item = sanitizeMinecraftResource(params.item, "minecraft:diamond");
+  const sound = sanitizeMinecraftResource(params.sound, "minecraft:entity.experience_orb.pickup");
+  const amount = clampInteger(params.amount, 1, 1, 64000);
+
+  switch (actionId) {
+    case "kill":
+      return `kill ${name}`;
+    case "hunger":
+      return `effect give ${name} minecraft:hunger 60 5 true`;
+    case "feed":
+      return `effect give ${name} minecraft:saturation 5 5 true`;
+    case "heal":
+      return `effect give ${name} minecraft:instant_health 1 2 true`;
+    case "give":
+      return `give ${name} ${item} ${amount}`;
+    case "sound":
+      return `playsound ${sound} player ${name}`;
+    case "message":
+      return `tell ${name} ${message}`;
+    case "kick":
+      return `kick ${name} ${reason}`;
+    case "ban":
+      return `ban ${name} ${reason}`;
+    case "op":
+      return `op ${name}`;
+    case "deop":
+      return `deop ${name}`;
+    case "clear":
+      return `clear ${name}`;
+    case "creative":
+      return `gamemode creative ${name}`;
+    case "survival":
+      return `gamemode survival ${name}`;
+    default:
+      throw createHttpError(400, "Nieznana akcja Minecraft.");
+  }
+}
+
+function buildGenericPlayerCommand(serviceType, actionId, player, params = {}) {
+  const name = sanitizeGenericPlayerName(player?.name || player);
+  const id = sanitizeShortText(player?.id || name);
+  const reason = sanitizeShortText(params.reason, "Administracja ByteHost");
+  const message = sanitizeShortText(params.message, "Wiadomość z panelu");
+  const item = sanitizeShortText(params.item, "363").replace(/[^0-9A-Za-z_:-]/g, "");
+  const amount = clampInteger(params.amount, 1, 1, 9999);
+
+  if (serviceType === "fivem_server") {
+    if (actionId === "kick") return `clientkick ${id} ${reason}`;
+    if (actionId === "say") return `say ${message}`;
+    if (actionId === "status") return "status";
+  }
+
+  if (serviceType === "terraria") {
+    if (actionId === "kick") return `kick ${quoteConsoleValue(name)}`;
+    if (actionId === "ban") return `ban ${quoteConsoleValue(name)}`;
+    if (actionId === "say") return `say ${message}`;
+  }
+
+  if (serviceType === "cs2" || serviceType === "csgo") {
+    if (actionId === "kick") return `kick ${quoteConsoleValue(name)}`;
+    if (actionId === "say") return `say ${message}`;
+    if (actionId === "status") return "status";
+  }
+
+  if (serviceType === "unturned") {
+    if (actionId === "kick") return `kick ${quoteConsoleValue(name)}`;
+    if (actionId === "ban") return `ban ${quoteConsoleValue(name)}`;
+    if (actionId === "give") return `give ${quoteConsoleValue(name)}/${item}/${amount}`;
+  }
+
+  if (serviceType === "project_zomboid") {
+    if (actionId === "kick") return `kickuser ${quoteConsoleValue(name)}`;
+    if (actionId === "ban") return `banuser ${quoteConsoleValue(name)}`;
+    if (actionId === "say") return `servermsg ${quoteConsoleValue(message)}`;
+  }
+
+  throw createHttpError(400, "Ta akcja nie jest dostępna dla tej gry.");
+}
+
+function buildPlayerActionCommand(bot, actionId, player, params = {}) {
+  const allowedAction = getPlayerActions(bot.service_type).find((action) => action.id === actionId);
+  if (!allowedAction) {
+    throw createHttpError(400, "Ta akcja nie jest dostępna dla tej gry.");
+  }
+
+  if (bot.service_type === "minecraft_server") {
+    return buildMinecraftPlayerCommand(actionId, player?.name || player, params);
+  }
+
+  return buildGenericPlayerCommand(bot.service_type, actionId, player, params);
 }
 
 function sanitizeLanguage(value, fallback, serviceType = "discord_bot") {
@@ -1546,8 +2069,13 @@ async function listBots(actor) {
   );
 }
 
-async function createBot(actor, payload, artifactFile) {
-  assertOwnerCanProvisionServices(actor);
+async function createBot(actor, payload, artifactFile, options = {}) {
+  const targetOwner = options.owner || actor;
+  if (options.owner && !isAdminUser(actor)) {
+    throw createHttpError(403, "Tylko owner moze tworzyc uslugi na cudzym koncie.");
+  }
+
+  assertOwnerCanProvisionServices(targetOwner);
 
   const limits = getSystemLimits();
   const currentBotCount = getDb().prepare("SELECT COUNT(*) AS total FROM bots").get().total;
@@ -1557,7 +2085,7 @@ async function createBot(actor, payload, artifactFile) {
   }
 
   const serviceType = sanitizeServiceType(payload.service_type, "discord_bot");
-  if (!canUserCreateServiceType(actor, serviceType)) {
+  if (!canUserCreateServiceType(targetOwner, serviceType)) {
     throw createHttpError(
       403,
       "Ten typ hostingu nie jest wlaczony dla Twojego konta. Owner musi przypisac go w panelu uzytkownika."
@@ -1577,7 +2105,7 @@ async function createBot(actor, payload, artifactFile) {
     DEFAULT_BOT_LIMITS.cpu_limit_percent
   );
 
-  assertBotReservationWithinUserPlan(actor, {
+  assertBotReservationWithinUserPlan(targetOwner, {
     nextRamLimitMb: ramLimitMb,
     nextCpuLimitPercent: cpuLimitPercent,
     addingBot: true
@@ -1696,13 +2224,18 @@ async function createBot(actor, payload, artifactFile) {
         minecraft_max_players: requestedMinecraftMaxPlayers,
         minecraft_server_type: requestedMinecraftServerType
       });
-      const download = await downloadOfficialMinecraftServer(
-        botDirectory,
-        requestedMinecraftVersion,
-        "",
-        requestedMinecraftServerType
-      );
-      resolvedMinecraftVersion = download.minecraft_version;
+
+      if (options.skipManagedDownload) {
+        resolvedMinecraftVersion = requestedMinecraftVersion;
+      } else {
+        const download = await downloadOfficialMinecraftServer(
+          botDirectory,
+          requestedMinecraftVersion,
+          "",
+          requestedMinecraftServerType
+        );
+        resolvedMinecraftVersion = download.minecraft_version;
+      }
     }
 
     const analysis = await analyzeServiceProject(botDirectory, serviceType, ramLimitMb);
@@ -1735,7 +2268,7 @@ async function createBot(actor, payload, artifactFile) {
 
     createBotRecord({
       id: botId,
-      owner_user_id: actor.id,
+      owner_user_id: targetOwner.id,
       service_type: serviceType,
       game_engine: gamePreset ? requestedGameEngine : null,
       name: derivedName,
@@ -1792,7 +2325,7 @@ async function createBot(actor, payload, artifactFile) {
 
     if (artifactFile || serviceType !== "discord_bot") {
       await assertStorageWithinLimit();
-      await assertUserStorageWithinLimit(actor);
+      await assertUserStorageWithinLimit(targetOwner);
     }
 
     if (artifactFile) {
@@ -2905,6 +3438,111 @@ async function executeBotConsoleCommand(botId, actor, payload) {
   };
 }
 
+async function refreshPlayerListViaConsole(bot, actor) {
+  const commands = PLAYER_REFRESH_COMMANDS[bot.service_type] || ["players", "status", "list"];
+  let lastError = null;
+
+  for (const command of commands) {
+    try {
+      const result = await executeBotConsoleCommand(bot.id, actor, {
+        mode: "server",
+        command
+      });
+
+      return {
+        sent: true,
+        command,
+        result
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  return {
+    sent: false,
+    command: commands[0] || null,
+    error: lastError?.message || "Nie udało się odświeżyć listy graczy przez konsolę."
+  };
+}
+
+async function listBotPlayers(botId, actor, query = {}) {
+  const bot = getBotRow(botId, actor);
+
+  if (!isGameService(bot.service_type)) {
+    throw createHttpError(400, "Lista graczy jest dostępna tylko dla serwerów gier.");
+  }
+
+  let refresh = null;
+  if (coerceBoolean(query.refresh, false)) {
+    refresh = await refreshPlayerListViaConsole(bot, actor);
+    await wait(PLAYER_REFRESH_DELAY_MS);
+  }
+
+  const logsPayload = await getBotLogsPayload(botId, actor);
+  const parsed = parsePlayersFromLogs(bot, logsPayload);
+
+  return {
+    service_type: bot.service_type,
+    service_label: serviceTypeLabelForPlayers(bot.service_type),
+    players: parsed.players,
+    online_count: parsed.online_count,
+    max_players: parsed.max_players,
+    source: parsed.source,
+    actions: getPlayerActions(bot.service_type),
+    refresh,
+    updated_at: nowIso()
+  };
+}
+
+function serviceTypeLabelForPlayers(serviceType) {
+  if (serviceType === "minecraft_server") return "Minecraft";
+  if (serviceType === "fivem_server") return "FiveM";
+  return getGamePreset(serviceType)?.label || serviceType;
+}
+
+async function executeBotPlayerAction(botId, actor, payload = {}) {
+  const bot = getBotRow(botId, actor);
+
+  if (!isGameService(bot.service_type)) {
+    throw createHttpError(400, "Akcje graczy są dostępne tylko dla serwerów gier.");
+  }
+
+  const actionId = coerceNullableString(payload.action, "");
+  const player = {
+    id: coerceNullableString(payload.player?.id, null),
+    name: coerceNullableString(payload.player?.name || payload.player_name, "")
+  };
+
+  if (!actionId) {
+    throw createHttpError(400, "Wybierz akcję do wykonania.");
+  }
+
+  if (!player.name) {
+    throw createHttpError(400, "Wybierz gracza.");
+  }
+
+  const command = buildPlayerActionCommand(bot, actionId, player, payload.params || {});
+  const consoleResult = await executeBotConsoleCommand(botId, actor, {
+    mode: "server",
+    command
+  });
+
+  await appendBytehostControlLog(
+    bot.id,
+    `Wykonano akcję gracza: ${actionId} -> ${player.name}`
+  );
+
+  return {
+    action: actionId,
+    player,
+    command,
+    console: consoleResult,
+    message: `Wysłano akcję "${actionId}" dla gracza ${player.name}.`,
+    sent_at: nowIso()
+  };
+}
+
 async function getBotLogsPayload(botId, actor) {
   const bot = getBotRow(botId, actor);
   const logs = await getBotLogs(botId);
@@ -3364,6 +4002,8 @@ module.exports = {
   installDependencies,
   updateBotArchive,
   executeBotConsoleCommand,
+  listBotPlayers,
+  executeBotPlayerAction,
   searchMinecraftAddons,
   listMinecraftAddonVersions,
   installMinecraftAddon,

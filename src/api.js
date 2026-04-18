@@ -112,6 +112,20 @@ export const api = {
   installBot: (id) => request(`/api/bots/${id}/install`, { method: "POST" }),
   runConsoleCommand: (id, payload) =>
     request(`/api/bots/${id}/console`, { method: "POST", body: JSON.stringify(payload) }),
+  getPlayers: (id, params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        query.set(key, String(value));
+      }
+    });
+    return request(`/api/bots/${id}/players?${query.toString()}`);
+  },
+  runPlayerAction: (id, payload) =>
+    request(`/api/bots/${id}/players/action`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   searchMinecraftAddons: (id, params = {}) => {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {

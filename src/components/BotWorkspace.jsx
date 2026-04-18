@@ -627,6 +627,10 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
   const [latestMinecraftRelease, setLatestMinecraftRelease] = useState("");
   const [minecraftServerTypes, setMinecraftServerTypes] = useState(FALLBACK_MINECRAFT_SERVER_TYPES);
   const [uploadTargetPath, setUploadTargetPath] = useState("");
+  const [playersData, setPlayersData] = useState(null);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  const [playerActionState, setPlayerActionState] = useState("");
 
   const serviceType = bot?.service_type || "";
   const isMinecraft = serviceType === "minecraft_server";
@@ -653,6 +657,8 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
     setConsoleResult(null);
     setFilesData(null);
     setLogs({ combined: "" });
+    setPlayersData(null);
+    setSelectedPlayer(null);
     loadBot();
   }, [botId]);
 
@@ -826,6 +832,47 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       cancelled = true;
     };
   }, [activeTab, botId]);
+
+  useEffect(() => {
+    if (activeTab !== "players" || !isGameService) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function load(refresh = false) {
+      try {
+        setPlayersLoading(true);
+        const payload = await api.getPlayers(botId, { refresh: refresh ? "1" : "" });
+        if (!cancelled) {
+          setPlayersData(payload);
+          setSelectedPlayer((current) => {
+            if (!current) {
+              return null;
+            }
+
+            return payload.players?.find((player) => player.name === current.name) || current;
+          });
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError.message);
+        }
+      } finally {
+        if (!cancelled) {
+          setPlayersLoading(false);
+        }
+      }
+    }
+
+    load(true);
+    const interval = window.setInterval(() => load(false), 6000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeTab, botId, isGameService]);
 
   useEffect(() => {
     if (activeTab !== "env") {
@@ -1183,6 +1230,88 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
       setError(consoleError.message);
     } finally {
       setActionState("");
+    }
+  }
+
+  async function refreshPlayers(refresh = true) {
+    if (!isGameService) {
+      return;
+    }
+
+    setPlayersLoading(true);
+    setError("");
+
+    try {
+      const payload = await api.getPlayers(botId, { refresh: refresh ? "1" : "" });
+      setPlayersData(payload);
+      setSelectedPlayer((current) => {
+        if (!current) {
+          return payload.players?.[0] || null;
+        }
+
+        return payload.players?.find((player) => player.name === current.name) || current;
+      });
+    } catch (playersError) {
+      setError(playersError.message);
+    } finally {
+      setPlayersLoading(false);
+    }
+  }
+
+  function collectPlayerActionParams(action) {
+    const params = {};
+
+    for (const field of action.fields || []) {
+      const value = window.prompt(field.label || field.name, field.default || "");
+      if (value === null) {
+        return null;
+      }
+
+      params[field.name] = value || field.default || "";
+    }
+
+    return params;
+  }
+
+  async function runPlayerAction(action, player = selectedPlayer) {
+    if (!player) {
+      setError("Najpierw wybierz gracza.");
+      return;
+    }
+
+    if (action.confirm && !window.confirm(`Wykonać "${action.label}" na graczu ${player.name}?`)) {
+      return;
+    }
+
+    const params = collectPlayerActionParams(action);
+    if (params === null) {
+      return;
+    }
+
+    setPlayerActionState(action.id);
+    setMessage("");
+    setError("");
+
+    try {
+      const result = await api.runPlayerAction(botId, {
+        action: action.id,
+        player,
+        params
+      });
+
+      setConsoleResult(result.console);
+      setMessage(result.message || `Akcja ${action.label} została wysłana.`);
+      setLogs((current) => ({
+        ...current,
+        combined: [current.combined?.trimEnd(), `[player-action] > ${result.command}`]
+          .filter(Boolean)
+          .join("\n")
+      }));
+      await refreshPlayers(false);
+    } catch (playerError) {
+      setError(playerError.message);
+    } finally {
+      setPlayerActionState("");
     }
   }
 
@@ -1603,34 +1732,6 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
         {activeTab === "overview" ? (
           <form className="form-grid" onSubmit={saveSettings}>
-            <div className="info-card wide">
-              {isMinecraft
-                ? "ByteHost może sam pobrać oficjalny server.jar dla wybranej wersji Minecraft, ustawić port w server.properties i zbudować komendę startową dla Javy. Pola poniżej pozwalają nadpisać wykrycie, jeśli chcesz ręcznie wskazać launcher lub inną komendę."
-                : isFiveM
-                  ? "ByteHost pobiera oficjalny artefakt FXServer dla Linuxa, generuje zarządzany blok server.cfg i ustawia podstawowe komendy startowe. Poniżej możesz ustawić sloty, OneSync, licencję i publiczny port."
-                  : gamePreset
-                    ? `${gamePreset.label} ma własny workspace z install-server.sh, start-server.sh i folderami pod mody/pluginy. Kliknij Reinstall dependencies, żeby pobrać lub naprawić pliki serwera.`
-                : "ByteHost automatycznie wykrywa język projektu, plik startowy i komendę startową po wrzuceniu ZIP lub RAR. Pola niższej sekcji są ręcznymi nadpisaniami, jeśli auto-detect się pomyli."}
-            </div>
-
-            <div className="info-card wide">
-              {isMinecraft
-                ? "Aktualizacja samym JAR-em podmienia silnik serwera bez czyszczenia świata i pluginów. Wrzucenie ZIP lub RAR zastąpi cały katalog usługi, więc traktuj to jak pełny reinstall serwera."
-                : isFiveM
-                  ? "ZIP lub RAR dla FiveM traktuj jako pakiet serwera albo resources. Panel zachowuje oficjalny runtime FXServer, a resources, pluginy i skrypty wgrywasz wygodnie przez File Manager do folderu resources/."
-                  : gamePreset
-                    ? "ZIP lub RAR dla tej gry może zawierać dodatki, pluginy, konfigurację albo gotowe pliki serwera. Wgrywanie przez File Manager jest najbezpieczniejsze dla pojedynczych modów."
-                : "Aktualizacja bota przez nowy ZIP lub RAR podmienia pliki projektu, zachowuje .env, odświeża auto-detekcję i może automatycznie przeinstalować zależności oraz wznowić proces."}
-            </div>
-
-            {isGameService ? (
-              <div className="info-card wide">
-                {isMinecraft
-                  ? "Kazdy gracz wejdzie dopiero wtedy, gdy publiczny host i port gry rzeczywiscie beda wystawione na zewnatrz. Panel zapisuje ten adres dla operatora, ale nie zastapi przekierowania portu lub tunelu TCP do Minecrafta."
-                  : "Serwer gry dostaje automatyczny adres publiczny `IP:port`, ale port nadal musi być przekierowany na routerze do VM z ByteHost. Panel nie może sam skonfigurować przekierowania w Twoim routerze."}
-              </div>
-            ) : null}
-
             <label>
               Nazwa
               <input
@@ -2061,44 +2162,114 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
 
         {activeTab === "players" && isGameService ? (
           <div className="workspace-stack">
-            <div className="info-card wide">
-              Player manager korzysta z prawdziwej konsoli serwera. Kliknij szybka komende, a
-              wynik pojawi sie w live console/logach tak jak w Pterodactylu. Dla gier SteamCMD
-              dokladne komendy zaleza od silnika i pluginow RCON.
-            </div>
-            <div className="file-actions">
-              {playerQuickCommands.map((command) => (
+            <div className="players-toolbar">
+              <div>
+                <p className="eyebrow">Player list</p>
+                <h3>
+                  {playersData?.online_count ?? 0}
+                  {playersData?.max_players ? ` / ${playersData.max_players}` : ""} online
+                </h3>
+                <small>
+                  Źródło: {playersData?.source || "logs"} · aktualizacja:{" "}
+                  {playersData?.updated_at ? formatDate(playersData.updated_at) : "brak"}
+                </small>
+              </div>
+              <div className="file-actions">
                 <button
-                  key={command}
                   className="ghost-button compact"
-                  onClick={() => sendConsoleText(command)}
-                  disabled={actionState === "console"}
+                  onClick={() => refreshPlayers(true)}
+                  disabled={playersLoading || actionState === "console"}
                 >
-                  <Terminal size={16} />
-                  <span>{command}</span>
+                  <RefreshCw size={16} />
+                  <span>{playersLoading ? "Odświeżanie..." : "Odśwież graczy"}</span>
                 </button>
-              ))}
+                {playerQuickCommands.map((command) => (
+                  <button
+                    key={command}
+                    className="ghost-button compact"
+                    onClick={() => sendConsoleText(command)}
+                    disabled={actionState === "console"}
+                  >
+                    <Terminal size={16} />
+                    <span>{command}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <form className="console-form" onSubmit={runConsoleCommand}>
-              <label className="wide">
-                Komenda gracza / administracji
-                <input
-                  value={consoleCommand}
-                  onChange={(event) => setConsoleCommand(event.target.value)}
-                  placeholder={
-                    isMinecraft
-                      ? "np. kick Nick, ban Nick, op Nick"
-                      : isFiveM
-                        ? "np. status, clientkick ID powod"
-                        : "np. status, players, list"
-                  }
-                />
-              </label>
-              <button className="primary-button" type="submit" disabled={actionState === "console"}>
-                <Terminal size={16} />
-                <span>Wyslij</span>
-              </button>
-            </form>
+
+            <div className="player-manager-grid">
+              <div className="player-list-card">
+                {playersData?.players?.length ? (
+                  playersData.players.map((player) => (
+                    <button
+                      key={`${player.id || player.name}`}
+                      className={`player-card ${
+                        selectedPlayer?.name === player.name ? "selected" : ""
+                      }`}
+                      onClick={() => setSelectedPlayer(player)}
+                    >
+                      <img src={player.avatar_url} alt="" loading="lazy" />
+                      <span>
+                        <strong>{player.name}</strong>
+                        <small>
+                          {player.id ? `ID: ${player.id}` : player.source || "online"}
+                          {player.ping ? ` · ${player.ping} ms` : ""}
+                        </small>
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="empty-player-state">
+                    <strong>Brak wykrytych graczy online</strong>
+                    <span>
+                      Kliknij „Odśwież graczy”. Panel wyśle komendę do konsoli i odczyta wynik z
+                      logów serwera.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="player-detail-card">
+                {selectedPlayer ? (
+                  <>
+                    <div className="player-detail-header">
+                      <img src={selectedPlayer.avatar_url} alt="" />
+                      <div>
+                        <p className="eyebrow">Wybrany gracz</p>
+                        <h3>{selectedPlayer.name}</h3>
+                        <small>
+                          {selectedPlayer.id ? `ID: ${selectedPlayer.id}` : "Nick"}
+                          {selectedPlayer.address ? ` · IP: ${selectedPlayer.address}` : ""}
+                        </small>
+                      </div>
+                    </div>
+
+                    <div className="player-action-grid">
+                      {(playersData?.actions || []).map((action) => (
+                        <button
+                          key={action.id}
+                          className={`player-action-button ${action.tone || ""}`}
+                          onClick={() => runPlayerAction(action, selectedPlayer)}
+                          disabled={Boolean(playerActionState)}
+                          title={action.description || action.label}
+                        >
+                          <strong>
+                            {playerActionState === action.id ? "Wysyłanie..." : action.label}
+                          </strong>
+                          {action.description ? <small>{action.description}</small> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-player-state">
+                    <strong>Wybierz gracza</strong>
+                    <span>Kliknij gracza z listy, żeby otworzyć jego akcje administracyjne.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="terminal-card">
               <div className="terminal-header">
                 <Terminal size={16} />
