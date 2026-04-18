@@ -137,6 +137,13 @@ router.post("/provision-service", async (request, response, next) => {
       throw createHttpError(404, `Nie znaleziono uzytkownika ${email}.`);
     }
 
+    if (user.role === "owner") {
+      throw createHttpError(
+        400,
+        "Nie mozna nadac uslugi kontu ownera przez bota. Wybierz email zwyklego uzytkownika."
+      );
+    }
+
     const updatedUser = await updateUserAccount(user.id, buildProvisionedUserPatch(user, plan, days));
     const updatedOwner = getUserById(user.id);
     const service = await createBot(
