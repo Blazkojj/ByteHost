@@ -1,16 +1,45 @@
 const { spawn } = require("child_process");
 
+function splitShellCommandLines(command) {
+  return String(command || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function buildSequentialShellCommand(command) {
+  const lines = splitShellCommandLines(command);
+
+  if (lines.length <= 1) {
+    return lines[0] || "";
+  }
+
+  if (process.platform === "win32") {
+    return [
+      "$ErrorActionPreference = 'Stop'",
+      ...lines.flatMap((line) => [
+        line,
+        "if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+      ])
+    ].join("\n");
+  }
+
+  return ["set -e", ...lines].join("\n");
+}
+
 function getShellInvocation(command) {
+  const normalizedCommand = buildSequentialShellCommand(command);
+
   if (process.platform === "win32") {
     return {
       command: "powershell.exe",
-      args: ["-NoLogo", "-NoProfile", "-Command", command]
+      args: ["-NoLogo", "-NoProfile", "-Command", normalizedCommand]
     };
   }
 
   return {
     command: "/bin/bash",
-    args: ["-lc", command]
+    args: ["-lc", normalizedCommand]
   };
 }
 
@@ -94,6 +123,7 @@ function runShellCommand(command, options = {}) {
 }
 
 module.exports = {
+  buildSequentialShellCommand,
   getShellInvocation,
   spawnBuffered,
   runShellCommand

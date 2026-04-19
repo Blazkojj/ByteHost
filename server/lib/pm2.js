@@ -2,7 +2,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const pm2 = require("pm2");
 
-const { getShellInvocation, runShellCommand } = require("./commands");
+const { buildSequentialShellCommand, getShellInvocation, runShellCommand } = require("./commands");
 const { getBotLogPaths } = require("./logs");
 
 let connectionPromise;
@@ -91,7 +91,7 @@ function getManagedServerShellInvocation(bot, consoleInputPath) {
       ].join("; ")
     ],
     env: {
-      BYTEHOST_START_COMMAND: bot.start_command,
+      BYTEHOST_START_COMMAND: buildSequentialShellCommand(bot.start_command),
       BYTEHOST_CONSOLE_INPUT: consoleInputPath
     }
   };

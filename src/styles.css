@@ -4289,3 +4289,118 @@ textarea:focus {
     border-radius: 16px;
   }
 }
+
+/* Flat ByteHost finish: no decorative gradients. */
+:root,
+:root[data-theme="dark"] {
+  --panel-elevated: var(--panel);
+}
+
+body,
+.app-shell,
+.content-shell,
+.marketing-shell,
+.landing-shell {
+  background: var(--bg) !important;
+  background-image: none !important;
+}
+
+body::before,
+body::after,
+.app-shell::before,
+.app-shell::after,
+.marketing-shell::before,
+.marketing-shell::after,
+.landing-shell::before,
+.landing-shell::after {
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+}
+
+.topbar,
+.marketing-header,
+.landing-header {
+  background: var(--topbar) !important;
+  background-image: none !important;
+}
+
+.sidebar {
+  background: var(--sidebar-bg, var(--panel)) !important;
+  background-image: none !important;
+}
+
+.panel-card,
+.hero-card,
+.sidebar-card,
+.metric-card,
+.summary-tile,
+.host-card,
+.table-shell,
+.modal-card,
+.login-card,
+.files-panel-card,
+.file-manager,
+.file-browser,
+.bot-list-item,
+.server-list-card,
+.service-card,
+.terminal-card,
+.marketing-hero-copy,
+.marketing-hero-visual,
+.marketing-hero-mockup,
+.marketing-window,
+.marketing-proof-card,
+.marketing-feature-card,
+.marketing-step-card,
+.marketing-stack-card,
+.marketing-cta,
+.marketing-faq-item,
+.marketing-footer,
+.landing-hero-copy,
+.landing-hero-stage,
+.landing-window,
+.landing-band-card,
+.landing-feature-card,
+.landing-step-card,
+.landing-cta-card,
+.landing-faq-item {
+  background-image: none !important;
+}
+
+.primary-button {
+  background: var(--accent) !important;
+  background-image: none !important;
+}
+
+.ghost-button,
+.danger-button,
+.theme-toggle,
+.topbar-chip,
+.marketing-pill-row span,
+.marketing-cta-points span,
+.landing-highlights span,
+.landing-cta-points span,
+.status-pill {
+  background-image: none !important;
+}
+
+.server-list-card::before {
+  background-image: var(--server-bg, none) !important;
+}
+
+progress::-webkit-progress-value {
+  background: var(--accent) !important;
+}
+
+progress::-moz-progress-bar {
+  background: var(--accent) !important;
+}
+
+.marketing-mini-card.accent,
+.landing-mini-card.accent,
+.landing-side-badge.active,
+.marketing-side-link.active {
+  background: rgba(20, 119, 255, 0.14) !important;
+  background-image: none !important;
+}

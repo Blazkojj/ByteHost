@@ -1896,19 +1896,23 @@ export function BotWorkspace({ botId, user, onRefreshAll, onRefreshBots, onRefre
                 </label>
                 <label className="wide">
                   Komenda startowa
-                  <input
+                  <textarea
+                    rows={4}
                     placeholder={
                       isFiveM
                         ? 'bash "run.sh" +exec "server.cfg"'
                         : gamePreset
                           ? gamePreset.startCommand
-                        : undefined
+                        : "npm run deploy\nnpm start"
                     }
                     value={settings.start_command}
                     onChange={(event) =>
                       setSettings((current) => ({ ...current, start_command: event.target.value }))
                     }
                   />
+                  <small>
+                    Każda linia to osobna komenda. Jeśli jedna komenda zwróci błąd, kolejne nie wystartują.
+                  </small>
                 </label>
                 <label>
                   Restart delay

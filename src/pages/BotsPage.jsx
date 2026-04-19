@@ -571,7 +571,8 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
           </label>
           <label className="wide">
             Komenda startowa
-            <input
+            <textarea
+              rows={4}
               placeholder={
                 isMinecraft
                   ? 'java -Xms1024M -Xmx2048M -jar "server.jar" nogui'
@@ -579,13 +580,16 @@ function CreateBotPanel({ open, system, user, onClose, onCreated }) {
                     ? 'bash "run.sh" +exec "server.cfg"'
                     : selectedGamePreset
                       ? selectedGamePreset.startCommand
-                  : 'npm start lub python3 "main.py"'
+                  : "npm run deploy\nnpm start"
               }
               value={form.start_command}
               onChange={(event) =>
                 setForm((current) => ({ ...current, start_command: event.target.value }))
               }
             />
+            <small>
+              Możesz wpisać kilka komend, każdą w nowej linii. ByteHost uruchomi je po kolei.
+            </small>
           </label>
           <label>
             Restart delay (ms)

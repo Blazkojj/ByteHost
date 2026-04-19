@@ -1,7 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-const { spawnBuffered, runShellCommand } = require("./commands");
+const { buildSequentialShellCommand, spawnBuffered, runShellCommand } = require("./commands");
 const { GAME_SERVICE_TYPES, getGamePreset } = require("./gamePresets");
 
 const DOCKER_WORKDIR = "/home/container";
@@ -229,6 +229,7 @@ async function startDockerService(bot, startCommand) {
     throw new Error("Ta usluga nie jest obslugiwana przez Docker.");
   }
 
+  const sequentialStartCommand = buildSequentialShellCommand(startCommand);
   const containerName = getDockerContainerName(bot);
   const dockerImage = getDockerImage(bot);
   const envFile = path.join(bot.project_path, ".bytehost", "game.env");
@@ -260,7 +261,7 @@ async function startDockerService(bot, startCommand) {
     "--env",
     `BYTEHOST_SERVICE_TYPE=${bot.service_type}`,
     "--env",
-    `BYTEHOST_START_COMMAND=${startCommand}`,
+    `BYTEHOST_START_COMMAND=${sequentialStartCommand}`,
     "--env",
     `PORT=${bot.public_port || ""}`,
     "--env",
